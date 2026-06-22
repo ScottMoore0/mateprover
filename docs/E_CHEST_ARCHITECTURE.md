@@ -16,8 +16,18 @@ Directmate is represented as an AND/OR problem:
 - defender-to-move nodes are AND nodes;
 - a proof succeeds only when every legal defender reply has a continuing proof;
 - every returned success must contain a legal representative PV ending in checkmate.
+- proof-carrying mode must include every legal defender branch, not just the representative PV.
 
 The proof kernel must be small enough to audit. It is the highest-correctness component and must remain independent of move-ordering or neural guidance.
+
+Current E checkpoint:
+
+- normal benchmark output remains `bm` / `dm` / `pv`;
+- `--emit-proof` emits a recursive JSON proof certificate;
+- attacker nodes contain one selected proof move;
+- immediate mate leaves use `mate:true`;
+- defender nodes contain exactly one branch per legal defender reply;
+- `benchmarks\scripts\e_verify_proof_tree.py` independently verifies certificates with python-chess.
 
 ### 2. Modern Board And Move Engine
 
@@ -110,6 +120,7 @@ Every E success is checked by:
 
 - legal PV replay;
 - final checkmate verification;
+- recursive proof-tree verification where available;
 - A/B/C/D differential tests;
 - restriction-mode sweeps;
 - no-mate controls;

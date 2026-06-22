@@ -34,6 +34,7 @@ struct Move {
 struct Proof {
     bool ok = false;
     std::vector<Move> pv;
+    std::string cert;
 };
 
 struct Board {
@@ -51,6 +52,7 @@ struct Stats {
 struct TTEntry {
     bool ok = false;
     std::vector<Move> pv;
+    std::string cert;
 };
 
 struct Search {
@@ -112,6 +114,20 @@ std::string move_uci(const Move& m) {
     if (m.promo) {
         out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(m.promo))));
     }
+    return out;
+}
+
+std::string json_quote(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    out.push_back('"');
+    for (char ch : s) {
+        if (ch == '"' || ch == '\\') {
+            out.push_back('\\');
+        }
+        out.push_back(ch);
+    }
+    out.push_back('"');
     return out;
 }
 
@@ -545,17 +561,19 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     std::string key = tt_key(b, depth, 'D', s.attacker);
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
-        return {it->second.ok, it->second.pv};
+        return {it->second.ok, it->second.pv, it->second.cert};
     }
 
     auto replies = legal_moves(b);
     if (replies.empty()) {
-        s.tt[key] = {false, {}};
+        s.tt[key] = {false, {}, ""};
         return {};
     }
 
     order_moves(b, replies);
     std::vector<Move> representative;
+    std::vector<std::string> branch_certs;
+    branch_certs.reserve(replies.size());
     for (const Move& dmove : replies) {
         Board nb = make_move(b, dmove);
         Proof child = prove_attacker(s, nb, depth);
@@ -564,7 +582,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
                 std::cerr << "defender_refutes depth=" << depth << " move=" << move_uci(dmove)
                           << " fen=" << fen4(nb) << "\n";
             }
-            s.tt[key] = {false, {}};
+            s.tt[key] = {false, {}, ""};
             return {};
         }
         std::vector<Move> candidate;
@@ -573,9 +591,16 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         if (candidate.size() > representative.size()) {
             representative = std::move(candidate);
         }
+        branch_certs.push_back("{\"r\":" + json_quote(move_uci(dmove)) + ",\"p\":" + child.cert + "}");
     }
-    s.tt[key] = {true, representative};
-    return {true, representative};
+    std::string cert = "[";
+    for (std::size_t i = 0; i < branch_certs.size(); ++i) {
+        if (i) cert.push_back(',');
+        cert += branch_certs[i];
+    }
+    cert.push_back(']');
+    s.tt[key] = {true, representative, cert};
+    return {true, representative, cert};
 }
 
 Proof prove_attacker(Search& s, const Board& b, int depth) {
@@ -586,7 +611,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     std::string key = tt_key(b, depth, 'A', s.attacker);
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
-        return {it->second.ok, it->second.pv};
+        return {it->second.ok, it->second.pv, it->second.cert};
     }
 
     auto moves = legal_moves(b);
@@ -595,8 +620,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb)) {
             std::vector<Move> pv{amove};
-            s.tt[key] = {true, pv};
-            return {true, pv};
+            std::string cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
+            s.tt[key] = {true, pv, cert};
+            return {true, pv, cert};
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {
             auto replies = legal_moves(nb);
@@ -630,8 +656,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             if (all_replies.ok) {
                 std::vector<Move> pv{amove};
                 pv.insert(pv.end(), all_replies.pv.begin(), all_replies.pv.end());
-                s.tt[key] = {true, pv};
-                return {true, pv};
+                std::string cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + all_replies.cert + "}";
+                s.tt[key] = {true, pv, cert};
+                return {true, pv, cert};
             }
             if (s.debug) {
                 std::cerr << "attacker_move_failed depth=" << depth << " move=" << move_uci(amove)
@@ -639,7 +666,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
-    s.tt[key] = {false, {}};
+    s.tt[key] = {false, {}, ""};
     return {};
 }
 
@@ -689,7 +716,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -729,6 +756,9 @@ void solve_line(const std::string& raw, int requested_depth, bool debug) {
         std::cout << "; bm " << move_uci(proof.pv.front())
                   << "; dm " << proved_depth
                   << "; pv " << pv_uci(proof.pv);
+        if (emit_proof && !proof.cert.empty()) {
+            std::cout << "; proof " << proof.cert;
+        }
     }
     std::cout << ";\n";
 }
@@ -740,6 +770,7 @@ int main(int argc, char** argv) {
     bool read_stdin = false;
     bool debug = false;
     bool list_legal = false;
+    bool emit_proof = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -750,6 +781,8 @@ int main(int argc, char** argv) {
             debug = true;
         } else if (arg == "--list-legal") {
             list_legal = true;
+        } else if (arg == "--emit-proof") {
+            emit_proof = true;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -761,7 +794,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug);
+                solve_line(line, requested_depth, debug, emit_proof);
             }
         }
     } else {
@@ -770,7 +803,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof);
         }
     }
     return 0;

@@ -15,6 +15,7 @@ This initial checkpoint establishes:
 - legal move generation and directmate proof scaffolding;
 - proof-carrying output in UCI move format;
 - exact PV replay compatibility with the existing validator;
+- opt-in recursive proof-tree output verified independently with python-chess;
 - documentation for the full rewrite path.
 
 The first implementation is intentionally conservative. It prioritizes correctness and auditability over maximum speed while the proof kernel and board representation are brought up under tests.
@@ -42,6 +43,7 @@ Supported now:
 - `-5`: output UCI-style coordinate moves;
 - `-M N`: accepted for compatibility;
 - `-z N`: requested mate depth;
+- `--emit-proof`: append a recursive JSON proof certificate for solved positions;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
@@ -53,5 +55,19 @@ Solved positions print:
 ```text
 <fen4>; acn <nodes>; acs <seconds>; bm <uci>; dm <depth>; pv <uci ...>;
 ```
+
+With `--emit-proof`, solved positions additionally print:
+
+```text
+proof {"a":"<attacker-move>","mate":true}
+```
+
+or, for non-leaf attacker nodes:
+
+```text
+proof {"a":"<attacker-move>","d":[{"r":"<defender-reply>","p":<child-proof>}, ...]}
+```
+
+The proof tree is verified by `benchmarks\scripts\e_verify_proof_tree.py`. A valid proof must enumerate exactly every legal defender reply at every defender node and each leaf must end in checkmate.
 
 No-mate or unproved positions print no `dm` token, so the existing harness treats them as no mate.
