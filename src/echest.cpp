@@ -90,6 +90,10 @@ struct Stats {
     std::uint64_t tt_probes = 0;
     std::uint64_t tt_hits = 0;
     std::uint64_t tt_stores = 0;
+    std::uint64_t exact_tt_proof_hits = 0;
+    std::uint64_t exact_tt_disproof_hits = 0;
+    std::uint64_t exact_tt_proof_stores = 0;
+    std::uint64_t exact_tt_disproof_stores = 0;
     std::uint64_t bound_tt_probes = 0;
     std::uint64_t bound_tt_hits = 0;
     std::uint64_t bound_tt_ok_hits = 0;
@@ -145,8 +149,13 @@ struct TTKeyHash {
     }
 };
 
+enum class TTEntryKind {
+    Disproof,
+    Proof,
+};
+
 struct TTEntry {
-    bool ok = false;
+    TTEntryKind kind = TTEntryKind::Disproof;
     std::vector<Move> pv;
     std::string cert;
 };
@@ -1061,13 +1070,25 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
         return false;
     }
     ++s.stats.tt_hits;
-    out = {it->second.ok, it->second.pv, it->second.cert};
+    if (it->second.kind == TTEntryKind::Proof) {
+        ++s.stats.exact_tt_proof_hits;
+        out = {true, it->second.pv, it->second.cert};
+    } else {
+        ++s.stats.exact_tt_disproof_hits;
+        out = {};
+    }
     return true;
 }
 
 void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
     ++s.stats.tt_stores;
-    s.tt[key] = {proof.ok, proof.pv, proof.cert};
+    if (proof.ok) {
+        ++s.stats.exact_tt_proof_stores;
+        s.tt[key] = {TTEntryKind::Proof, proof.pv, proof.cert};
+    } else {
+        ++s.stats.exact_tt_disproof_stores;
+        s.tt[key] = {TTEntryKind::Disproof, {}, ""};
+    }
 }
 
 bool probe_bound_tt(Search& s, const TTKey& key, int depth, Proof& out) {
@@ -1429,6 +1450,10 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"tt_hits\":" << st.tt_hits
               << ",\"tt_stores\":" << st.tt_stores
               << ",\"tt_size\":" << s.tt.size()
+              << ",\"exact_tt_proof_hits\":" << st.exact_tt_proof_hits
+              << ",\"exact_tt_disproof_hits\":" << st.exact_tt_disproof_hits
+              << ",\"exact_tt_proof_stores\":" << st.exact_tt_proof_stores
+              << ",\"exact_tt_disproof_stores\":" << st.exact_tt_disproof_stores
               << ",\"bound_tt_probes\":" << st.bound_tt_probes
               << ",\"bound_tt_hits\":" << st.bound_tt_hits
               << ",\"bound_tt_ok_hits\":" << st.bound_tt_ok_hits

@@ -15,14 +15,14 @@ Implemented core pieces:
 - exact directmate proof kernel;
 - conservative array board plus packed board key cache;
 - exact keyed TT and promoted iterative TT retention;
-- centralized exact proof-table probe/store helpers that preserve current TT semantics while giving future routes one shared access boundary;
+- centralized exact proof-table probe/store helpers with explicit proof/disproof entry kinds and counters, preserving current TT semantics while giving future routes one shared access boundary;
 - opt-in depth-bound TT probe;
 - proof-safe handcrafted ordering and proof/refutation hint probes;
 - benchmark registry pinning for the promoted E binary.
 
 Missing target architecture pieces:
 
-- shared proof/disproof TT as the primary table design; the current centralized exact helpers are only the first boundary, not the final table layout or replacement policy;
+- shared proof/disproof TT as the primary table design; the current centralized exact helpers and explicit proof/disproof entries are only the first boundary, not the final table layout or replacement policy;
 - native DFPN-first route;
 - shallow fast route distinct from the current depth-first route;
 - defender-refutation route distinct from ordering hints;
