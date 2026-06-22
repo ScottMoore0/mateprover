@@ -1391,9 +1391,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     return {};
 }
 
-RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
+RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_depth, int max_depth) {
     RouteResult result;
-    for (int depth = 1; depth <= max_depth; ++depth) {
+    start_depth = std::max(1, start_depth);
+    for (int depth = start_depth; depth <= max_depth; ++depth) {
         if (!s.keep_iter_tt) {
             s.tt.clear();
         }
@@ -1404,6 +1405,10 @@ RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
         }
     }
     return result;
+}
+
+RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
+    return run_depth_first_route_from(s, b, 1, max_depth);
 }
 
 Proof prove_shallow_mate1(Search& s, const Board& b) {
@@ -1572,7 +1577,7 @@ RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
     }
     if (max_depth > 2) {
         ++s.stats.shallow_fast_fallbacks;
-        return run_depth_first_route(s, b, max_depth);
+        return run_depth_first_route_from(s, b, 3, max_depth);
     }
     return {};
 }

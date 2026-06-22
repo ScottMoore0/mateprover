@@ -6,7 +6,7 @@ E is now aligned around a route-neutral exact prover boundary:
 
 - `run_route` dispatches the selected route;
 - `--route depth-first` selects the current exact iterative depth-first route and remains the default;
-- `--route shallow-fast` is an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first for deeper requests;
+- `--route shallow-fast` is an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first from the first untried depth for deeper requests;
 - `route_result_is_acceptable` is the single output guard for route results;
 - normal output is emitted only for a non-empty accepted proof whose reported mate depth matches the representative PV and is within the requested depth;
 - proof-tree output remains opt-in through `--emit-proof` and is independently verified by `benchmarks\scripts\e_verify_proof_tree.py`.
@@ -64,7 +64,11 @@ Current shallow-route evidence:
 - an interleaved 60-case balanced no-EP subset was PV-clean with 60/60 strict success for both default E and shallow-fast, with shallow-fast slightly faster in average, median, and p95 wall time;
 - negative-control comparison was clean with 33/33 strict success for both default E and shallow-fast, and neither variant emitted a false `bm`;
 - an interleaved 40-case hard-holdout subset was PV-clean with 40/40 strict success for both variants, but shallow-fast was slower in average, median, and p95 wall time;
-- this is promising but still not promotion evidence by itself; the immediate route work is to remove duplicated mate-in-1/2 work when shallow-fast falls back on deeper cases, then repeat held-out hard-tail and no-mate checks.
+- duplicate mate-in-1/2 fallback work was removed by starting fallback at depth 3 after shallow probes fail;
+- the skip-duplicate fallback pass was PV-clean on smoke, regression controls, balanced60, hard-holdout40, and negative controls, and proof-tree clean on smoke;
+- skip-duplicate hard-holdout40 improved shallow-fast versus default E (`259.702 ms` average vs `282.847 ms`) with 40/40 strict success for both variants;
+- skip-duplicate smoke improved shallow-fast versus default E (`93.377 ms` average vs `103.386 ms`) with 9/9 strict success for both variants;
+- skip-duplicate regression controls and balanced60 were correctness-clean but not consistently faster, so shallow-fast remains unpromoted pending route gating or further route work.
 
 ## Depth-Bound TT Decision
 
