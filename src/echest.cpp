@@ -33,6 +33,32 @@ struct Move {
     int score = 0;
 };
 
+struct MoveList {
+    std::array<Move, 256> moves{};
+    std::size_t count = 0;
+    bool overflow = false;
+
+    void push_back(const Move& move) {
+        if (count < moves.size()) {
+            moves[count++] = move;
+        } else {
+            overflow = true;
+        }
+    }
+
+    std::size_t size() const {
+        return count;
+    }
+
+    const Move* begin() const {
+        return moves.data();
+    }
+
+    const Move* end() const {
+        return moves.data() + count;
+    }
+};
+
 struct Proof {
     bool ok = false;
     std::vector<Move> pv;
@@ -100,6 +126,7 @@ struct Search {
     bool move_reserve = false;
     std::size_t move_reserve_capacity = 64;
     bool inplace_order = false;
+    bool static_pseudo = false;
 };
 
 bool is_white_piece(char p) {
@@ -475,7 +502,18 @@ void add_move(std::vector<Move>& moves, int from, int to, char promo = 0, bool c
     moves.push_back(m);
 }
 
-void gen_pseudo(const Board& b, std::vector<Move>& moves) {
+void add_move(MoveList& moves, int from, int to, char promo = 0, bool castle = false, bool ep = false) {
+    Move m;
+    m.from = from;
+    m.to = to;
+    m.promo = promo;
+    m.castle = castle;
+    m.ep = ep;
+    moves.push_back(m);
+}
+
+template <typename MoveSink>
+void gen_pseudo(const Board& b, MoveSink& moves) {
     Color us = b.stm;
     for (int from = 0; from < 64; ++from) {
         char p = b.sq[from];
@@ -621,7 +659,7 @@ Board make_move(Board b, const Move& m) {
     return b;
 }
 
-std::vector<Move> legal_moves(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64) {
+std::vector<Move> legal_moves_vector(const Board& b, bool move_reserve, std::size_t move_reserve_capacity) {
     std::vector<Move> pseudo;
     if (move_reserve) {
         pseudo.reserve(move_reserve_capacity);
@@ -638,7 +676,26 @@ std::vector<Move> legal_moves(const Board& b, bool move_reserve = false, std::si
     return legal;
 }
 
-bool has_legal_move(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64) {
+std::vector<Move> legal_moves(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    if (static_pseudo) {
+        MoveList pseudo;
+        gen_pseudo(b, pseudo);
+        if (!pseudo.overflow) {
+            std::vector<Move> legal;
+            legal.reserve(pseudo.size());
+            for (const Move& m : pseudo) {
+                Board nb = make_move(b, m);
+                if (!in_check(nb, other(nb.stm))) {
+                    legal.push_back(m);
+                }
+            }
+            return legal;
+        }
+    }
+    return legal_moves_vector(b, move_reserve, move_reserve_capacity);
+}
+
+bool has_legal_move_vector(const Board& b, bool move_reserve, std::size_t move_reserve_capacity) {
     std::vector<Move> pseudo;
     if (move_reserve) {
         pseudo.reserve(move_reserve_capacity);
@@ -653,8 +710,25 @@ bool has_legal_move(const Board& b, bool move_reserve = false, std::size_t move_
     return false;
 }
 
-bool is_checkmate(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64) {
-    return in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity);
+bool has_legal_move(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    if (static_pseudo) {
+        MoveList pseudo;
+        gen_pseudo(b, pseudo);
+        if (!pseudo.overflow) {
+            for (const Move& m : pseudo) {
+                Board nb = make_move(b, m);
+                if (!in_check(nb, other(nb.stm))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    return has_legal_move_vector(b, move_reserve, move_reserve_capacity);
+}
+
+bool is_checkmate(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    return in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
 char piece_after_move(const Board& b, const Move& m, int sq) {
@@ -752,11 +826,11 @@ bool move_gives_check_fast(const Board& b, const Move& m) {
     return enemy_king < 0 || is_attacked_after_move(b, m, enemy_king, b.stm);
 }
 
-int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity) {
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
     int score = 0;
     if (score_mates) {
         Board nb = make_move(b, m);
-        if (is_checkmate(nb, move_reserve, move_reserve_capacity)) score += 1000000;
+        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
         if (score_checks && in_check(nb, nb.stm)) score += 50000;
     } else if (score_checks) {
         bool gives_check = false;
@@ -777,13 +851,13 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
     return score;
 }
 
-void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order) {
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo, bool inplace_order) {
     if (moves.size() < 2) {
         return;
     }
     if (inplace_order) {
         for (Move& move : moves) {
-            move.score = move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity);
+            move.score = move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo);
         }
         std::stable_sort(moves.begin(), moves.end(), [](const Move& a, const Move& c) {
             return a.score > c.score;
@@ -797,7 +871,7 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     std::vector<ScoredMove> scored;
     scored.reserve(moves.size());
     for (const Move& move : moves) {
-        scored.push_back({move, move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity)});
+        scored.push_back({move, move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo)});
     }
     std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
         return a.score > c.score;
@@ -877,13 +951,13 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {it->second.ok, it->second.pv, it->second.cert};
     }
 
-    auto replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity);
+    auto replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
     if (replies.empty()) {
         s.tt[key] = {false, {}, ""};
         return {};
     }
 
-    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.inplace_order);
+    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
     TTKey hint_key = move_hint_key(b, 'D', s.attacker);
     if (s.refutation_hints) {
         if (auto hint = s.defender_refutations.find(hint_key); hint != s.defender_refutations.end()) {
@@ -944,11 +1018,11 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return {it->second.ok, it->second.pv, it->second.cert};
     }
 
-    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity);
-    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.inplace_order);
+    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
     for (const Move& amove : moves) {
         Board nb = make_move(b, amove);
-        if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity)) {
+        if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
             std::vector<Move> pv{amove};
             std::string cert;
             if (s.emit_proof) {
@@ -958,7 +1032,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             return {true, pv, cert};
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {
-            auto replies = legal_moves(nb, s.move_reserve, s.move_reserve_capacity);
+            auto replies = legal_moves(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
             std::cerr << "mate1_candidate_not_mate move=" << move_uci(amove)
                       << " defender_legal=" << replies.size()
                       << " fen=" << fen4(nb) << "\n";
@@ -1052,7 +1126,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1080,6 +1154,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.move_reserve = move_reserve;
     s.move_reserve_capacity = move_reserve_capacity;
     s.inplace_order = inplace_order;
+    s.static_pseudo = static_pseudo;
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1127,6 +1202,7 @@ int main(int argc, char** argv) {
     bool move_reserve = false;
     std::size_t move_reserve_capacity = 64;
     bool inplace_order = false;
+    bool static_pseudo = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1176,6 +1252,10 @@ int main(int argc, char** argv) {
             inplace_order = true;
         } else if (arg == "--scored-vector-order") {
             inplace_order = false;
+        } else if (arg == "--static-pseudo") {
+            static_pseudo = true;
+        } else if (arg == "--vector-pseudo") {
+            static_pseudo = false;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1187,7 +1267,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
             }
         }
     } else {
@@ -1196,7 +1276,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
         }
     }
     return 0;
