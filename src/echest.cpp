@@ -146,6 +146,7 @@ struct Search {
     bool inplace_order = false;
     bool static_pseudo = false;
     bool profile = false;
+    std::size_t order_min_size = 2;
 };
 
 bool is_white_piece(char p) {
@@ -960,6 +961,10 @@ bool move_to_front(std::vector<Move>& moves, const Move& hint) {
     return false;
 }
 
+bool should_order(const Search& s, std::size_t move_count) {
+    return move_count >= std::max<std::size_t>(2, s.order_min_size);
+}
+
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
@@ -981,9 +986,11 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
-    ++s.stats.order_calls;
-    s.stats.order_moves += replies.size();
-    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
+    if (should_order(s, replies.size())) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += replies.size();
+        order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
+    }
     TTKey hint_key = move_hint_key(b, 'D', s.attacker);
     if (s.refutation_hints) {
         ++s.stats.refutation_hint_probes;
@@ -1057,9 +1064,11 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
-    ++s.stats.order_calls;
-    s.stats.order_moves += moves.size();
-    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
+    if (should_order(s, moves.size())) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += moves.size();
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
+    }
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);
@@ -1179,6 +1188,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"move_reserve_capacity\":" << s.move_reserve_capacity
               << ",\"inplace_order\":" << (s.inplace_order ? "true" : "false")
               << ",\"static_pseudo\":" << (s.static_pseudo ? "true" : "false")
+              << ",\"order_min_size\":" << s.order_min_size
               << ",\"refutation_hints\":" << (s.refutation_hints ? "true" : "false")
               << "}\n";
 }
@@ -1208,7 +1218,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1238,6 +1248,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.move_reserve_capacity = move_reserve_capacity;
     s.inplace_order = inplace_order;
     s.static_pseudo = static_pseudo;
+    s.order_min_size = std::max<std::size_t>(2, order_min_size);
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1290,6 +1301,7 @@ int main(int argc, char** argv) {
     std::size_t move_reserve_capacity = 64;
     bool inplace_order = false;
     bool static_pseudo = false;
+    std::size_t order_min_size = 2;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1347,6 +1359,14 @@ int main(int argc, char** argv) {
             static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
             static_pseudo = false;
+        } else if (arg == "--order-min-size" && i + 1 < argc) {
+            char* end = nullptr;
+            unsigned long value = std::strtoul(argv[++i], &end, 10);
+            if (end != argv[i]) {
+                order_min_size = std::max<std::size_t>(2, static_cast<std::size_t>(value));
+            }
+        } else if (arg == "--order-all") {
+            order_min_size = 2;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1358,7 +1378,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
+                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size);
             }
         }
     } else {
@@ -1367,7 +1387,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size);
         }
     }
     return 0;

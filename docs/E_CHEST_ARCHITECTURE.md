@@ -113,6 +113,8 @@ Current E checkpoint:
 - `--inplace-order` writes computed scores into the existing move vector and stable-sorts it in place instead of building a separate scored vector and copying moves back;
 - the benchmark registry promotes `--inplace-order` after paired smoke, regression-control, and balanced-no-EP runs showed speed gains with clean PV/directmate validation;
 - `--scored-vector-order` restores the previous scored-vector ordering path for future reversions and A/B checks;
+- `--order-min-size N` is an ordering-volume probe that avoids scoring and sorting small move lists; the promoted default remains `N=2` until a larger threshold proves faster without increasing search enough to lose the gain;
+- the first broad skip-small-lists probe, `--order-min-size 16`, was PV-clean but much slower on the smoke suite, so future ordering work should preserve cheap fronting for small lists rather than simply leaving them unordered;
 - this is proof-safe because it changes only move ordering, not legal move generation, proof tests, or pruning.
 
 ### 6. Defender Refutation Memory
