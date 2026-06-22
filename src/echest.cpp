@@ -667,6 +667,31 @@ std::string pv_uci(const std::vector<Move>& pv) {
     return out.str();
 }
 
+void list_legal_line(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        return;
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; legal_count 0; error input;\n";
+        return;
+    }
+    Board b = *parsed;
+    auto moves = legal_moves(b);
+    std::vector<std::string> uci;
+    uci.reserve(moves.size());
+    for (const Move& move : moves) {
+        uci.push_back(move_uci(move));
+    }
+    std::sort(uci.begin(), uci.end());
+    std::cout << fen4(b) << "; legal_count " << uci.size() << "; legal";
+    for (const std::string& move : uci) {
+        std::cout << ' ' << move;
+    }
+    std::cout << ";\n";
+}
+
 void solve_line(const std::string& raw, int requested_depth, bool debug) {
     std::string line = trim(raw);
     if (line.empty()) {
@@ -710,6 +735,7 @@ int main(int argc, char** argv) {
     int requested_depth = 0;
     bool read_stdin = false;
     bool debug = false;
+    bool list_legal = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -718,6 +744,8 @@ int main(int argc, char** argv) {
             read_stdin = true;
         } else if (arg == "--debug") {
             debug = true;
+        } else if (arg == "--list-legal") {
+            list_legal = true;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -726,12 +754,20 @@ int main(int argc, char** argv) {
     if (read_stdin) {
         std::string line;
         while (std::getline(std::cin, line)) {
-            solve_line(line, requested_depth, debug);
+            if (list_legal) {
+                list_legal_line(line);
+            } else {
+                solve_line(line, requested_depth, debug);
+            }
         }
     } else {
         std::ostringstream buffer;
         buffer << std::cin.rdbuf();
-        solve_line(buffer.str(), requested_depth, debug);
+        if (list_legal) {
+            list_legal_line(buffer.str());
+        } else {
+            solve_line(buffer.str(), requested_depth, debug);
+        }
     }
     return 0;
 }
