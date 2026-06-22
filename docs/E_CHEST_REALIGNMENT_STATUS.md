@@ -6,6 +6,7 @@ E is now aligned around a route-neutral exact prover boundary:
 
 - `run_route` dispatches the selected route;
 - `--route depth-first` selects the current exact iterative depth-first route and remains the default;
+- `--route shallow-fast` is an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first for deeper requests;
 - `route_result_is_acceptable` is the single output guard for route results;
 - normal output is emitted only for a non-empty accepted proof whose reported mate depth matches the representative PV and is within the requested depth;
 - proof-tree output remains opt-in through `--emit-proof` and is independently verified by `benchmarks\scripts\e_verify_proof_tree.py`.
@@ -24,7 +25,7 @@ Missing target architecture pieces:
 
 - shared proof/disproof TT as the primary table design; the current centralized exact helpers and explicit proof/disproof entries are only the first boundary, not the final table layout or replacement policy;
 - native DFPN-first route;
-- shallow fast route distinct from the current depth-first route;
+- promoted shallow fast route; the current `--route shallow-fast` implementation is available for validation but is not the default;
 - defender-refutation route distinct from ordering hints;
 - threat/mating-net route;
 - typed Chest/WinChest restriction model;

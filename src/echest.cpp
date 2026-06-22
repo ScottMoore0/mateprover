@@ -26,6 +26,7 @@ enum Color { WHITE = 0, BLACK = 1 };
 
 enum class RouteKind {
     DepthFirst,
+    ShallowFast,
 };
 
 struct Move {
@@ -94,6 +95,9 @@ struct Stats {
     std::uint64_t exact_tt_disproof_hits = 0;
     std::uint64_t exact_tt_proof_stores = 0;
     std::uint64_t exact_tt_disproof_stores = 0;
+    std::uint64_t shallow_fast_attempts = 0;
+    std::uint64_t shallow_fast_hits = 0;
+    std::uint64_t shallow_fast_fallbacks = 0;
     std::uint64_t bound_tt_probes = 0;
     std::uint64_t bound_tt_hits = 0;
     std::uint64_t bound_tt_ok_hits = 0;
@@ -420,6 +424,7 @@ std::vector<std::string> split_ws(const std::string& s) {
 const char* route_name(RouteKind route) {
     switch (route) {
         case RouteKind::DepthFirst: return "depth-first";
+        case RouteKind::ShallowFast: return "shallow-fast";
     }
     return "unknown";
 }
@@ -427,6 +432,9 @@ const char* route_name(RouteKind route) {
 std::optional<RouteKind> parse_route_kind(const std::string& name) {
     if (name == "depth-first" || name == "depth_first" || name == "df" || name == "dfs" || name == "default") {
         return RouteKind::DepthFirst;
+    }
+    if (name == "shallow-fast" || name == "shallow_fast" || name == "shallow" || name == "sf") {
+        return RouteKind::ShallowFast;
     }
     return std::nullopt;
 }
@@ -1398,10 +1406,183 @@ RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
     return result;
 }
 
+Proof prove_shallow_mate1(Search& s, const Board& b) {
+    ++s.stats.nodes;
+    ++s.stats.attacker_nodes;
+    if (b.stm != s.attacker) {
+        return {};
+    }
+
+    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    ++s.stats.attacker_move_lists;
+    s.stats.attacker_moves += moves.size();
+    bool moves_scored = false;
+    if (should_order(s, moves.size())) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += moves.size();
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+        moves_scored = true;
+    }
+    TTKey hint_key;
+    bool have_hint_key = false;
+    auto get_hint_key = [&]() -> const TTKey& {
+        if (!have_hint_key) {
+            hint_key = move_hint_key(b, 'A', s.attacker);
+            have_hint_key = true;
+        }
+        return hint_key;
+    };
+    if (s.proof_hints) {
+        const TTKey& proof_key = get_hint_key();
+        ++s.stats.proof_hint_probes;
+        if (auto hint = s.attacker_proofs.find(proof_key); hint != s.attacker_proofs.end()) {
+            if (move_to_front(moves, hint->second)) {
+                ++s.stats.proof_hint_hits;
+            }
+        }
+    }
+
+    const bool can_use_ordered_check_shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates;
+    for (const Move& amove : moves) {
+        ++s.stats.attacker_candidates;
+        Board nb = make_move(b, amove);
+        ++s.stats.immediate_mate_tests;
+        bool mate = false;
+        if (can_use_ordered_check_shortcut) {
+            ++s.stats.ordered_check_shortcut_uses;
+            if (amove.score >= 50000) {
+                ++s.stats.ordered_check_shortcut_checks;
+                mate = !has_legal_move(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+            } else {
+                ++s.stats.ordered_check_shortcut_skips;
+            }
+        } else {
+            mate = is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+        }
+        if (mate) {
+            ++s.stats.immediate_mates;
+            if (s.proof_hints) {
+                ++s.stats.proof_hint_stores;
+                s.attacker_proofs[get_hint_key()] = amove;
+            }
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
+            }
+            return {true, {amove}, cert};
+        }
+    }
+    return {};
+}
+
+Proof prove_shallow_mate2(Search& s, const Board& b) {
+    ++s.stats.nodes;
+    ++s.stats.attacker_nodes;
+    if (b.stm != s.attacker) {
+        return {};
+    }
+
+    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    ++s.stats.attacker_move_lists;
+    s.stats.attacker_moves += moves.size();
+    if (should_order(s, moves.size())) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += moves.size();
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+    }
+
+    for (const Move& amove : moves) {
+        ++s.stats.attacker_candidates;
+        Board defender_board = make_move(b, amove);
+        ++s.stats.nodes;
+        ++s.stats.defender_nodes;
+        auto replies = legal_moves(defender_board, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+        ++s.stats.defender_move_lists;
+        s.stats.defender_moves += replies.size();
+        if (replies.empty()) {
+            continue;
+        }
+        if (should_order(s, replies.size())) {
+            ++s.stats.order_calls;
+            s.stats.order_moves += replies.size();
+            order_moves(defender_board, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+        }
+
+        std::vector<Move> representative;
+        std::vector<std::string> branch_certs;
+        if (s.emit_proof) {
+            branch_certs.reserve(replies.size());
+        }
+        bool all_replies_mate = true;
+        for (const Move& dmove : replies) {
+            ++s.stats.defender_replies_tried;
+            Board attacker_board = make_move(defender_board, dmove);
+            Proof child = prove_shallow_mate1(s, attacker_board);
+            if (!child.ok) {
+                ++s.stats.defender_refutations;
+                all_replies_mate = false;
+                break;
+            }
+            std::vector<Move> candidate;
+            candidate.push_back(dmove);
+            candidate.insert(candidate.end(), child.pv.begin(), child.pv.end());
+            if (candidate.size() > representative.size()) {
+                representative = std::move(candidate);
+            }
+            if (s.emit_proof) {
+                branch_certs.push_back("{\"r\":" + json_quote(move_uci(dmove)) + ",\"p\":" + child.cert + "}");
+            }
+        }
+        if (all_replies_mate) {
+            std::vector<Move> pv{amove};
+            pv.insert(pv.end(), representative.begin(), representative.end());
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":[";
+                for (std::size_t i = 0; i < branch_certs.size(); ++i) {
+                    if (i) cert.push_back(',');
+                    cert += branch_certs[i];
+                }
+                cert += "]}";
+            }
+            return {true, pv, cert};
+        }
+    }
+    return {};
+}
+
+RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
+    ++s.stats.shallow_fast_attempts;
+    RouteResult result;
+    if (max_depth >= 1) {
+        result.proof = prove_shallow_mate1(s, b);
+        if (result.proof.ok) {
+            ++s.stats.shallow_fast_hits;
+            result.proved_depth = 1;
+            return result;
+        }
+    }
+    if (max_depth >= 2) {
+        result.proof = prove_shallow_mate2(s, b);
+        if (result.proof.ok) {
+            ++s.stats.shallow_fast_hits;
+            result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
+            return result;
+        }
+    }
+    if (max_depth > 2) {
+        ++s.stats.shallow_fast_fallbacks;
+        return run_depth_first_route(s, b, max_depth);
+    }
+    return {};
+}
+
 RouteResult run_route(Search& s, const Board& b, int max_depth) {
     switch (s.route) {
         case RouteKind::DepthFirst:
             return run_depth_first_route(s, b, max_depth);
+        case RouteKind::ShallowFast:
+            return run_shallow_fast_route(s, b, max_depth);
     }
     return {};
 }
@@ -1454,6 +1635,9 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"exact_tt_disproof_hits\":" << st.exact_tt_disproof_hits
               << ",\"exact_tt_proof_stores\":" << st.exact_tt_proof_stores
               << ",\"exact_tt_disproof_stores\":" << st.exact_tt_disproof_stores
+              << ",\"shallow_fast_attempts\":" << st.shallow_fast_attempts
+              << ",\"shallow_fast_hits\":" << st.shallow_fast_hits
+              << ",\"shallow_fast_fallbacks\":" << st.shallow_fast_fallbacks
               << ",\"bound_tt_probes\":" << st.bound_tt_probes
               << ",\"bound_tt_hits\":" << st.bound_tt_hits
               << ",\"bound_tt_ok_hits\":" << st.bound_tt_ok_hits

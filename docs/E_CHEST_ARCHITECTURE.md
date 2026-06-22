@@ -101,6 +101,7 @@ DFPN should become a native search mode, not a fallback wrapper. E should have:
 Current E checkpoint:
 
 - `--route depth-first` selects the current exact iterative depth-first directmate route, which remains the promoted default;
+- `--route shallow-fast` selects an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first for deeper requests;
 - `run_route` is now the common dispatch point for future exact routes, so shallow, DFPN-first, defender-refutation, and threat/mating-net routes can be added without changing output acceptance or proof verification;
 - unsupported route names are not treated as proof mechanisms; E falls back to the current exact route and reports the unsupported name on stderr.
 
