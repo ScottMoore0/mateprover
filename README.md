@@ -44,6 +44,7 @@ Supported now:
 - `-5`: output UCI-style coordinate moves;
 - `-M N`: accepted for compatibility;
 - `-z N`: requested mate depth;
+- `--route depth-first`: select the current exact depth-first route; this is the promoted default and currently the only implemented route;
 - `--emit-proof`: append a recursive JSON proof certificate for solved positions;
 - `--profile`: emit one `% e_profile {...}` JSON counter row to stderr per input position;
 - `--no-profile`: keep profiling disabled, which is the promoted default;

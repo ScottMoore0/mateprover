@@ -24,6 +24,10 @@ namespace {
 
 enum Color { WHITE = 0, BLACK = 1 };
 
+enum class RouteKind {
+    DepthFirst,
+};
+
 struct Move {
     int from = -1;
     int to = -1;
@@ -63,6 +67,11 @@ struct Proof {
     bool ok = false;
     std::vector<Move> pv;
     std::string cert;
+};
+
+struct RouteResult {
+    Proof proof;
+    int proved_depth = 0;
 };
 
 struct Board {
@@ -152,6 +161,7 @@ struct BoundEntry {
 
 struct Search {
     Color attacker = WHITE;
+    RouteKind route = RouteKind::DepthFirst;
     Stats stats;
     std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
     std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
@@ -395,6 +405,20 @@ std::vector<std::string> split_ws(const std::string& s) {
         out.push_back(tok);
     }
     return out;
+}
+
+const char* route_name(RouteKind route) {
+    switch (route) {
+        case RouteKind::DepthFirst: return "depth-first";
+    }
+    return "unknown";
+}
+
+std::optional<RouteKind> parse_route_kind(const std::string& name) {
+    if (name == "depth-first" || name == "depth_first" || name == "df" || name == "dfs" || name == "default") {
+        return RouteKind::DepthFirst;
+    }
+    return std::nullopt;
 }
 
 std::optional<Board> parse_fen4(const std::string& line) {
@@ -1329,6 +1353,29 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     return {};
 }
 
+RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
+    RouteResult result;
+    for (int depth = 1; depth <= max_depth; ++depth) {
+        if (!s.keep_iter_tt) {
+            s.tt.clear();
+        }
+        result.proof = prove_attacker(s, b, depth);
+        if (result.proof.ok) {
+            result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
+            break;
+        }
+    }
+    return result;
+}
+
+RouteResult run_route(Search& s, const Board& b, int max_depth) {
+    switch (s.route) {
+        case RouteKind::DepthFirst:
+            return run_depth_first_route(s, b, max_depth);
+    }
+    return {};
+}
+
 int infer_mate_depth(const std::string& line) {
     auto pos = line.find('#');
     if (pos == std::string::npos) {
@@ -1354,6 +1401,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
     const Stats& st = s.stats;
     std::cerr << "% e_profile {"
               << "\"fen\":" << json_quote(fen4(b))
+              << ",\"route\":" << json_quote(route_name(s.route))
               << ",\"requested_depth\":" << requested_depth
               << ",\"proved_depth\":" << proved_depth
               << ",\"seconds\":" << seconds
@@ -1430,7 +1478,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures, bool ordered_check_shortcut) {
+void solve_line(const std::string& raw, int requested_depth, RouteKind route, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures, bool ordered_check_shortcut) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1448,6 +1496,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
 
     Search s;
     s.attacker = b.stm;
+    s.route = route;
     s.debug = debug;
     s.emit_proof = emit_proof;
     s.profile = profile;
@@ -1472,18 +1521,9 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     }
     auto start = std::chrono::steady_clock::now();
 
-    Proof proof;
-    int proved_depth = 0;
-    for (int depth = 1; depth <= max_depth; ++depth) {
-        if (!s.keep_iter_tt) {
-            s.tt.clear();
-        }
-        proof = prove_attacker(s, b, depth);
-        if (proof.ok) {
-            proved_depth = static_cast<int>((proof.pv.size() + 1) / 2);
-            break;
-        }
-    }
+    RouteResult route_result = run_route(s, b, max_depth);
+    const Proof& proof = route_result.proof;
+    int proved_depth = route_result.proved_depth;
 
     auto end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double>(end - start).count();
@@ -1507,6 +1547,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
 
 int main(int argc, char** argv) {
     int requested_depth = 0;
+    RouteKind route = RouteKind::DepthFirst;
     bool read_stdin = false;
     bool debug = false;
     bool list_legal = false;
@@ -1532,6 +1573,13 @@ int main(int argc, char** argv) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
             requested_depth = std::atoi(argv[++i]);
+        } else if (arg == "--route" && i + 1 < argc) {
+            std::string route_arg = argv[++i];
+            if (auto parsed = parse_route_kind(route_arg)) {
+                route = *parsed;
+            } else {
+                std::cerr << "unsupported route '" << route_arg << "', using " << route_name(route) << "\n";
+            }
         } else if (arg == "-") {
             read_stdin = true;
         } else if (arg == "--debug") {
@@ -1629,7 +1677,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
+                solve_line(line, requested_depth, route, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
             }
         }
     } else {
@@ -1638,7 +1686,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
+            solve_line(buffer.str(), requested_depth, route, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
         }
     }
     return 0;

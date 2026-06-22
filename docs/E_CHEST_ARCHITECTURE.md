@@ -98,6 +98,12 @@ DFPN should become a native search mode, not a fallback wrapper. E should have:
 - PV reconstruction through exact replay;
 - deterministic fallbacks for debugging.
 
+Current E checkpoint:
+
+- `--route depth-first` selects the current exact iterative depth-first directmate route, which remains the promoted default;
+- `run_route` is now the common dispatch point for future exact routes, so shallow, DFPN-first, defender-refutation, and threat/mating-net routes can be added without changing output acceptance or proof verification;
+- unsupported route names are not treated as proof mechanisms; E falls back to the current exact route and reports the unsupported name on stderr.
+
 ### 5. Proof-Safe Move Ordering
 
 Move ordering can never remove a legal move. It may only change order.
