@@ -39,6 +39,7 @@ struct Proof {
 
 struct Board {
     std::array<char, 64> sq{};
+    std::array<int, 2> king_sq{{-1, -1}};
     Color stm = WHITE;
     unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
     int ep = -1;
@@ -217,7 +218,13 @@ std::optional<Board> parse_fen4(const std::string& line) {
         if (!on_board(file, rank)) {
             return std::nullopt;
         }
-        b.sq[square_of(file, rank)] = ch;
+        int sq = square_of(file, rank);
+        b.sq[sq] = ch;
+        if (ch == 'K') {
+            b.king_sq[WHITE] = sq;
+        } else if (ch == 'k') {
+            b.king_sq[BLACK] = sq;
+        }
         ++file;
     }
     if (rank != 0 || file != 8) {
@@ -273,7 +280,11 @@ std::string fen4(const Board& b) {
 }
 
 int king_square(const Board& b, Color c) {
+    int cached = b.king_sq[c];
     char k = c == WHITE ? 'K' : 'k';
+    if (cached >= 0 && cached < 64 && b.sq[cached] == k) {
+        return cached;
+    }
     for (int i = 0; i < 64; ++i) {
         if (b.sq[i] == k) {
             return i;
@@ -502,6 +513,11 @@ Board make_move(Board b, const Move& m) {
         placed = b.stm == WHITE ? static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))) : m.promo;
     }
     b.sq[m.to] = placed;
+    if (p == 'K') {
+        b.king_sq[WHITE] = m.to;
+    } else if (p == 'k') {
+        b.king_sq[BLACK] = m.to;
+    }
 
     if (m.castle) {
         if (p == 'K' && m.to == square_of(6, 0)) {

@@ -36,6 +36,14 @@ The final target is bitboards, compact undo, incremental attacks, pins/check sta
 
 The first E checkpoint uses a simpler array board to establish correctness. It should be replaced or supplemented by a bitboard board once the verifier suite is stable.
 
+Current board checkpoint:
+
+- board state caches both king squares after FEN parsing;
+- `make_move` updates the relevant cached king square when a king moves;
+- check detection uses the cached king square and keeps a full-board fallback scan if the cache is invalid;
+- this removes repeated full-board king scans from the common `in_check` path while preserving a defensive correctness fallback;
+- the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
+
 ### 3. Context-Safe Proof Table / TT
 
 TT keys must include all proof-relevant context:
