@@ -556,7 +556,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
 
     order_moves(b, replies);
     std::vector<Move> representative;
-    bool have_rep = false;
     for (const Move& dmove : replies) {
         Board nb = make_move(b, dmove);
         Proof child = prove_attacker(s, nb, depth);
@@ -568,10 +567,11 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
             s.tt[key] = {false, {}};
             return {};
         }
-        if (!have_rep) {
-            representative.push_back(dmove);
-            representative.insert(representative.end(), child.pv.begin(), child.pv.end());
-            have_rep = true;
+        std::vector<Move> candidate;
+        candidate.push_back(dmove);
+        candidate.insert(candidate.end(), child.pv.begin(), child.pv.end());
+        if (candidate.size() > representative.size()) {
+            representative = std::move(candidate);
         }
     }
     s.tt[key] = {true, representative};
@@ -594,12 +594,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     for (const Move& amove : moves) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb)) {
-            if (depth == 1) {
-                std::vector<Move> pv{amove};
-                s.tt[key] = {true, pv};
-                return {true, pv};
-            }
-            continue;
+            std::vector<Move> pv{amove};
+            s.tt[key] = {true, pv};
+            return {true, pv};
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {
             auto replies = legal_moves(nb);
@@ -713,9 +710,16 @@ void solve_line(const std::string& raw, int requested_depth, bool debug) {
     s.debug = debug;
     auto start = std::chrono::steady_clock::now();
 
-    s.tt.clear();
-    Proof proof = prove_attacker(s, b, max_depth);
-    int proved_depth = proof.ok ? max_depth : 0;
+    Proof proof;
+    int proved_depth = 0;
+    for (int depth = 1; depth <= max_depth; ++depth) {
+        s.tt.clear();
+        proof = prove_attacker(s, b, depth);
+        if (proof.ok) {
+            proved_depth = static_cast<int>((proof.pv.size() + 1) / 2);
+            break;
+        }
+    }
 
     auto end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double>(end - start).count();
