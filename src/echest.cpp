@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <cstddef>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -94,6 +95,7 @@ struct Search {
     bool score_checks = true;
     bool fast_check_score = false;
     bool refutation_hints = false;
+    std::size_t tt_reserve = 0;
 };
 
 bool is_white_piece(char p) {
@@ -1031,7 +1033,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1055,6 +1057,10 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.score_checks = score_checks;
     s.fast_check_score = fast_check_score;
     s.refutation_hints = refutation_hints;
+    s.tt_reserve = tt_reserve;
+    if (s.tt_reserve > 0) {
+        s.tt.reserve(s.tt_reserve);
+    }
     auto start = std::chrono::steady_clock::now();
 
     Proof proof;
@@ -1095,6 +1101,7 @@ int main(int argc, char** argv) {
     bool score_checks = true;
     bool fast_check_score = false;
     bool refutation_hints = false;
+    std::size_t tt_reserve = 0;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1123,6 +1130,12 @@ int main(int argc, char** argv) {
             refutation_hints = true;
         } else if (arg == "--no-refutation-hints") {
             refutation_hints = false;
+        } else if (arg == "--tt-reserve" && i + 1 < argc) {
+            char* end = nullptr;
+            unsigned long value = std::strtoul(argv[++i], &end, 10);
+            if (end != argv[i]) {
+                tt_reserve = static_cast<std::size_t>(value);
+            }
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1134,7 +1147,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve);
             }
         }
     } else {
@@ -1143,7 +1156,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve);
         }
     }
     return 0;

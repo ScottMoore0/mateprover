@@ -68,6 +68,7 @@ Current E checkpoint:
 - the board is packed as 4-bit piece codes, 16 squares per 64-bit word;
 - context packs side to move, castling, en-passant, node kind, attacker color, and depth;
 - hash collisions are safe because `unordered_map` equality still compares the full key;
+- `--tt-reserve N` allows controlled experiments that pre-reserve TT hash buckets before iterative deepening;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
 ### 4. Native DFPN / Proof-Number Search
