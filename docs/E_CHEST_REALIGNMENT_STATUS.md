@@ -62,7 +62,9 @@ Current shallow-route evidence:
 - the first registry comparison on the smoke suite was PV-clean and faster than default E in average wall time;
 - regression-control comparison was PV-clean with 44/44 strict success for both default E and shallow-fast, with shallow-fast effectively tied but slightly faster in average wall time;
 - an interleaved 60-case balanced no-EP subset was PV-clean with 60/60 strict success for both default E and shallow-fast, with shallow-fast slightly faster in average, median, and p95 wall time;
-- this is promising but still not promotion evidence by itself; promotion requires repeated runs, held-out hard-tail checks, and no-mate/negative-control checks.
+- negative-control comparison was clean with 33/33 strict success for both default E and shallow-fast, and neither variant emitted a false `bm`;
+- an interleaved 40-case hard-holdout subset was PV-clean with 40/40 strict success for both variants, but shallow-fast was slower in average, median, and p95 wall time;
+- this is promising but still not promotion evidence by itself; the immediate route work is to remove duplicated mate-in-1/2 work when shallow-fast falls back on deeper cases, then repeat held-out hard-tail and no-mate checks.
 
 ## Depth-Bound TT Decision
 
