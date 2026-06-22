@@ -90,6 +90,7 @@ struct Search {
     bool emit_proof = false;
     bool score_mates = false;
     bool score_checks = true;
+    bool fast_check_score = false;
 };
 
 bool is_white_piece(char p) {
@@ -551,11 +552,145 @@ bool is_checkmate(const Board& b) {
     return in_check(b, b.stm) && legal_moves(b).empty();
 }
 
-int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks) {
-    Board nb = make_move(b, m);
+char piece_after_move(const Board& b, const Move& m, int sq) {
+    char p = b.sq[m.from];
+    char placed = p;
+    if (m.promo) {
+        placed = b.stm == WHITE ? static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))) : m.promo;
+    }
+
+    if (sq == m.from) {
+        return '.';
+    }
+    if (m.ep) {
+        int cap_sq = m.to + (b.stm == WHITE ? -8 : 8);
+        if (sq == cap_sq) {
+            return '.';
+        }
+    }
+    if (sq == m.to) {
+        return placed;
+    }
+    if (m.castle) {
+        if (p == 'K' && m.to == square_of(6, 0)) {
+            if (sq == square_of(7, 0)) return '.';
+            if (sq == square_of(5, 0)) return 'R';
+        } else if (p == 'K' && m.to == square_of(2, 0)) {
+            if (sq == square_of(0, 0)) return '.';
+            if (sq == square_of(3, 0)) return 'R';
+        } else if (p == 'k' && m.to == square_of(6, 7)) {
+            if (sq == square_of(7, 7)) return '.';
+            if (sq == square_of(5, 7)) return 'r';
+        } else if (p == 'k' && m.to == square_of(2, 7)) {
+            if (sq == square_of(0, 7)) return '.';
+            if (sq == square_of(3, 7)) return 'r';
+        }
+    }
+    return b.sq[sq];
+}
+
+bool attacked_by_slider_after_move(const Board& b, const Move& m, int target, Color by, const int* dirs, int ndirs, const std::string& pieces) {
+    int tf = file_of(target);
+    int tr = rank_of(target);
+    for (int i = 0; i < ndirs; ++i) {
+        int df = dirs[i * 2];
+        int dr = dirs[i * 2 + 1];
+        int f = tf + df;
+        int r = tr + dr;
+        while (on_board(f, r)) {
+            char p = piece_after_move(b, m, square_of(f, r));
+            if (p != '.') {
+                if (is_piece_color(p, by)) {
+                    char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+                    if (pieces.find(lp) != std::string::npos) {
+                        return true;
+                    }
+                }
+                break;
+            }
+            f += df;
+            r += dr;
+        }
+    }
+    return false;
+}
+
+bool is_attacked_after_move(const Board& b, const Move& m, int target, Color by) {
+    int tf = file_of(target);
+    int tr = rank_of(target);
+
+    int pawn_rank = by == WHITE ? tr - 1 : tr + 1;
+    for (int df : {-1, 1}) {
+        int f = tf + df;
+        if (on_board(f, pawn_rank)) {
+            char p = piece_after_move(b, m, square_of(f, pawn_rank));
+            if (p == (by == WHITE ? 'P' : 'p')) {
+                return true;
+            }
+        }
+    }
+
+    static const int knight_delta[8][2] = {
+        {1, 2}, {2, 1}, {2, -1}, {1, -2},
+        {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
+    };
+    for (auto& d : knight_delta) {
+        int f = tf + d[0];
+        int r = tr + d[1];
+        if (on_board(f, r)) {
+            char p = piece_after_move(b, m, square_of(f, r));
+            if (p == (by == WHITE ? 'N' : 'n')) {
+                return true;
+            }
+        }
+    }
+
+    static const int bishop_dirs[8] = {1, 1, 1, -1, -1, 1, -1, -1};
+    static const int rook_dirs[8] = {1, 0, -1, 0, 0, 1, 0, -1};
+    if (attacked_by_slider_after_move(b, m, target, by, bishop_dirs, 4, "bq")) {
+        return true;
+    }
+    if (attacked_by_slider_after_move(b, m, target, by, rook_dirs, 4, "rq")) {
+        return true;
+    }
+
+    for (int df = -1; df <= 1; ++df) {
+        for (int dr = -1; dr <= 1; ++dr) {
+            if (df == 0 && dr == 0) continue;
+            int f = tf + df;
+            int r = tr + dr;
+            if (on_board(f, r)) {
+                char p = piece_after_move(b, m, square_of(f, r));
+                if (p == (by == WHITE ? 'K' : 'k')) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool move_gives_check_fast(const Board& b, const Move& m) {
+    int enemy_king = king_square(b, other(b.stm));
+    return enemy_king < 0 || is_attacked_after_move(b, m, enemy_king, b.stm);
+}
+
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score) {
     int score = 0;
-    if (score_mates && is_checkmate(nb)) score += 1000000;
-    if (score_checks && in_check(nb, nb.stm)) score += 50000;
+    if (score_mates) {
+        Board nb = make_move(b, m);
+        if (is_checkmate(nb)) score += 1000000;
+        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+    } else if (score_checks) {
+        bool gives_check = false;
+        if (fast_check_score) {
+            gives_check = move_gives_check_fast(b, m);
+        } else {
+            Board nb = make_move(b, m);
+            gives_check = in_check(nb, nb.stm);
+        }
+        if (gives_check) score += 50000;
+    }
     if (b.sq[m.to] != '.' || m.ep) score += 10000;
     if (m.promo) score += 8000;
     char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
@@ -565,7 +700,7 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
     return score;
 }
 
-void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks) {
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score) {
     if (moves.size() < 2) {
         return;
     }
@@ -576,7 +711,7 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     std::vector<ScoredMove> scored;
     scored.reserve(moves.size());
     for (const Move& move : moves) {
-        scored.push_back({move, move_score(b, move, score_mates, score_checks)});
+        scored.push_back({move, move_score(b, move, score_mates, score_checks, fast_check_score)});
     }
     std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
         return a.score > c.score;
@@ -638,7 +773,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
-    order_moves(b, replies, s.score_mates, s.score_checks);
+    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score);
     std::vector<Move> representative;
     std::vector<std::string> branch_certs;
     if (s.emit_proof) {
@@ -691,7 +826,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     }
 
     auto moves = legal_moves(b);
-    order_moves(b, moves, s.score_mates, s.score_checks);
+    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score);
     for (const Move& amove : moves) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb)) {
@@ -798,7 +933,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -820,6 +955,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.emit_proof = emit_proof;
     s.score_mates = score_mates;
     s.score_checks = score_checks;
+    s.fast_check_score = fast_check_score;
     auto start = std::chrono::steady_clock::now();
 
     Proof proof;
@@ -858,6 +994,7 @@ int main(int argc, char** argv) {
     bool emit_proof = false;
     bool score_mates = false;
     bool score_checks = true;
+    bool fast_check_score = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -878,6 +1015,10 @@ int main(int argc, char** argv) {
             score_checks = true;
         } else if (arg == "--no-check-score") {
             score_checks = false;
+        } else if (arg == "--fast-check-score") {
+            fast_check_score = true;
+        } else if (arg == "--exact-check-score") {
+            fast_check_score = false;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -889,7 +1030,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score);
             }
         }
     } else {
@@ -898,7 +1039,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score);
         }
     }
     return 0;

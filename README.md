@@ -48,6 +48,8 @@ Supported now:
 - `--no-mate-score`: keep the promoted default, included for explicitness in experiments;
 - `--score-checks`: keep the promoted default, which scores checking moves during ordering;
 - `--no-check-score`: experimental probe that disables checking-move scoring during ordering;
+- `--fast-check-score`: experimental probe that uses delta-based check detection during move scoring;
+- `--exact-check-score`: keep the promoted default, included for explicitness in experiments;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
