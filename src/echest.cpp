@@ -627,8 +627,20 @@ std::vector<Move> legal_moves(const Board& b) {
     return legal;
 }
 
+bool has_legal_move(const Board& b) {
+    std::vector<Move> pseudo;
+    gen_pseudo(b, pseudo);
+    for (const Move& m : pseudo) {
+        Board nb = make_move(b, m);
+        if (!in_check(nb, other(nb.stm))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_checkmate(const Board& b) {
-    return in_check(b, b.stm) && legal_moves(b).empty();
+    return in_check(b, b.stm) && !has_legal_move(b);
 }
 
 char piece_after_move(const Board& b, const Move& m, int sq) {

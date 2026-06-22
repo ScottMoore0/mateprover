@@ -44,6 +44,7 @@ Current board checkpoint:
 - this removes repeated full-board king scans from the common `in_check` path while preserving a defensive correctness fallback;
 - knight targets, king targets, pawn-attack origins, and slider rays are precomputed once and reused by attack detection and pseudo-legal move generation;
 - this removes repeated coordinate/on-board geometry from the hot path without changing legal move semantics;
+- checkmate testing has a separate early-exit legal-reply probe so it does not allocate and materialize all replies when one legal escape is enough;
 - the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
 
 ### 3. Context-Safe Proof Table / TT
