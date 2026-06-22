@@ -15,13 +15,14 @@ Implemented core pieces:
 - exact directmate proof kernel;
 - conservative array board plus packed board key cache;
 - exact keyed TT and promoted iterative TT retention;
+- centralized exact proof-table probe/store helpers that preserve current TT semantics while giving future routes one shared access boundary;
 - opt-in depth-bound TT probe;
 - proof-safe handcrafted ordering and proof/refutation hint probes;
 - benchmark registry pinning for the promoted E binary.
 
 Missing target architecture pieces:
 
-- shared proof/disproof TT as the primary table design;
+- shared proof/disproof TT as the primary table design; the current centralized exact helpers are only the first boundary, not the final table layout or replacement policy;
 - native DFPN-first route;
 - shallow fast route distinct from the current depth-first route;
 - defender-refutation route distinct from ordering hints;
@@ -34,7 +35,7 @@ Missing target architecture pieces:
 ## Revised Impact Order
 
 1. Keep the exact proof acceptance boundary small and route-neutral.
-2. Replace route-local TT experiments with a shared proof/disproof table design.
+2. Replace route-local TT experiments with a shared proof/disproof table design; the next implementation slices should add explicit entry kinds, replacement policy, and proof/disproof counters behind the centralized exact proof-table boundary.
 3. Add a shallow fast exact route for mate-in-1 and cheap mate-in-2 wins, falling back to depth-first.
 4. Add native DFPN-first search with proof reconstruction through the exact verifier.
 5. Add defender-refutation and threat/mating-net routes as exact route implementations, not lookup replacements.

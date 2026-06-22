@@ -1054,6 +1054,22 @@ bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);
 }
 
+bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
+    ++s.stats.tt_probes;
+    auto it = s.tt.find(key);
+    if (it == s.tt.end()) {
+        return false;
+    }
+    ++s.stats.tt_hits;
+    out = {it->second.ok, it->second.pv, it->second.cert};
+    return true;
+}
+
+void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
+    ++s.stats.tt_stores;
+    s.tt[key] = {proof.ok, proof.pv, proof.cert};
+}
+
 bool probe_bound_tt(Search& s, const TTKey& key, int depth, Proof& out) {
     if (!s.bound_tt_enabled) {
         return false;
@@ -1107,10 +1123,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
     TTKey key = tt_key(b, depth, 'D', s.attacker);
-    ++s.stats.tt_probes;
-    if (auto it = s.tt.find(key); it != s.tt.end()) {
-        ++s.stats.tt_hits;
-        return {it->second.ok, it->second.pv, it->second.cert};
+    Proof exact_cached;
+    if (probe_exact_proof_table(s, key, exact_cached)) {
+        return exact_cached;
     }
     TTKey hint_key;
     bool have_hint_key = false;
@@ -1132,8 +1147,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     ++s.stats.defender_move_lists;
     s.stats.defender_moves += replies.size();
     if (replies.empty()) {
-        ++s.stats.tt_stores;
-        s.tt[key] = {false, {}, ""};
+        store_exact_proof_table(s, key, {});
         if (s.bound_tt_enabled) {
             store_bound_tt(s, get_hint_key(), depth, {});
         }
@@ -1173,8 +1187,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
                 ++s.stats.refutation_hint_stores;
                 s.defender_refutations[get_hint_key()] = dmove;
             }
-            ++s.stats.tt_stores;
-            s.tt[key] = {false, {}, ""};
+            store_exact_proof_table(s, key, {});
             if (s.bound_tt_enabled) {
                 store_bound_tt(s, get_hint_key(), depth, {});
             }
@@ -1200,9 +1213,8 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     } else {
         cert.clear();
     }
-    ++s.stats.tt_stores;
-    s.tt[key] = {true, representative, cert};
     Proof proof{true, representative, cert};
+    store_exact_proof_table(s, key, proof);
     if (s.bound_tt_enabled) {
         store_bound_tt(s, get_hint_key(), depth, proof);
     }
@@ -1216,10 +1228,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return {};
     }
     TTKey key = tt_key(b, depth, 'A', s.attacker);
-    ++s.stats.tt_probes;
-    if (auto it = s.tt.find(key); it != s.tt.end()) {
-        ++s.stats.tt_hits;
-        return {it->second.ok, it->second.pv, it->second.cert};
+    Proof exact_cached;
+    if (probe_exact_proof_table(s, key, exact_cached)) {
+        return exact_cached;
     }
     TTKey hint_key;
     bool have_hint_key = false;
@@ -1284,9 +1295,8 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 ++s.stats.proof_hint_stores;
                 s.attacker_proofs[get_hint_key()] = amove;
             }
-            ++s.stats.tt_stores;
-            s.tt[key] = {true, pv, cert};
             Proof proof{true, pv, cert};
+            store_exact_proof_table(s, key, proof);
             if (s.bound_tt_enabled) {
                 store_bound_tt(s, get_hint_key(), depth, proof);
             }
@@ -1332,9 +1342,8 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                     ++s.stats.proof_hint_stores;
                     s.attacker_proofs[get_hint_key()] = amove;
                 }
-                ++s.stats.tt_stores;
-                s.tt[key] = {true, pv, cert};
                 Proof proof{true, pv, cert};
+                store_exact_proof_table(s, key, proof);
                 if (s.bound_tt_enabled) {
                     store_bound_tt(s, get_hint_key(), depth, proof);
                 }
@@ -1346,8 +1355,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
-    ++s.stats.tt_stores;
-    s.tt[key] = {false, {}, ""};
+    store_exact_proof_table(s, key, {});
     if (s.bound_tt_enabled) {
         store_bound_tt(s, get_hint_key(), depth, {});
     }
