@@ -24,6 +24,7 @@ Current E checkpoint:
 
 - normal benchmark output remains `bm` / `dm` / `pv`;
 - `--emit-proof` emits a recursive JSON proof certificate;
+- proof JSON is built only when `--emit-proof` is requested, so normal search does not pay certificate allocation cost;
 - attacker nodes contain one selected proof move;
 - immediate mate leaves use `mate:true`;
 - defender nodes contain exactly one branch per legal defender reply;

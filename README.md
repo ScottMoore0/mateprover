@@ -70,4 +70,6 @@ proof {"a":"<attacker-move>","d":[{"r":"<defender-reply>","p":<child-proof>}, ..
 
 The proof tree is verified by `benchmarks\scripts\e_verify_proof_tree.py`. A valid proof must enumerate exactly every legal defender reply at every defender node and each leaf must end in checkmate.
 
+Proof-certificate construction is opt-in. Normal benchmark/search runs do not build recursive proof JSON internally unless `--emit-proof` is passed.
+
 No-mate or unproved positions print no `dm` token, so the existing harness treats them as no mate.

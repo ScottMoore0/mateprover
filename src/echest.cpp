@@ -60,6 +60,7 @@ struct Search {
     Stats stats;
     std::unordered_map<std::string, TTEntry> tt;
     bool debug = false;
+    bool emit_proof = false;
 };
 
 bool is_white_piece(char p) {
@@ -573,7 +574,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     order_moves(b, replies);
     std::vector<Move> representative;
     std::vector<std::string> branch_certs;
-    branch_certs.reserve(replies.size());
+    if (s.emit_proof) {
+        branch_certs.reserve(replies.size());
+    }
     for (const Move& dmove : replies) {
         Board nb = make_move(b, dmove);
         Proof child = prove_attacker(s, nb, depth);
@@ -591,14 +594,20 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         if (candidate.size() > representative.size()) {
             representative = std::move(candidate);
         }
-        branch_certs.push_back("{\"r\":" + json_quote(move_uci(dmove)) + ",\"p\":" + child.cert + "}");
+        if (s.emit_proof) {
+            branch_certs.push_back("{\"r\":" + json_quote(move_uci(dmove)) + ",\"p\":" + child.cert + "}");
+        }
     }
     std::string cert = "[";
-    for (std::size_t i = 0; i < branch_certs.size(); ++i) {
-        if (i) cert.push_back(',');
-        cert += branch_certs[i];
+    if (s.emit_proof) {
+        for (std::size_t i = 0; i < branch_certs.size(); ++i) {
+            if (i) cert.push_back(',');
+            cert += branch_certs[i];
+        }
+        cert.push_back(']');
+    } else {
+        cert.clear();
     }
-    cert.push_back(']');
     s.tt[key] = {true, representative, cert};
     return {true, representative, cert};
 }
@@ -620,7 +629,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb)) {
             std::vector<Move> pv{amove};
-            std::string cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
+            }
             s.tt[key] = {true, pv, cert};
             return {true, pv, cert};
         }
@@ -656,7 +668,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             if (all_replies.ok) {
                 std::vector<Move> pv{amove};
                 pv.insert(pv.end(), all_replies.pv.begin(), all_replies.pv.end());
-                std::string cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + all_replies.cert + "}";
+                std::string cert;
+                if (s.emit_proof) {
+                    cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + all_replies.cert + "}";
+                }
                 s.tt[key] = {true, pv, cert};
                 return {true, pv, cert};
             }
@@ -735,6 +750,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     Search s;
     s.attacker = b.stm;
     s.debug = debug;
+    s.emit_proof = emit_proof;
     auto start = std::chrono::steady_clock::now();
 
     Proof proof;
