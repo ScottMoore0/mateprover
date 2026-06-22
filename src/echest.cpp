@@ -80,6 +80,11 @@ struct Stats {
     std::uint64_t tt_probes = 0;
     std::uint64_t tt_hits = 0;
     std::uint64_t tt_stores = 0;
+    std::uint64_t bound_tt_probes = 0;
+    std::uint64_t bound_tt_hits = 0;
+    std::uint64_t bound_tt_ok_hits = 0;
+    std::uint64_t bound_tt_fail_hits = 0;
+    std::uint64_t bound_tt_stores = 0;
     std::uint64_t attacker_move_lists = 0;
     std::uint64_t attacker_moves = 0;
     std::uint64_t attacker_candidates = 0;
@@ -132,10 +137,20 @@ struct TTEntry {
     std::string cert;
 };
 
+struct BoundEntry {
+    bool has_ok = false;
+    int ok_depth = 0;
+    std::vector<Move> ok_pv;
+    std::string ok_cert;
+    bool has_fail = false;
+    int fail_depth = 0;
+};
+
 struct Search {
     Color attacker = WHITE;
     Stats stats;
     std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
+    std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
     std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
     std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
     bool debug = false;
@@ -154,6 +169,8 @@ struct Search {
     std::size_t order_min_size = 2;
     bool bucket_order = false;
     bool keep_iter_tt = false;
+    bool bound_tt_enabled = false;
+    bool bound_tt_failures = false;
 };
 
 bool is_white_piece(char p) {
@@ -1002,6 +1019,53 @@ bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);
 }
 
+bool probe_bound_tt(Search& s, const TTKey& key, int depth, Proof& out) {
+    if (!s.bound_tt_enabled) {
+        return false;
+    }
+    ++s.stats.bound_tt_probes;
+    auto it = s.bound_tt.find(key);
+    if (it == s.bound_tt.end()) {
+        return false;
+    }
+    const BoundEntry& entry = it->second;
+    if (entry.has_ok && entry.ok_depth <= depth) {
+        ++s.stats.bound_tt_hits;
+        ++s.stats.bound_tt_ok_hits;
+        out = {true, entry.ok_pv, entry.ok_cert};
+        return true;
+    }
+    if (s.bound_tt_failures && entry.has_fail && entry.fail_depth >= depth) {
+        ++s.stats.bound_tt_hits;
+        ++s.stats.bound_tt_fail_hits;
+        out = {};
+        return true;
+    }
+    return false;
+}
+
+void store_bound_tt(Search& s, const TTKey& key, int depth, const Proof& proof) {
+    if (!s.bound_tt_enabled) {
+        return;
+    }
+    if (!proof.ok && !s.bound_tt_failures) {
+        return;
+    }
+    ++s.stats.bound_tt_stores;
+    BoundEntry& entry = s.bound_tt[key];
+    if (proof.ok) {
+        if (!entry.has_ok || depth < entry.ok_depth) {
+            entry.has_ok = true;
+            entry.ok_depth = depth;
+            entry.ok_pv = proof.pv;
+            entry.ok_cert = proof.cert;
+        }
+    } else if (s.bound_tt_failures && (!entry.has_fail || depth > entry.fail_depth)) {
+        entry.has_fail = true;
+        entry.fail_depth = depth;
+    }
+}
+
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
@@ -1013,6 +1077,21 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
     }
+    TTKey hint_key;
+    bool have_hint_key = false;
+    auto get_hint_key = [&]() -> const TTKey& {
+        if (!have_hint_key) {
+            hint_key = move_hint_key(b, 'D', s.attacker);
+            have_hint_key = true;
+        }
+        return hint_key;
+    };
+    if (s.bound_tt_enabled) {
+        Proof cached;
+        if (probe_bound_tt(s, get_hint_key(), depth, cached)) {
+            return cached;
+        }
+    }
 
     auto replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
     ++s.stats.defender_move_lists;
@@ -1020,6 +1099,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     if (replies.empty()) {
         ++s.stats.tt_stores;
         s.tt[key] = {false, {}, ""};
+        if (s.bound_tt_enabled) {
+            store_bound_tt(s, get_hint_key(), depth, {});
+        }
         return {};
     }
 
@@ -1028,10 +1110,10 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         s.stats.order_moves += replies.size();
         order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
     }
-    TTKey hint_key = move_hint_key(b, 'D', s.attacker);
     if (s.refutation_hints) {
+        const TTKey& refutation_key = get_hint_key();
         ++s.stats.refutation_hint_probes;
-        if (auto hint = s.defender_refutations.find(hint_key); hint != s.defender_refutations.end()) {
+        if (auto hint = s.defender_refutations.find(refutation_key); hint != s.defender_refutations.end()) {
             if (move_to_front(replies, hint->second)) {
                 ++s.stats.refutation_hint_hits;
             }
@@ -1054,10 +1136,13 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
             }
             if (s.refutation_hints) {
                 ++s.stats.refutation_hint_stores;
-                s.defender_refutations[hint_key] = dmove;
+                s.defender_refutations[get_hint_key()] = dmove;
             }
             ++s.stats.tt_stores;
             s.tt[key] = {false, {}, ""};
+            if (s.bound_tt_enabled) {
+                store_bound_tt(s, get_hint_key(), depth, {});
+            }
             return {};
         }
         std::vector<Move> candidate;
@@ -1082,7 +1167,11 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     }
     ++s.stats.tt_stores;
     s.tt[key] = {true, representative, cert};
-    return {true, representative, cert};
+    Proof proof{true, representative, cert};
+    if (s.bound_tt_enabled) {
+        store_bound_tt(s, get_hint_key(), depth, proof);
+    }
+    return proof;
 }
 
 Proof prove_attacker(Search& s, const Board& b, int depth) {
@@ -1097,6 +1186,21 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
     }
+    TTKey hint_key;
+    bool have_hint_key = false;
+    auto get_hint_key = [&]() -> const TTKey& {
+        if (!have_hint_key) {
+            hint_key = move_hint_key(b, 'A', s.attacker);
+            have_hint_key = true;
+        }
+        return hint_key;
+    };
+    if (s.bound_tt_enabled) {
+        Proof cached;
+        if (probe_bound_tt(s, get_hint_key(), depth, cached)) {
+            return cached;
+        }
+    }
 
     auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
     ++s.stats.attacker_move_lists;
@@ -1106,10 +1210,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         s.stats.order_moves += moves.size();
         order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
     }
-    TTKey hint_key = move_hint_key(b, 'A', s.attacker);
     if (s.proof_hints) {
+        const TTKey& proof_key = get_hint_key();
         ++s.stats.proof_hint_probes;
-        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
+        if (auto hint = s.attacker_proofs.find(proof_key); hint != s.attacker_proofs.end()) {
             if (move_to_front(moves, hint->second)) {
                 ++s.stats.proof_hint_hits;
             }
@@ -1128,11 +1232,15 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[hint_key] = amove;
+                s.attacker_proofs[get_hint_key()] = amove;
             }
             ++s.stats.tt_stores;
             s.tt[key] = {true, pv, cert};
-            return {true, pv, cert};
+            Proof proof{true, pv, cert};
+            if (s.bound_tt_enabled) {
+                store_bound_tt(s, get_hint_key(), depth, proof);
+            }
+            return proof;
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {
             auto replies = legal_moves(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
@@ -1172,11 +1280,15 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 }
                 if (s.proof_hints) {
                     ++s.stats.proof_hint_stores;
-                    s.attacker_proofs[hint_key] = amove;
+                    s.attacker_proofs[get_hint_key()] = amove;
                 }
                 ++s.stats.tt_stores;
                 s.tt[key] = {true, pv, cert};
-                return {true, pv, cert};
+                Proof proof{true, pv, cert};
+                if (s.bound_tt_enabled) {
+                    store_bound_tt(s, get_hint_key(), depth, proof);
+                }
+                return proof;
             }
             if (s.debug) {
                 std::cerr << "attacker_move_failed depth=" << depth << " move=" << move_uci(amove)
@@ -1186,6 +1298,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     }
     ++s.stats.tt_stores;
     s.tt[key] = {false, {}, ""};
+    if (s.bound_tt_enabled) {
+        store_bound_tt(s, get_hint_key(), depth, {});
+    }
     return {};
 }
 
@@ -1224,6 +1339,12 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"tt_hits\":" << st.tt_hits
               << ",\"tt_stores\":" << st.tt_stores
               << ",\"tt_size\":" << s.tt.size()
+              << ",\"bound_tt_probes\":" << st.bound_tt_probes
+              << ",\"bound_tt_hits\":" << st.bound_tt_hits
+              << ",\"bound_tt_ok_hits\":" << st.bound_tt_ok_hits
+              << ",\"bound_tt_fail_hits\":" << st.bound_tt_fail_hits
+              << ",\"bound_tt_stores\":" << st.bound_tt_stores
+              << ",\"bound_tt_size\":" << s.bound_tt.size()
               << ",\"attacker_move_lists\":" << st.attacker_move_lists
               << ",\"attacker_moves\":" << st.attacker_moves
               << ",\"attacker_candidates\":" << st.attacker_candidates
@@ -1250,6 +1371,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"refutation_hints\":" << (s.refutation_hints ? "true" : "false")
               << ",\"proof_hints\":" << (s.proof_hints ? "true" : "false")
               << ",\"keep_iter_tt\":" << (s.keep_iter_tt ? "true" : "false")
+              << ",\"bound_tt\":" << (s.bound_tt_enabled ? "true" : "false")
+              << ",\"bound_tt_failures\":" << (s.bound_tt_failures ? "true" : "false")
               << "}\n";
 }
 
@@ -1278,7 +1401,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1312,6 +1435,8 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.order_min_size = std::max<std::size_t>(2, order_min_size);
     s.bucket_order = bucket_order;
     s.keep_iter_tt = keep_iter_tt;
+    s.bound_tt_enabled = bound_tt_enabled;
+    s.bound_tt_failures = bound_tt_failures;
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1370,6 +1495,8 @@ int main(int argc, char** argv) {
     std::size_t order_min_size = 2;
     bool bucket_order = false;
     bool keep_iter_tt = false;
+    bool bound_tt_enabled = false;
+    bool bound_tt_failures = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1436,6 +1563,14 @@ int main(int argc, char** argv) {
             keep_iter_tt = true;
         } else if (arg == "--clear-iter-tt") {
             keep_iter_tt = false;
+        } else if (arg == "--bound-tt") {
+            bound_tt_enabled = true;
+        } else if (arg == "--exact-tt-only") {
+            bound_tt_enabled = false;
+        } else if (arg == "--bound-tt-failures") {
+            bound_tt_failures = true;
+        } else if (arg == "--bound-tt-ok-only") {
+            bound_tt_failures = false;
         } else if (arg == "--static-pseudo") {
             static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
@@ -1459,7 +1594,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt);
+                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures);
             }
         }
     } else {
@@ -1468,7 +1603,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures);
         }
     }
     return 0;

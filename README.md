@@ -62,6 +62,10 @@ Supported now:
 - `--no-proof-hints`: disable attacker proof hints for rollback and A/B checks;
 - `--keep-iter-tt`: promoted exact-TT mode that keeps entries across iterative-depth passes;
 - `--clear-iter-tt`: restore the previous behavior, clearing exact TT entries before each iterative-depth pass;
+- `--bound-tt`: experimental probe that adds a depth-bound TT beside exact-depth TT entries;
+- `--exact-tt-only`: keep the promoted default, using exact-depth TT entries only;
+- `--bound-tt-failures`: include failed-node bounds in the depth-bound TT probe;
+- `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.

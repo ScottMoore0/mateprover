@@ -77,6 +77,12 @@ Current E checkpoint:
 - `--keep-iter-tt` is a promoted exact-TT mode that retains entries across iterative-depth passes instead of clearing them before each pass;
 - this is proof-safe because depth is part of the TT key, so a shallower proof result cannot satisfy a deeper lookup unless the exact keyed depth matches;
 - `--clear-iter-tt` restores the previous per-depth clear behavior for rollback and A/B checks;
+- `--bound-tt` adds a separate depth-bound TT probe keyed without depth but with the full board, side to move, attacker color, node type, castling, and en-passant context;
+- bound reuse is monotonic: a proven entry may satisfy only equal-or-greater requested depth, and if failed-node bounds are enabled a failed entry may refute only equal-or-smaller requested depth;
+- failed-node bounds are off by default under `--bound-tt` because the first smoke profile showed only two failed-bound hits from more than two hundred thousand bound probes; `--bound-tt-failures` keeps that path available for harder-suite experiments;
+- `--bound-tt-ok-only` restores the positive-bound-only probe behavior;
+- `--exact-tt-only` restores the promoted exact-depth-only behavior while bound-TT validation is in progress;
+- the first guarded positive-bound probe stayed correctness-clean but was not promoted because the balanced no-EP suite slowed down despite smoke/regression average improvements;
 - `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
