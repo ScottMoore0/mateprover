@@ -42,6 +42,8 @@ Current board checkpoint:
 - `make_move` updates the relevant cached king square when a king moves;
 - check detection uses the cached king square and keeps a full-board fallback scan if the cache is invalid;
 - this removes repeated full-board king scans from the common `in_check` path while preserving a defensive correctness fallback;
+- knight targets, king targets, pawn-attack origins, and slider rays are precomputed once and reused by attack detection and pseudo-legal move generation;
+- this removes repeated coordinate/on-board geometry from the hot path without changing legal move semantics;
 - the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
 
 ### 3. Context-Safe Proof Table / TT

@@ -134,6 +134,107 @@ int square_of(int file, int rank) {
     return rank * 8 + file;
 }
 
+struct SquareList {
+    std::array<int, 8> sq{};
+    int count = 0;
+};
+
+void add_square(SquareList& list, int sq) {
+    list.sq[list.count++] = sq;
+}
+
+constexpr int DIRS[8][2] = {
+    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+    {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+};
+
+const std::array<SquareList, 64>& knight_table() {
+    static const std::array<SquareList, 64> table = [] {
+        std::array<SquareList, 64> out{};
+        static const int delta[8][2] = {
+            {1, 2}, {2, 1}, {2, -1}, {1, -2},
+            {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
+        };
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            for (const auto& d : delta) {
+                int tf = f + d[0];
+                int tr = r + d[1];
+                if (on_board(tf, tr)) {
+                    add_square(out[sq], square_of(tf, tr));
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<SquareList, 64>& king_table() {
+    static const std::array<SquareList, 64> table = [] {
+        std::array<SquareList, 64> out{};
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            for (int df = -1; df <= 1; ++df) {
+                for (int dr = -1; dr <= 1; ++dr) {
+                    if (df == 0 && dr == 0) continue;
+                    int tf = f + df;
+                    int tr = r + dr;
+                    if (on_board(tf, tr)) {
+                        add_square(out[sq], square_of(tf, tr));
+                    }
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<std::array<SquareList, 64>, 2>& pawn_attacker_table() {
+    static const std::array<std::array<SquareList, 64>, 2> table = [] {
+        std::array<std::array<SquareList, 64>, 2> out{};
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            int white_rank = r - 1;
+            int black_rank = r + 1;
+            for (int df : {-1, 1}) {
+                int pf = f + df;
+                if (on_board(pf, white_rank)) {
+                    add_square(out[WHITE][sq], square_of(pf, white_rank));
+                }
+                if (on_board(pf, black_rank)) {
+                    add_square(out[BLACK][sq], square_of(pf, black_rank));
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<std::array<SquareList, 64>, 8>& ray_table() {
+    static const std::array<std::array<SquareList, 64>, 8> table = [] {
+        std::array<std::array<SquareList, 64>, 8> out{};
+        for (int dir = 0; dir < 8; ++dir) {
+            for (int sq = 0; sq < 64; ++sq) {
+                int f = file_of(sq) + DIRS[dir][0];
+                int r = rank_of(sq) + DIRS[dir][1];
+                while (on_board(f, r)) {
+                    add_square(out[dir][sq], square_of(f, r));
+                    f += DIRS[dir][0];
+                    r += DIRS[dir][1];
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
 std::string sq_name(int sq) {
     std::string out;
     out.push_back(static_cast<char>('a' + file_of(sq)));
@@ -293,82 +394,59 @@ int king_square(const Board& b, Color c) {
     return -1;
 }
 
-bool attacked_by_slider(const Board& b, int target, Color by, const int* dirs, int ndirs, const std::string& pieces) {
-    int tf = file_of(target);
-    int tr = rank_of(target);
-    for (int i = 0; i < ndirs; ++i) {
-        int df = dirs[i * 2];
-        int dr = dirs[i * 2 + 1];
-        int f = tf + df;
-        int r = tr + dr;
-        while (on_board(f, r)) {
-            char p = b.sq[square_of(f, r)];
+bool slider_attacker_matches(char p, bool diagonal) {
+    char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+    return diagonal ? (lp == 'b' || lp == 'q') : (lp == 'r' || lp == 'q');
+}
+
+bool attacked_by_slider(const Board& b, int target, Color by, int first_dir, int last_dir, bool diagonal) {
+    const auto& rays = ray_table();
+    for (int dir = first_dir; dir < last_dir; ++dir) {
+        const SquareList& ray = rays[dir][target];
+        for (int i = 0; i < ray.count; ++i) {
+            char p = b.sq[ray.sq[i]];
             if (p != '.') {
                 if (is_piece_color(p, by)) {
-                    char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
-                    if (pieces.find(lp) != std::string::npos) {
+                    if (slider_attacker_matches(p, diagonal)) {
                         return true;
                     }
                 }
                 break;
             }
-            f += df;
-            r += dr;
         }
     }
     return false;
 }
 
 bool is_attacked(const Board& b, int target, Color by) {
-    int tf = file_of(target);
-    int tr = rank_of(target);
-
-    int pawn_rank = by == WHITE ? tr - 1 : tr + 1;
-    for (int df : {-1, 1}) {
-        int f = tf + df;
-        if (on_board(f, pawn_rank)) {
-            char p = b.sq[square_of(f, pawn_rank)];
-            if (p == (by == WHITE ? 'P' : 'p')) {
-                return true;
-            }
+    const SquareList& pawns = pawn_attacker_table()[by][target];
+    for (int i = 0; i < pawns.count; ++i) {
+        char p = b.sq[pawns.sq[i]];
+        if (p == (by == WHITE ? 'P' : 'p')) {
+            return true;
         }
     }
 
-    static const int knight_delta[8][2] = {
-        {1, 2}, {2, 1}, {2, -1}, {1, -2},
-        {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
-    };
-    for (auto& d : knight_delta) {
-        int f = tf + d[0];
-        int r = tr + d[1];
-        if (on_board(f, r)) {
-            char p = b.sq[square_of(f, r)];
-            if (p == (by == WHITE ? 'N' : 'n')) {
-                return true;
-            }
+    const SquareList& knights = knight_table()[target];
+    for (int i = 0; i < knights.count; ++i) {
+        char p = b.sq[knights.sq[i]];
+        if (p == (by == WHITE ? 'N' : 'n')) {
+            return true;
         }
     }
 
-    static const int bishop_dirs[8] = {1, 1, 1, -1, -1, 1, -1, -1};
-    static const int rook_dirs[8] = {1, 0, -1, 0, 0, 1, 0, -1};
-    if (attacked_by_slider(b, target, by, bishop_dirs, 4, "bq")) {
+    if (attacked_by_slider(b, target, by, 4, 8, true)) {
         return true;
     }
-    if (attacked_by_slider(b, target, by, rook_dirs, 4, "rq")) {
+    if (attacked_by_slider(b, target, by, 0, 4, false)) {
         return true;
     }
 
-    for (int df = -1; df <= 1; ++df) {
-        for (int dr = -1; dr <= 1; ++dr) {
-            if (df == 0 && dr == 0) continue;
-            int f = tf + df;
-            int r = tr + dr;
-            if (on_board(f, r)) {
-                char p = b.sq[square_of(f, r)];
-                if (p == (by == WHITE ? 'K' : 'k')) {
-                    return true;
-                }
-            }
+    const SquareList& kings = king_table()[target];
+    for (int i = 0; i < kings.count; ++i) {
+        char p = b.sq[kings.sq[i]];
+        if (p == (by == WHITE ? 'K' : 'k')) {
+            return true;
         }
     }
     return false;
@@ -433,45 +511,30 @@ void gen_pseudo(const Board& b, std::vector<Move>& moves) {
                 }
             }
         } else if (lp == 'n') {
-            static const int kd[8][2] = {
-                {1, 2}, {2, 1}, {2, -1}, {1, -2},
-                {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
-            };
-            for (auto& d : kd) {
-                int tf = f + d[0], tr = r + d[1];
-                if (!on_board(tf, tr)) continue;
-                int to = square_of(tf, tr);
+            const SquareList& targets = knight_table()[from];
+            for (int i = 0; i < targets.count; ++i) {
+                int to = targets.sq[i];
                 if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
             }
         } else if (lp == 'b' || lp == 'r' || lp == 'q') {
-            static const int dirs[8][2] = {
-                {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-                {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
-            };
             int first = lp == 'b' ? 4 : 0;
             int last = lp == 'r' ? 4 : 8;
+            const auto& rays = ray_table();
             for (int i = first; i < last; ++i) {
-                int tf = f + dirs[i][0];
-                int tr = r + dirs[i][1];
-                while (on_board(tf, tr)) {
-                    int to = square_of(tf, tr);
+                const SquareList& ray = rays[i][from];
+                for (int j = 0; j < ray.count; ++j) {
+                    int to = ray.sq[j];
                     if (is_piece_color(b.sq[to], us)) break;
                     if (is_king_piece(b.sq[to])) break;
                     add_move(moves, from, to);
                     if (b.sq[to] != '.') break;
-                    tf += dirs[i][0];
-                    tr += dirs[i][1];
                 }
             }
         } else if (lp == 'k') {
-            for (int df = -1; df <= 1; ++df) {
-                for (int dr = -1; dr <= 1; ++dr) {
-                    if (df == 0 && dr == 0) continue;
-                    int tf = f + df, tr = r + dr;
-                    if (!on_board(tf, tr)) continue;
-                    int to = square_of(tf, tr);
-                    if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
-                }
+            const SquareList& targets = king_table()[from];
+            for (int i = 0; i < targets.count; ++i) {
+                int to = targets.sq[i];
+                if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
             }
             if (us == WHITE && from == square_of(4, 0) && !in_check(b, WHITE)) {
                 if ((b.castling & 1) && b.sq[square_of(5, 0)] == '.' && b.sq[square_of(6, 0)] == '.' &&
@@ -605,82 +668,54 @@ char piece_after_move(const Board& b, const Move& m, int sq) {
     return b.sq[sq];
 }
 
-bool attacked_by_slider_after_move(const Board& b, const Move& m, int target, Color by, const int* dirs, int ndirs, const std::string& pieces) {
-    int tf = file_of(target);
-    int tr = rank_of(target);
-    for (int i = 0; i < ndirs; ++i) {
-        int df = dirs[i * 2];
-        int dr = dirs[i * 2 + 1];
-        int f = tf + df;
-        int r = tr + dr;
-        while (on_board(f, r)) {
-            char p = piece_after_move(b, m, square_of(f, r));
+bool attacked_by_slider_after_move(const Board& b, const Move& m, int target, Color by, int first_dir, int last_dir, bool diagonal) {
+    const auto& rays = ray_table();
+    for (int dir = first_dir; dir < last_dir; ++dir) {
+        const SquareList& ray = rays[dir][target];
+        for (int i = 0; i < ray.count; ++i) {
+            char p = piece_after_move(b, m, ray.sq[i]);
             if (p != '.') {
                 if (is_piece_color(p, by)) {
-                    char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
-                    if (pieces.find(lp) != std::string::npos) {
+                    if (slider_attacker_matches(p, diagonal)) {
                         return true;
                     }
                 }
                 break;
             }
-            f += df;
-            r += dr;
         }
     }
     return false;
 }
 
 bool is_attacked_after_move(const Board& b, const Move& m, int target, Color by) {
-    int tf = file_of(target);
-    int tr = rank_of(target);
-
-    int pawn_rank = by == WHITE ? tr - 1 : tr + 1;
-    for (int df : {-1, 1}) {
-        int f = tf + df;
-        if (on_board(f, pawn_rank)) {
-            char p = piece_after_move(b, m, square_of(f, pawn_rank));
-            if (p == (by == WHITE ? 'P' : 'p')) {
-                return true;
-            }
+    const SquareList& pawns = pawn_attacker_table()[by][target];
+    for (int i = 0; i < pawns.count; ++i) {
+        char p = piece_after_move(b, m, pawns.sq[i]);
+        if (p == (by == WHITE ? 'P' : 'p')) {
+            return true;
         }
     }
 
-    static const int knight_delta[8][2] = {
-        {1, 2}, {2, 1}, {2, -1}, {1, -2},
-        {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
-    };
-    for (auto& d : knight_delta) {
-        int f = tf + d[0];
-        int r = tr + d[1];
-        if (on_board(f, r)) {
-            char p = piece_after_move(b, m, square_of(f, r));
-            if (p == (by == WHITE ? 'N' : 'n')) {
-                return true;
-            }
+    const SquareList& knights = knight_table()[target];
+    for (int i = 0; i < knights.count; ++i) {
+        char p = piece_after_move(b, m, knights.sq[i]);
+        if (p == (by == WHITE ? 'N' : 'n')) {
+            return true;
         }
     }
 
-    static const int bishop_dirs[8] = {1, 1, 1, -1, -1, 1, -1, -1};
-    static const int rook_dirs[8] = {1, 0, -1, 0, 0, 1, 0, -1};
-    if (attacked_by_slider_after_move(b, m, target, by, bishop_dirs, 4, "bq")) {
+    if (attacked_by_slider_after_move(b, m, target, by, 4, 8, true)) {
         return true;
     }
-    if (attacked_by_slider_after_move(b, m, target, by, rook_dirs, 4, "rq")) {
+    if (attacked_by_slider_after_move(b, m, target, by, 0, 4, false)) {
         return true;
     }
 
-    for (int df = -1; df <= 1; ++df) {
-        for (int dr = -1; dr <= 1; ++dr) {
-            if (df == 0 && dr == 0) continue;
-            int f = tf + df;
-            int r = tr + dr;
-            if (on_board(f, r)) {
-                char p = piece_after_move(b, m, square_of(f, r));
-                if (p == (by == WHITE ? 'K' : 'k')) {
-                    return true;
-                }
-            }
+    const SquareList& kings = king_table()[target];
+    for (int i = 0; i < kings.count; ++i) {
+        char p = piece_after_move(b, m, kings.sq[i]);
+        if (p == (by == WHITE ? 'K' : 'k')) {
+            return true;
         }
     }
     return false;
