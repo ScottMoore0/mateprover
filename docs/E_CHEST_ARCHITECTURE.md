@@ -53,8 +53,9 @@ Unsafe cache reuse can create false proofs. Therefore E starts with conservative
 
 Current E checkpoint:
 
-- TT keys are exact structured values, not ad hoc strings;
-- key equality checks the complete 64-square board, side to move, castling, en-passant, node kind, attacker color, and depth;
+- TT keys are exact packed values, not ad hoc strings;
+- the board is packed as 4-bit piece codes, 16 squares per 64-bit word;
+- context packs side to move, castling, en-passant, node kind, attacker color, and depth;
 - hash collisions are safe because `unordered_map` equality still compares the full key;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 

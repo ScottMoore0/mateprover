@@ -50,49 +50,28 @@ struct Stats {
 };
 
 struct TTKey {
-    std::array<char, 64> sq{};
-    Color stm = WHITE;
-    std::uint8_t castling = 0;
-    std::int8_t ep = -1;
-    char kind = 0;
-    Color attacker = WHITE;
-    int depth = 0;
+    std::array<std::uint64_t, 4> board{};
+    std::uint64_t context = 0;
 
     bool operator==(const TTKey& other) const {
-        return sq == other.sq
-            && stm == other.stm
-            && castling == other.castling
-            && ep == other.ep
-            && kind == other.kind
-            && attacker == other.attacker
-            && depth == other.depth;
+        return board == other.board && context == other.context;
     }
 };
 
 struct TTKeyHash {
     std::size_t operator()(const TTKey& key) const noexcept {
-        std::uint64_t h = 1469598103934665603ull;
-        auto mix = [&](std::uint8_t value) {
-            h ^= value;
-            h *= 1099511628211ull;
+        std::uint64_t h = 0x9e3779b97f4a7c15ull;
+        auto mix64 = [&](std::uint64_t value) {
+            value += 0x9e3779b97f4a7c15ull;
+            value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+            value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+            value ^= value >> 31;
+            h ^= value + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
         };
-        auto mix_int = [&](int value) {
-            std::uint32_t v = static_cast<std::uint32_t>(value);
-            mix(static_cast<std::uint8_t>(v & 0xffu));
-            mix(static_cast<std::uint8_t>((v >> 8) & 0xffu));
-            mix(static_cast<std::uint8_t>((v >> 16) & 0xffu));
-            mix(static_cast<std::uint8_t>((v >> 24) & 0xffu));
-        };
-
-        for (char p : key.sq) {
-            mix(static_cast<std::uint8_t>(p));
+        for (std::uint64_t word : key.board) {
+            mix64(word);
         }
-        mix(static_cast<std::uint8_t>(key.stm));
-        mix(key.castling);
-        mix(static_cast<std::uint8_t>(key.ep));
-        mix(static_cast<std::uint8_t>(key.kind));
-        mix(static_cast<std::uint8_t>(key.attacker));
-        mix_int(key.depth);
+        mix64(key.context);
         return static_cast<std::size_t>(h);
     }
 };
@@ -590,15 +569,39 @@ void order_moves(const Board& b, std::vector<Move>& moves) {
     });
 }
 
+std::uint8_t piece_code(char p) {
+    switch (p) {
+        case '.': return 0;
+        case 'P': return 1;
+        case 'N': return 2;
+        case 'B': return 3;
+        case 'R': return 4;
+        case 'Q': return 5;
+        case 'K': return 6;
+        case 'p': return 7;
+        case 'n': return 8;
+        case 'b': return 9;
+        case 'r': return 10;
+        case 'q': return 11;
+        case 'k': return 12;
+        default: return 0;
+    }
+}
+
 TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
     TTKey k;
-    k.sq = b.sq;
-    k.stm = b.stm;
-    k.castling = static_cast<std::uint8_t>(b.castling);
-    k.ep = static_cast<std::int8_t>(b.ep);
-    k.kind = kind;
-    k.attacker = attacker;
-    k.depth = depth;
+    for (int sq = 0; sq < 64; ++sq) {
+        int word = sq / 16;
+        int shift = (sq % 16) * 4;
+        k.board[word] |= static_cast<std::uint64_t>(piece_code(b.sq[sq])) << shift;
+    }
+    std::uint64_t ep = static_cast<std::uint64_t>(b.ep + 1);
+    k.context = static_cast<std::uint64_t>(static_cast<std::uint32_t>(depth))
+        | (static_cast<std::uint64_t>(b.stm) << 32)
+        | (static_cast<std::uint64_t>(attacker) << 33)
+        | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 34)
+        | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 35)
+        | (ep << 39);
     return k;
 }
 
