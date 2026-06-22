@@ -30,6 +30,7 @@ struct Move {
     char promo = 0;
     bool castle = false;
     bool ep = false;
+    int score = 0;
 };
 
 struct Proof {
@@ -97,6 +98,7 @@ struct Search {
     bool refutation_hints = false;
     std::size_t tt_reserve = 0;
     bool move_reserve = false;
+    bool inplace_order = false;
 };
 
 bool is_white_piece(char p) {
@@ -774,8 +776,17 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
     return score;
 }
 
-void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve) {
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, bool inplace_order) {
     if (moves.size() < 2) {
+        return;
+    }
+    if (inplace_order) {
+        for (Move& move : moves) {
+            move.score = move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve);
+        }
+        std::stable_sort(moves.begin(), moves.end(), [](const Move& a, const Move& c) {
+            return a.score > c.score;
+        });
         return;
     }
     struct ScoredMove {
@@ -871,7 +882,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
-    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve);
+    order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.inplace_order);
     TTKey hint_key = move_hint_key(b, 'D', s.attacker);
     if (s.refutation_hints) {
         if (auto hint = s.defender_refutations.find(hint_key); hint != s.defender_refutations.end()) {
@@ -933,7 +944,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     }
 
     auto moves = legal_moves(b, s.move_reserve);
-    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve);
+    order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.inplace_order);
     for (const Move& amove : moves) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb, s.move_reserve)) {
@@ -1040,7 +1051,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, bool inplace_order) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1066,6 +1077,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.refutation_hints = refutation_hints;
     s.tt_reserve = tt_reserve;
     s.move_reserve = move_reserve;
+    s.inplace_order = inplace_order;
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1111,6 +1123,7 @@ int main(int argc, char** argv) {
     bool refutation_hints = false;
     std::size_t tt_reserve = 0;
     bool move_reserve = false;
+    bool inplace_order = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1149,6 +1162,10 @@ int main(int argc, char** argv) {
             move_reserve = true;
         } else if (arg == "--no-move-reserve") {
             move_reserve = false;
+        } else if (arg == "--inplace-order") {
+            inplace_order = true;
+        } else if (arg == "--scored-vector-order") {
+            inplace_order = false;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1160,7 +1177,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, inplace_order);
             }
         }
     } else {
@@ -1169,7 +1186,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, inplace_order);
         }
     }
     return 0;

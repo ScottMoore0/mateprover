@@ -105,6 +105,9 @@ Current E checkpoint:
 - `--score-mates` restores the older, more expensive mate-first score path for comparison;
 - checking-move scoring remains promoted; `--no-check-score` was tested and rejected on the smoke suite because it slowed search substantially;
 - delta-based `--fast-check-score` was also tested and rejected because the simpler exact child-board check path was faster on the measured suites;
+- `--inplace-order` writes computed scores into the existing move vector and stable-sorts it in place instead of building a separate scored vector and copying moves back;
+- the benchmark registry promotes `--inplace-order` after paired smoke, regression-control, and balanced-no-EP runs showed speed gains with clean PV/directmate validation;
+- `--scored-vector-order` restores the previous scored-vector ordering path for future reversions and A/B checks;
 - this is proof-safe because it changes only move ordering, not legal move generation, proof tests, or pruning.
 
 ### 6. Defender Refutation Memory
