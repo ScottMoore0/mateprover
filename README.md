@@ -67,6 +67,8 @@ Supported now:
 - `--exact-tt-only`: keep the promoted default, using exact-depth TT entries only;
 - `--bound-tt-failures`: include failed-node bounds in the depth-bound TT probe;
 - `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
+- `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
+- `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.

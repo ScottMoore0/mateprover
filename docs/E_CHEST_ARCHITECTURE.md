@@ -144,7 +144,9 @@ Current E checkpoint:
 - on later visits, E moves that hinted proof move to the front only if it is still present in the legal move list;
 - stale hints cannot remove moves, skip replies, or prove anything by themselves;
 - attacker proof hints are promoted through the benchmark registry after clean smoke, regression-control, and balanced-no-EP validation;
-- defender refutation hints remain disabled by default until they show a net benefit on the benchmark suites.
+- defender refutation hints remain disabled by default until they show a net benefit on the benchmark suites;
+- `--ordered-check-shortcut` is promoted through the benchmark registry after clean smoke, regression-control, balanced-no-EP, PV, and proof-tree validation; it relies on already scored attacker move lists: when check scoring is enabled and mate scoring is disabled, moves below the check-score threshold cannot be immediate mates, so E can skip their immediate checkmate test;
+- checking candidates under that mode still run the exact "no legal defender reply" test before a mate is claimed, and the shortcut is disabled automatically when the list was not scored; `--no-ordered-check-shortcut` is the rollback path.
 
 ### 7. Typed Restrictions
 

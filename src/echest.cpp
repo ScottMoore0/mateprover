@@ -95,6 +95,9 @@ struct Stats {
     std::uint64_t order_calls = 0;
     std::uint64_t order_moves = 0;
     std::uint64_t immediate_mate_tests = 0;
+    std::uint64_t ordered_check_shortcut_uses = 0;
+    std::uint64_t ordered_check_shortcut_checks = 0;
+    std::uint64_t ordered_check_shortcut_skips = 0;
     std::uint64_t immediate_mates = 0;
     std::uint64_t refutation_hint_probes = 0;
     std::uint64_t refutation_hint_hits = 0;
@@ -172,6 +175,7 @@ struct Search {
     bool keep_iter_tt = false;
     bool bound_tt_enabled = false;
     bool bound_tt_failures = false;
+    bool ordered_check_shortcut = false;
 };
 
 bool is_white_piece(char p) {
@@ -1211,10 +1215,12 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
+    bool moves_scored = false;
     if (should_order(s, moves.size())) {
         ++s.stats.order_calls;
         s.stats.order_moves += moves.size();
         order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+        moves_scored = true;
     }
     if (s.proof_hints) {
         const TTKey& proof_key = get_hint_key();
@@ -1225,11 +1231,24 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
+    const bool can_use_ordered_check_shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates;
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);
         ++s.stats.immediate_mate_tests;
-        if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+        bool mate = false;
+        if (can_use_ordered_check_shortcut) {
+            ++s.stats.ordered_check_shortcut_uses;
+            if (amove.score >= 50000) {
+                ++s.stats.ordered_check_shortcut_checks;
+                mate = !has_legal_move(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+            } else {
+                ++s.stats.ordered_check_shortcut_skips;
+            }
+        } else {
+            mate = is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+        }
+        if (mate) {
             ++s.stats.immediate_mates;
             std::vector<Move> pv{amove};
             std::string cert;
@@ -1360,6 +1379,9 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"order_calls\":" << st.order_calls
               << ",\"order_moves\":" << st.order_moves
               << ",\"immediate_mate_tests\":" << st.immediate_mate_tests
+              << ",\"ordered_check_shortcut_uses\":" << st.ordered_check_shortcut_uses
+              << ",\"ordered_check_shortcut_checks\":" << st.ordered_check_shortcut_checks
+              << ",\"ordered_check_shortcut_skips\":" << st.ordered_check_shortcut_skips
               << ",\"immediate_mates\":" << st.immediate_mates
               << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
               << ",\"refutation_hint_hits\":" << st.refutation_hint_hits
@@ -1379,6 +1401,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"keep_iter_tt\":" << (s.keep_iter_tt ? "true" : "false")
               << ",\"bound_tt\":" << (s.bound_tt_enabled ? "true" : "false")
               << ",\"bound_tt_failures\":" << (s.bound_tt_failures ? "true" : "false")
+              << ",\"ordered_check_shortcut\":" << (s.ordered_check_shortcut ? "true" : "false")
               << "}\n";
 }
 
@@ -1407,7 +1430,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures, bool ordered_check_shortcut) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1443,6 +1466,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.keep_iter_tt = keep_iter_tt;
     s.bound_tt_enabled = bound_tt_enabled;
     s.bound_tt_failures = bound_tt_failures;
+    s.ordered_check_shortcut = ordered_check_shortcut;
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1503,6 +1527,7 @@ int main(int argc, char** argv) {
     bool keep_iter_tt = false;
     bool bound_tt_enabled = false;
     bool bound_tt_failures = false;
+    bool ordered_check_shortcut = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1577,6 +1602,10 @@ int main(int argc, char** argv) {
             bound_tt_failures = true;
         } else if (arg == "--bound-tt-ok-only") {
             bound_tt_failures = false;
+        } else if (arg == "--ordered-check-shortcut") {
+            ordered_check_shortcut = true;
+        } else if (arg == "--no-ordered-check-shortcut") {
+            ordered_check_shortcut = false;
         } else if (arg == "--static-pseudo") {
             static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
@@ -1600,7 +1629,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures);
+                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
             }
         }
     } else {
@@ -1609,7 +1638,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
         }
     }
     return 0;
