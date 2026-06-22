@@ -45,7 +45,8 @@ Current board checkpoint:
 - knight targets, king targets, pawn-attack origins, and slider rays are precomputed once and reused by attack detection and pseudo-legal move generation;
 - this removes repeated coordinate/on-board geometry from the hot path without changing legal move semantics;
 - checkmate testing has a separate early-exit legal-reply probe so it does not allocate and materialize all replies when one legal escape is enough;
-- move-vector reserve is promoted in the benchmark registry default args after paired smoke, regression-control, and balanced-no-EP runs showed speed gains with clean validation;
+- move-vector reserve capacity 96 is promoted in the benchmark registry default args after paired smoke, regression-control, and balanced-no-EP cap sweeps showed a small net speed gain with clean validation;
+- `--move-reserve-cap N` is a locality-only tuning knob that changes the pseudo-move vector preallocation capacity while preserving identical legal move generation and search semantics; the previous `--move-reserve` path remains equivalent to capacity 64 for A/B checks;
 - the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
 
 ### 3. Context-Safe Proof Table / TT
@@ -156,6 +157,10 @@ Final E should use:
 - cache-line-aware entries;
 - compact undo records;
 - minimal heap allocation in search.
+
+Current E checkpoint:
+
+- `chest-e\build.ps1` uses the linker no-timestamp option so repeated builds from identical source produce a stable executable hash for benchmark registry pinning.
 
 ### 11. Verification Harness
 

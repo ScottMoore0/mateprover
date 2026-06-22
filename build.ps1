@@ -9,6 +9,6 @@ $env:TMP = $Tmp
 $env:TEMP = $Tmp
 
 $Out = Join-Path $Build "echest.exe"
-g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra -pedantic -o $Out (Join-Path $Root "src\echest.cpp")
+g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra -pedantic "-Wl,--no-insert-timestamp" -o $Out (Join-Path $Root "src\echest.cpp")
 
 Write-Host $Out
