@@ -54,6 +54,8 @@ Supported now:
 - `--exact-check-score`: keep the promoted default, included for explicitness in experiments;
 - `--order-min-size N`: experimental probe that skips scoring/sorting legal move lists smaller than `N`;
 - `--order-all`: restore the promoted default, equivalent to ordering move lists with at least two moves;
+- `--bucket-order`: experimental probe that groups moves by descending score while preserving stable order inside each score bucket;
+- `--stable-sort-order`: restore the promoted stable-sort ordering implementation;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
