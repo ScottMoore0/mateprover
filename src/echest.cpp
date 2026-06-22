@@ -75,7 +75,25 @@ struct Board {
 
 struct Stats {
     std::uint64_t nodes = 0;
+    std::uint64_t attacker_nodes = 0;
+    std::uint64_t defender_nodes = 0;
+    std::uint64_t tt_probes = 0;
     std::uint64_t tt_hits = 0;
+    std::uint64_t tt_stores = 0;
+    std::uint64_t attacker_move_lists = 0;
+    std::uint64_t attacker_moves = 0;
+    std::uint64_t attacker_candidates = 0;
+    std::uint64_t defender_move_lists = 0;
+    std::uint64_t defender_moves = 0;
+    std::uint64_t defender_replies_tried = 0;
+    std::uint64_t order_calls = 0;
+    std::uint64_t order_moves = 0;
+    std::uint64_t immediate_mate_tests = 0;
+    std::uint64_t immediate_mates = 0;
+    std::uint64_t refutation_hint_probes = 0;
+    std::uint64_t refutation_hint_hits = 0;
+    std::uint64_t refutation_hint_stores = 0;
+    std::uint64_t defender_refutations = 0;
 };
 
 struct TTKey {
@@ -127,6 +145,7 @@ struct Search {
     std::size_t move_reserve_capacity = 64;
     bool inplace_order = false;
     bool static_pseudo = false;
+    bool profile = false;
 };
 
 bool is_white_piece(char p) {
@@ -945,23 +964,33 @@ Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
     ++s.stats.nodes;
+    ++s.stats.defender_nodes;
     TTKey key = tt_key(b, depth, 'D', s.attacker);
+    ++s.stats.tt_probes;
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
     }
 
     auto replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    ++s.stats.defender_move_lists;
+    s.stats.defender_moves += replies.size();
     if (replies.empty()) {
+        ++s.stats.tt_stores;
         s.tt[key] = {false, {}, ""};
         return {};
     }
 
+    ++s.stats.order_calls;
+    s.stats.order_moves += replies.size();
     order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
     TTKey hint_key = move_hint_key(b, 'D', s.attacker);
     if (s.refutation_hints) {
+        ++s.stats.refutation_hint_probes;
         if (auto hint = s.defender_refutations.find(hint_key); hint != s.defender_refutations.end()) {
-            move_to_front(replies, hint->second);
+            if (move_to_front(replies, hint->second)) {
+                ++s.stats.refutation_hint_hits;
+            }
         }
     }
     std::vector<Move> representative;
@@ -970,16 +999,20 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         branch_certs.reserve(replies.size());
     }
     for (const Move& dmove : replies) {
+        ++s.stats.defender_replies_tried;
         Board nb = make_move(b, dmove);
         Proof child = prove_attacker(s, nb, depth);
         if (!child.ok) {
+            ++s.stats.defender_refutations;
             if (s.debug) {
                 std::cerr << "defender_refutes depth=" << depth << " move=" << move_uci(dmove)
                           << " fen=" << fen4(nb) << "\n";
             }
             if (s.refutation_hints) {
+                ++s.stats.refutation_hint_stores;
                 s.defender_refutations[hint_key] = dmove;
             }
+            ++s.stats.tt_stores;
             s.tt[key] = {false, {}, ""};
             return {};
         }
@@ -1003,31 +1036,42 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     } else {
         cert.clear();
     }
+    ++s.stats.tt_stores;
     s.tt[key] = {true, representative, cert};
     return {true, representative, cert};
 }
 
 Proof prove_attacker(Search& s, const Board& b, int depth) {
     ++s.stats.nodes;
+    ++s.stats.attacker_nodes;
     if (depth <= 0 || b.stm != s.attacker) {
         return {};
     }
     TTKey key = tt_key(b, depth, 'A', s.attacker);
+    ++s.stats.tt_probes;
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
     }
 
     auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    ++s.stats.attacker_move_lists;
+    s.stats.attacker_moves += moves.size();
+    ++s.stats.order_calls;
+    s.stats.order_moves += moves.size();
     order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order);
     for (const Move& amove : moves) {
+        ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);
+        ++s.stats.immediate_mate_tests;
         if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+            ++s.stats.immediate_mates;
             std::vector<Move> pv{amove};
             std::string cert;
             if (s.emit_proof) {
                 cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
             }
+            ++s.stats.tt_stores;
             s.tt[key] = {true, pv, cert};
             return {true, pv, cert};
         }
@@ -1067,6 +1111,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 if (s.emit_proof) {
                     cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + all_replies.cert + "}";
                 }
+                ++s.stats.tt_stores;
                 s.tt[key] = {true, pv, cert};
                 return {true, pv, cert};
             }
@@ -1076,6 +1121,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
+    ++s.stats.tt_stores;
     s.tt[key] = {false, {}, ""};
     return {};
 }
@@ -1099,6 +1145,42 @@ std::string pv_uci(const std::vector<Move>& pv) {
         out << move_uci(pv[i]);
     }
     return out.str();
+}
+
+void emit_profile_line(const Board& b, const Search& s, int requested_depth, int proved_depth, double seconds) {
+    const Stats& st = s.stats;
+    std::cerr << "% e_profile {"
+              << "\"fen\":" << json_quote(fen4(b))
+              << ",\"requested_depth\":" << requested_depth
+              << ",\"proved_depth\":" << proved_depth
+              << ",\"seconds\":" << seconds
+              << ",\"nodes\":" << st.nodes
+              << ",\"attacker_nodes\":" << st.attacker_nodes
+              << ",\"defender_nodes\":" << st.defender_nodes
+              << ",\"tt_probes\":" << st.tt_probes
+              << ",\"tt_hits\":" << st.tt_hits
+              << ",\"tt_stores\":" << st.tt_stores
+              << ",\"tt_size\":" << s.tt.size()
+              << ",\"attacker_move_lists\":" << st.attacker_move_lists
+              << ",\"attacker_moves\":" << st.attacker_moves
+              << ",\"attacker_candidates\":" << st.attacker_candidates
+              << ",\"defender_move_lists\":" << st.defender_move_lists
+              << ",\"defender_moves\":" << st.defender_moves
+              << ",\"defender_replies_tried\":" << st.defender_replies_tried
+              << ",\"order_calls\":" << st.order_calls
+              << ",\"order_moves\":" << st.order_moves
+              << ",\"immediate_mate_tests\":" << st.immediate_mate_tests
+              << ",\"immediate_mates\":" << st.immediate_mates
+              << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
+              << ",\"refutation_hint_hits\":" << st.refutation_hint_hits
+              << ",\"refutation_hint_stores\":" << st.refutation_hint_stores
+              << ",\"defender_refutations\":" << st.defender_refutations
+              << ",\"move_reserve\":" << (s.move_reserve ? "true" : "false")
+              << ",\"move_reserve_capacity\":" << s.move_reserve_capacity
+              << ",\"inplace_order\":" << (s.inplace_order ? "true" : "false")
+              << ",\"static_pseudo\":" << (s.static_pseudo ? "true" : "false")
+              << ",\"refutation_hints\":" << (s.refutation_hints ? "true" : "false")
+              << "}\n";
 }
 
 void list_legal_line(const std::string& raw) {
@@ -1126,7 +1208,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1146,6 +1228,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.attacker = b.stm;
     s.debug = debug;
     s.emit_proof = emit_proof;
+    s.profile = profile;
     s.score_mates = score_mates;
     s.score_checks = score_checks;
     s.fast_check_score = fast_check_score;
@@ -1184,6 +1267,9 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
         }
     }
     std::cout << ";\n";
+    if (s.profile) {
+        emit_profile_line(b, s, requested_depth, proved_depth, seconds);
+    }
 }
 
 } // namespace
@@ -1194,6 +1280,7 @@ int main(int argc, char** argv) {
     bool debug = false;
     bool list_legal = false;
     bool emit_proof = false;
+    bool profile = false;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;
@@ -1215,6 +1302,10 @@ int main(int argc, char** argv) {
             list_legal = true;
         } else if (arg == "--emit-proof") {
             emit_proof = true;
+        } else if (arg == "--profile") {
+            profile = true;
+        } else if (arg == "--no-profile") {
+            profile = false;
         } else if (arg == "--score-mates") {
             score_mates = true;
         } else if (arg == "--no-mate-score") {
@@ -1267,7 +1358,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
+                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
             }
         }
     } else {
@@ -1276,7 +1367,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo);
         }
     }
     return 0;

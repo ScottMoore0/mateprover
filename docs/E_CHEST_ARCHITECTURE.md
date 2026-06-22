@@ -74,6 +74,7 @@ Current E checkpoint:
 - context packs side to move, castling, en-passant, node kind, attacker color, and depth;
 - hash collisions are safe because `unordered_map` equality still compares the full key;
 - `--tt-reserve N` allows controlled experiments that pre-reserve TT hash buckets before iterative deepening;
+- `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
 ### 4. Native DFPN / Proof-Number Search

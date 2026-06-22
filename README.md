@@ -44,6 +44,8 @@ Supported now:
 - `-M N`: accepted for compatibility;
 - `-z N`: requested mate depth;
 - `--emit-proof`: append a recursive JSON proof certificate for solved positions;
+- `--profile`: emit one `% e_profile {...}` JSON counter row to stderr per input position;
+- `--no-profile`: keep profiling disabled, which is the promoted default;
 - `--score-mates`: restore the older, more expensive move-order score that detects immediate mates during sorting;
 - `--no-mate-score`: keep the promoted default, included for explicitness in experiments;
 - `--score-checks`: keep the promoted default, which scores checking moves during ordering;
@@ -79,3 +81,5 @@ The proof tree is verified by `benchmarks\scripts\e_verify_proof_tree.py`. A val
 Proof-certificate construction is opt-in. Normal benchmark/search runs do not build recursive proof JSON internally unless `--emit-proof` is passed.
 
 No-mate or unproved positions print no `dm` token, so the existing harness treats them as no mate.
+
+Profile rows are stderr-only and are intended for search-design work, not for normal benchmark scoring. They include node counts, TT probes/hits/stores, attacker/defender move-list counts, ordering counts, immediate-mate tests, and refutation-hint counters. The helper script `benchmarks\scripts\collect_e_profiles.py` runs a registry engine over a suite and writes case-labelled JSONL profile rows.
