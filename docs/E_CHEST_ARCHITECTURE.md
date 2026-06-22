@@ -88,7 +88,9 @@ Current E checkpoint:
 
 - existing move scores are computed once per move before stable sorting;
 - the previous sort order is preserved, but expensive score recomputation during comparator calls is removed;
-- this is proof-safe because it changes only how ordering scores are cached, not which moves are legal or which score function is used.
+- expensive immediate-mate detection is skipped during ordering by default because the attacker loop still checks every candidate exactly before accepting it;
+- `--score-mates` restores the older, more expensive mate-first score path for comparison;
+- this is proof-safe because it changes only move ordering, not legal move generation, proof tests, or pruning.
 
 ### 6. Defender Refutation Memory
 

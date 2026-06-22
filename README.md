@@ -44,6 +44,8 @@ Supported now:
 - `-M N`: accepted for compatibility;
 - `-z N`: requested mate depth;
 - `--emit-proof`: append a recursive JSON proof certificate for solved positions;
+- `--score-mates`: restore the older, more expensive move-order score that detects immediate mates during sorting;
+- `--no-mate-score`: keep the promoted default, included for explicitness in experiments;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
