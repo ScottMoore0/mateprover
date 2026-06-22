@@ -114,6 +114,7 @@ struct Stats {
     std::uint64_t proof_hint_probes = 0;
     std::uint64_t proof_hint_hits = 0;
     std::uint64_t proof_hint_stores = 0;
+    std::uint64_t route_rejections = 0;
     std::uint64_t defender_refutations = 0;
 };
 
@@ -1376,6 +1377,14 @@ RouteResult run_route(Search& s, const Board& b, int max_depth) {
     return {};
 }
 
+bool route_result_is_acceptable(const RouteResult& result, int max_depth) {
+    if (!result.proof.ok || result.proof.pv.empty()) {
+        return false;
+    }
+    const int pv_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
+    return result.proved_depth == pv_depth && result.proved_depth > 0 && result.proved_depth <= max_depth;
+}
+
 int infer_mate_depth(const std::string& line) {
     auto pos = line.find('#');
     if (pos == std::string::npos) {
@@ -1437,6 +1446,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"proof_hint_probes\":" << st.proof_hint_probes
               << ",\"proof_hint_hits\":" << st.proof_hint_hits
               << ",\"proof_hint_stores\":" << st.proof_hint_stores
+              << ",\"route_rejections\":" << st.route_rejections
               << ",\"defender_refutations\":" << st.defender_refutations
               << ",\"move_reserve\":" << (s.move_reserve ? "true" : "false")
               << ",\"move_reserve_capacity\":" << s.move_reserve_capacity
@@ -1523,13 +1533,17 @@ void solve_line(const std::string& raw, int requested_depth, RouteKind route, bo
 
     RouteResult route_result = run_route(s, b, max_depth);
     const Proof& proof = route_result.proof;
-    int proved_depth = route_result.proved_depth;
+    const bool accepted = route_result_is_acceptable(route_result, max_depth);
+    if (!accepted && route_result.proof.ok) {
+        ++s.stats.route_rejections;
+    }
+    int proved_depth = accepted ? route_result.proved_depth : 0;
 
     auto end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double>(end - start).count();
 
     std::cout << fen4(b) << "; acn " << s.stats.nodes << "; acs " << seconds;
-    if (proof.ok && !proof.pv.empty()) {
+    if (accepted) {
         std::cout << "; bm " << move_uci(proof.pv.front())
                   << "; dm " << proved_depth
                   << "; pv " << pv_uci(proof.pv);
