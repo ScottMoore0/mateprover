@@ -25,7 +25,7 @@ Missing target architecture pieces:
 
 - shared proof/disproof TT as the primary table design; the current centralized exact helpers and explicit proof/disproof entries are only the first boundary, not the final table layout or replacement policy;
 - native DFPN-first route;
-- promoted shallow fast route; the current `--route shallow-fast` implementation is available for validation but is not the default;
+- promoted shallow fast route; the current `--route shallow-fast` implementation is available through `chest_E_shallow_fast_probe` for validation but is not the default;
 - defender-refutation route distinct from ordering hints;
 - threat/mating-net route;
 - typed Chest/WinChest restriction model;
@@ -54,6 +54,12 @@ Every promoted E route or table change must pass:
 - A/B/C/D/E comparisons for capability and output regressions;
 - route-profile checks showing the route name and zero unexpected route rejections;
 - directmate oracle verification against D where available.
+
+Current shallow-route evidence:
+
+- smoke proof-tree verification passed for explicit `--route shallow-fast`;
+- smoke profile validation showed 9 attempts, 2 shallow hits, 7 depth-first fallbacks, and zero route rejections;
+- the first registry comparison on the smoke suite was PV-clean and faster than default E in average wall time, but this is a single short run and is not promotion evidence by itself.
 
 ## Depth-Bound TT Decision
 
