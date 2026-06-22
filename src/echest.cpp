@@ -67,6 +67,7 @@ struct Proof {
 
 struct Board {
     std::array<char, 64> sq{};
+    std::array<std::uint64_t, 4> packed{};
     std::array<int, 2> king_sq{{-1, -1}};
     Color stm = WHITE;
     unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
@@ -191,6 +192,33 @@ bool is_enemy_piece(char p, Color c) {
 
 bool is_king_piece(char p) {
     return p == 'K' || p == 'k';
+}
+
+std::uint8_t piece_code(char p) {
+    switch (p) {
+        case '.': return 0;
+        case 'P': return 1;
+        case 'N': return 2;
+        case 'B': return 3;
+        case 'R': return 4;
+        case 'Q': return 5;
+        case 'K': return 6;
+        case 'p': return 7;
+        case 'n': return 8;
+        case 'b': return 9;
+        case 'r': return 10;
+        case 'q': return 11;
+        case 'k': return 12;
+        default: return 0;
+    }
+}
+
+void set_square(Board& b, int sq, char p) {
+    b.sq[sq] = p;
+    int word = sq / 16;
+    int shift = (sq % 16) * 4;
+    std::uint64_t mask = 0xfull << shift;
+    b.packed[word] = (b.packed[word] & ~mask) | (static_cast<std::uint64_t>(piece_code(p)) << shift);
 }
 
 Color other(Color c) {
@@ -372,6 +400,7 @@ std::optional<Board> parse_fen4(const std::string& line) {
     }
     Board b;
     b.sq.fill('.');
+    b.packed.fill(0);
 
     int rank = 7;
     int file = 0;
@@ -399,7 +428,7 @@ std::optional<Board> parse_fen4(const std::string& line) {
             return std::nullopt;
         }
         int sq = square_of(file, rank);
-        b.sq[sq] = ch;
+        set_square(b, sq, ch);
         if (ch == 'K') {
             b.king_sq[WHITE] = sq;
         } else if (ch == 'k') {
@@ -653,19 +682,19 @@ void gen_pseudo(const Board& b, MoveSink& moves) {
 Board make_move(Board b, const Move& m) {
     char p = b.sq[m.from];
     char captured = b.sq[m.to];
-    b.sq[m.from] = '.';
+    set_square(b, m.from, '.');
 
     if (m.ep) {
         int cap_sq = m.to + (b.stm == WHITE ? -8 : 8);
         captured = b.sq[cap_sq];
-        b.sq[cap_sq] = '.';
+        set_square(b, cap_sq, '.');
     }
 
     char placed = p;
     if (m.promo) {
         placed = b.stm == WHITE ? static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))) : m.promo;
     }
-    b.sq[m.to] = placed;
+    set_square(b, m.to, placed);
     if (p == 'K') {
         b.king_sq[WHITE] = m.to;
     } else if (p == 'k') {
@@ -674,17 +703,17 @@ Board make_move(Board b, const Move& m) {
 
     if (m.castle) {
         if (p == 'K' && m.to == square_of(6, 0)) {
-            b.sq[square_of(5, 0)] = 'R';
-            b.sq[square_of(7, 0)] = '.';
+            set_square(b, square_of(5, 0), 'R');
+            set_square(b, square_of(7, 0), '.');
         } else if (p == 'K' && m.to == square_of(2, 0)) {
-            b.sq[square_of(3, 0)] = 'R';
-            b.sq[square_of(0, 0)] = '.';
+            set_square(b, square_of(3, 0), 'R');
+            set_square(b, square_of(0, 0), '.');
         } else if (p == 'k' && m.to == square_of(6, 7)) {
-            b.sq[square_of(5, 7)] = 'r';
-            b.sq[square_of(7, 7)] = '.';
+            set_square(b, square_of(5, 7), 'r');
+            set_square(b, square_of(7, 7), '.');
         } else if (p == 'k' && m.to == square_of(2, 7)) {
-            b.sq[square_of(3, 7)] = 'r';
-            b.sq[square_of(0, 7)] = '.';
+            set_square(b, square_of(3, 7), 'r');
+            set_square(b, square_of(0, 7), '.');
         }
     }
 
@@ -955,32 +984,9 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     }
 }
 
-std::uint8_t piece_code(char p) {
-    switch (p) {
-        case '.': return 0;
-        case 'P': return 1;
-        case 'N': return 2;
-        case 'B': return 3;
-        case 'R': return 4;
-        case 'Q': return 5;
-        case 'K': return 6;
-        case 'p': return 7;
-        case 'n': return 8;
-        case 'b': return 9;
-        case 'r': return 10;
-        case 'q': return 11;
-        case 'k': return 12;
-        default: return 0;
-    }
-}
-
 TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
     TTKey k;
-    for (int sq = 0; sq < 64; ++sq) {
-        int word = sq / 16;
-        int shift = (sq % 16) * 4;
-        k.board[word] |= static_cast<std::uint64_t>(piece_code(b.sq[sq])) << shift;
-    }
+    k.board = b.packed;
     std::uint64_t ep = static_cast<std::uint64_t>(b.ep + 1);
     k.context = static_cast<std::uint64_t>(static_cast<std::uint32_t>(depth))
         | (static_cast<std::uint64_t>(b.stm) << 32)

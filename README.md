@@ -13,6 +13,7 @@ This initial checkpoint establishes:
 - standalone source tree;
 - standalone executable interface compatible with the benchmark harness;
 - legal move generation and directmate proof scaffolding;
+- incrementally maintained packed board words for exact TT key construction;
 - proof-carrying output in UCI move format;
 - exact PV replay compatibility with the existing validator;
 - opt-in recursive proof-tree output verified independently with python-chess;

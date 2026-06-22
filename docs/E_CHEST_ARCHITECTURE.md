@@ -40,6 +40,8 @@ Current board checkpoint:
 
 - board state caches both king squares after FEN parsing;
 - `make_move` updates the relevant cached king square when a king moves;
+- board state also maintains four packed 64-bit board words, updated by the same square-write helper used for FEN parsing, ordinary moves, en passant, promotions, and castling;
+- TT key construction now copies those packed words instead of scanning and repacking all 64 squares at every search node;
 - check detection uses the cached king square and keeps a full-board fallback scan if the cache is invalid;
 - this removes repeated full-board king scans from the common `in_check` path while preserving a defensive correctness fallback;
 - knight targets, king targets, pawn-attack origins, and slider rays are precomputed once and reused by attack detection and pseudo-legal move generation;
