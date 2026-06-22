@@ -89,6 +89,7 @@ struct Search {
     bool debug = false;
     bool emit_proof = false;
     bool score_mates = false;
+    bool score_checks = true;
 };
 
 bool is_white_piece(char p) {
@@ -550,11 +551,11 @@ bool is_checkmate(const Board& b) {
     return in_check(b, b.stm) && legal_moves(b).empty();
 }
 
-int move_score(const Board& b, const Move& m, bool score_mates) {
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks) {
     Board nb = make_move(b, m);
     int score = 0;
     if (score_mates && is_checkmate(nb)) score += 1000000;
-    if (in_check(nb, nb.stm)) score += 50000;
+    if (score_checks && in_check(nb, nb.stm)) score += 50000;
     if (b.sq[m.to] != '.' || m.ep) score += 10000;
     if (m.promo) score += 8000;
     char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
@@ -564,7 +565,7 @@ int move_score(const Board& b, const Move& m, bool score_mates) {
     return score;
 }
 
-void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates) {
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks) {
     if (moves.size() < 2) {
         return;
     }
@@ -575,7 +576,7 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates) {
     std::vector<ScoredMove> scored;
     scored.reserve(moves.size());
     for (const Move& move : moves) {
-        scored.push_back({move, move_score(b, move, score_mates)});
+        scored.push_back({move, move_score(b, move, score_mates, score_checks)});
     }
     std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
         return a.score > c.score;
@@ -637,7 +638,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
-    order_moves(b, replies, s.score_mates);
+    order_moves(b, replies, s.score_mates, s.score_checks);
     std::vector<Move> representative;
     std::vector<std::string> branch_certs;
     if (s.emit_proof) {
@@ -690,7 +691,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     }
 
     auto moves = legal_moves(b);
-    order_moves(b, moves, s.score_mates);
+    order_moves(b, moves, s.score_mates, s.score_checks);
     for (const Move& amove : moves) {
         Board nb = make_move(b, amove);
         if (is_checkmate(nb)) {
@@ -797,7 +798,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -818,6 +819,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.debug = debug;
     s.emit_proof = emit_proof;
     s.score_mates = score_mates;
+    s.score_checks = score_checks;
     auto start = std::chrono::steady_clock::now();
 
     Proof proof;
@@ -855,6 +857,7 @@ int main(int argc, char** argv) {
     bool list_legal = false;
     bool emit_proof = false;
     bool score_mates = false;
+    bool score_checks = true;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -871,6 +874,10 @@ int main(int argc, char** argv) {
             score_mates = true;
         } else if (arg == "--no-mate-score") {
             score_mates = false;
+        } else if (arg == "--score-checks") {
+            score_checks = true;
+        } else if (arg == "--no-check-score") {
+            score_checks = false;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -882,7 +889,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks);
             }
         }
     } else {
@@ -891,7 +898,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks);
         }
     }
     return 0;
