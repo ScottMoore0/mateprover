@@ -153,6 +153,7 @@ struct Search {
     bool profile = false;
     std::size_t order_min_size = 2;
     bool bucket_order = false;
+    bool keep_iter_tt = false;
 };
 
 bool is_white_piece(char p) {
@@ -1248,6 +1249,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"order_min_size\":" << s.order_min_size
               << ",\"refutation_hints\":" << (s.refutation_hints ? "true" : "false")
               << ",\"proof_hints\":" << (s.proof_hints ? "true" : "false")
+              << ",\"keep_iter_tt\":" << (s.keep_iter_tt ? "true" : "false")
               << "}\n";
 }
 
@@ -1276,7 +1278,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1309,6 +1311,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.static_pseudo = static_pseudo;
     s.order_min_size = std::max<std::size_t>(2, order_min_size);
     s.bucket_order = bucket_order;
+    s.keep_iter_tt = keep_iter_tt;
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1317,7 +1320,9 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     Proof proof;
     int proved_depth = 0;
     for (int depth = 1; depth <= max_depth; ++depth) {
-        s.tt.clear();
+        if (!s.keep_iter_tt) {
+            s.tt.clear();
+        }
         proof = prove_attacker(s, b, depth);
         if (proof.ok) {
             proved_depth = static_cast<int>((proof.pv.size() + 1) / 2);
@@ -1364,6 +1369,7 @@ int main(int argc, char** argv) {
     bool static_pseudo = false;
     std::size_t order_min_size = 2;
     bool bucket_order = false;
+    bool keep_iter_tt = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1426,6 +1432,10 @@ int main(int argc, char** argv) {
             inplace_order = true;
         } else if (arg == "--stable-sort-order") {
             bucket_order = false;
+        } else if (arg == "--keep-iter-tt") {
+            keep_iter_tt = true;
+        } else if (arg == "--clear-iter-tt") {
+            keep_iter_tt = false;
         } else if (arg == "--static-pseudo") {
             static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
@@ -1449,7 +1459,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order);
+                solve_line(line, requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt);
             }
         }
     } else {
@@ -1458,7 +1468,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt);
         }
     }
     return 0;

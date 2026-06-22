@@ -74,6 +74,9 @@ Current E checkpoint:
 - context packs side to move, castling, en-passant, node kind, attacker color, and depth;
 - hash collisions are safe because `unordered_map` equality still compares the full key;
 - `--tt-reserve N` allows controlled experiments that pre-reserve TT hash buckets before iterative deepening;
+- `--keep-iter-tt` is a promoted exact-TT mode that retains entries across iterative-depth passes instead of clearing them before each pass;
+- this is proof-safe because depth is part of the TT key, so a shallower proof result cannot satisfy a deeper lookup unless the exact keyed depth matches;
+- `--clear-iter-tt` restores the previous per-depth clear behavior for rollback and A/B checks;
 - `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 

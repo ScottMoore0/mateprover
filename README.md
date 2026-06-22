@@ -60,6 +60,8 @@ Supported now:
 - `--no-refutation-hints`: keep defender refutation hints disabled, which is the promoted default;
 - `--proof-hints`: promoted ordering-only mode that moves known attacker proof moves to the front;
 - `--no-proof-hints`: disable attacker proof hints for rollback and A/B checks;
+- `--keep-iter-tt`: promoted exact-TT mode that keeps entries across iterative-depth passes;
+- `--clear-iter-tt`: restore the previous behavior, clearing exact TT entries before each iterative-depth pass;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
