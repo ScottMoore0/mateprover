@@ -51,6 +51,13 @@ TT keys must include all proof-relevant context:
 
 Unsafe cache reuse can create false proofs. Therefore E starts with conservative exact keys before compact high-performance keys are promoted.
 
+Current E checkpoint:
+
+- TT keys are exact structured values, not ad hoc strings;
+- key equality checks the complete 64-square board, side to move, castling, en-passant, node kind, attacker color, and depth;
+- hash collisions are safe because `unordered_map` equality still compares the full key;
+- this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
+
 ### 4. Native DFPN / Proof-Number Search
 
 DFPN should become a native search mode, not a fallback wrapper. E should have:

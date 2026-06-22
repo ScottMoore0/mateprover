@@ -49,6 +49,54 @@ struct Stats {
     std::uint64_t tt_hits = 0;
 };
 
+struct TTKey {
+    std::array<char, 64> sq{};
+    Color stm = WHITE;
+    std::uint8_t castling = 0;
+    std::int8_t ep = -1;
+    char kind = 0;
+    Color attacker = WHITE;
+    int depth = 0;
+
+    bool operator==(const TTKey& other) const {
+        return sq == other.sq
+            && stm == other.stm
+            && castling == other.castling
+            && ep == other.ep
+            && kind == other.kind
+            && attacker == other.attacker
+            && depth == other.depth;
+    }
+};
+
+struct TTKeyHash {
+    std::size_t operator()(const TTKey& key) const noexcept {
+        std::uint64_t h = 1469598103934665603ull;
+        auto mix = [&](std::uint8_t value) {
+            h ^= value;
+            h *= 1099511628211ull;
+        };
+        auto mix_int = [&](int value) {
+            std::uint32_t v = static_cast<std::uint32_t>(value);
+            mix(static_cast<std::uint8_t>(v & 0xffu));
+            mix(static_cast<std::uint8_t>((v >> 8) & 0xffu));
+            mix(static_cast<std::uint8_t>((v >> 16) & 0xffu));
+            mix(static_cast<std::uint8_t>((v >> 24) & 0xffu));
+        };
+
+        for (char p : key.sq) {
+            mix(static_cast<std::uint8_t>(p));
+        }
+        mix(static_cast<std::uint8_t>(key.stm));
+        mix(key.castling);
+        mix(static_cast<std::uint8_t>(key.ep));
+        mix(static_cast<std::uint8_t>(key.kind));
+        mix(static_cast<std::uint8_t>(key.attacker));
+        mix_int(key.depth);
+        return static_cast<std::size_t>(h);
+    }
+};
+
 struct TTEntry {
     bool ok = false;
     std::vector<Move> pv;
@@ -58,7 +106,7 @@ struct TTEntry {
 struct Search {
     Color attacker = WHITE;
     Stats stats;
-    std::unordered_map<std::string, TTEntry> tt;
+    std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
     bool debug = false;
     bool emit_proof = false;
 };
@@ -542,16 +590,15 @@ void order_moves(const Board& b, std::vector<Move>& moves) {
     });
 }
 
-std::string tt_key(const Board& b, int depth, char kind, Color attacker) {
-    std::string k;
-    k.reserve(90);
-    for (char p : b.sq) k.push_back(p);
-    k.push_back(b.stm == WHITE ? 'w' : 'b');
-    k.push_back(static_cast<char>('A' + b.castling));
-    k += std::to_string(b.ep);
-    k.push_back(kind);
-    k.push_back(attacker == WHITE ? 'W' : 'B');
-    k += std::to_string(depth);
+TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
+    TTKey k;
+    k.sq = b.sq;
+    k.stm = b.stm;
+    k.castling = static_cast<std::uint8_t>(b.castling);
+    k.ep = static_cast<std::int8_t>(b.ep);
+    k.kind = kind;
+    k.attacker = attacker;
+    k.depth = depth;
     return k;
 }
 
@@ -559,7 +606,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
     ++s.stats.nodes;
-    std::string key = tt_key(b, depth, 'D', s.attacker);
+    TTKey key = tt_key(b, depth, 'D', s.attacker);
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
@@ -617,7 +664,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     if (depth <= 0 || b.stm != s.attacker) {
         return {};
     }
-    std::string key = tt_key(b, depth, 'A', s.attacker);
+    TTKey key = tt_key(b, depth, 'A', s.attacker);
     if (auto it = s.tt.find(key); it != s.tt.end()) {
         ++s.stats.tt_hits;
         return {it->second.ok, it->second.pv, it->second.cert};
