@@ -59,7 +59,10 @@ Current shallow-route evidence:
 
 - smoke proof-tree verification passed for explicit `--route shallow-fast`;
 - smoke profile validation showed 9 attempts, 2 shallow hits, 7 depth-first fallbacks, and zero route rejections;
-- the first registry comparison on the smoke suite was PV-clean and faster than default E in average wall time, but this is a single short run and is not promotion evidence by itself.
+- the first registry comparison on the smoke suite was PV-clean and faster than default E in average wall time;
+- regression-control comparison was PV-clean with 44/44 strict success for both default E and shallow-fast, with shallow-fast effectively tied but slightly faster in average wall time;
+- an interleaved 60-case balanced no-EP subset was PV-clean with 60/60 strict success for both default E and shallow-fast, with shallow-fast slightly faster in average, median, and p95 wall time;
+- this is promising but still not promotion evidence by itself; promotion requires repeated runs, held-out hard-tail checks, and no-mate/negative-control checks.
 
 ## Depth-Bound TT Decision
 
