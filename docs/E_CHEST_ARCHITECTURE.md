@@ -45,6 +45,7 @@ Current board checkpoint:
 - knight targets, king targets, pawn-attack origins, and slider rays are precomputed once and reused by attack detection and pseudo-legal move generation;
 - this removes repeated coordinate/on-board geometry from the hot path without changing legal move semantics;
 - checkmate testing has a separate early-exit legal-reply probe so it does not allocate and materialize all replies when one legal escape is enough;
+- move-vector reserve is promoted in the benchmark registry default args after paired smoke, regression-control, and balanced-no-EP runs showed speed gains with clean validation;
 - the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
 
 ### 3. Context-Safe Proof Table / TT
