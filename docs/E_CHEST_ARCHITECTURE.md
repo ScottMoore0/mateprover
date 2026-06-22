@@ -84,6 +84,12 @@ High-impact ordering signals:
 - killer/history/refutation moves;
 - known hard defender replies.
 
+Current E checkpoint:
+
+- existing move scores are computed once per move before stable sorting;
+- the previous sort order is preserved, but expensive score recomputation during comparator calls is removed;
+- this is proof-safe because it changes only how ordering scores are cached, not which moves are legal or which score function is used.
+
 ### 6. Defender Refutation Memory
 
 The prover should learn which defender replies refute candidate keys and try those replies early in later equivalent contexts. This is exact, handcrafted guidance, not probabilistic proof.

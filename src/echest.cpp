@@ -564,9 +564,24 @@ int move_score(const Board& b, const Move& m) {
 }
 
 void order_moves(const Board& b, std::vector<Move>& moves) {
-    std::stable_sort(moves.begin(), moves.end(), [&](const Move& a, const Move& c) {
-        return move_score(b, a) > move_score(b, c);
+    if (moves.size() < 2) {
+        return;
+    }
+    struct ScoredMove {
+        Move move;
+        int score = 0;
+    };
+    std::vector<ScoredMove> scored;
+    scored.reserve(moves.size());
+    for (const Move& move : moves) {
+        scored.push_back({move, move_score(b, move)});
+    }
+    std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
+        return a.score > c.score;
     });
+    for (std::size_t i = 0; i < scored.size(); ++i) {
+        moves[i] = scored[i].move;
+    }
 }
 
 std::uint8_t piece_code(char p) {
