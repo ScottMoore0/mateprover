@@ -87,11 +87,13 @@ struct Search {
     Color attacker = WHITE;
     Stats stats;
     std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
+    std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
     bool debug = false;
     bool emit_proof = false;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;
+    bool refutation_hints = false;
 };
 
 bool is_white_piece(char p) {
@@ -820,6 +822,30 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
     return k;
 }
 
+TTKey move_hint_key(const Board& b, char kind, Color attacker) {
+    return tt_key(b, 0, kind, attacker);
+}
+
+bool same_move(const Move& a, const Move& b) {
+    return a.from == b.from
+        && a.to == b.to
+        && a.promo == b.promo
+        && a.castle == b.castle
+        && a.ep == b.ep;
+}
+
+bool move_to_front(std::vector<Move>& moves, const Move& hint) {
+    for (std::size_t i = 0; i < moves.size(); ++i) {
+        if (same_move(moves[i], hint)) {
+            if (i != 0) {
+                std::rotate(moves.begin(), moves.begin() + static_cast<std::ptrdiff_t>(i), moves.begin() + static_cast<std::ptrdiff_t>(i + 1));
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
@@ -837,6 +863,12 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     }
 
     order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score);
+    TTKey hint_key = move_hint_key(b, 'D', s.attacker);
+    if (s.refutation_hints) {
+        if (auto hint = s.defender_refutations.find(hint_key); hint != s.defender_refutations.end()) {
+            move_to_front(replies, hint->second);
+        }
+    }
     std::vector<Move> representative;
     std::vector<std::string> branch_certs;
     if (s.emit_proof) {
@@ -849,6 +881,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
             if (s.debug) {
                 std::cerr << "defender_refutes depth=" << depth << " move=" << move_uci(dmove)
                           << " fen=" << fen4(nb) << "\n";
+            }
+            if (s.refutation_hints) {
+                s.defender_refutations[hint_key] = dmove;
             }
             s.tt[key] = {false, {}, ""};
             return {};
@@ -996,7 +1031,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score) {
+void solve_line(const std::string& raw, int requested_depth, bool debug, bool emit_proof, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1019,6 +1054,7 @@ void solve_line(const std::string& raw, int requested_depth, bool debug, bool em
     s.score_mates = score_mates;
     s.score_checks = score_checks;
     s.fast_check_score = fast_check_score;
+    s.refutation_hints = refutation_hints;
     auto start = std::chrono::steady_clock::now();
 
     Proof proof;
@@ -1058,6 +1094,7 @@ int main(int argc, char** argv) {
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;
+    bool refutation_hints = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1082,6 +1119,10 @@ int main(int argc, char** argv) {
             fast_check_score = true;
         } else if (arg == "--exact-check-score") {
             fast_check_score = false;
+        } else if (arg == "--refutation-hints") {
+            refutation_hints = true;
+        } else if (arg == "--no-refutation-hints") {
+            refutation_hints = false;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1093,7 +1134,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score);
+                solve_line(line, requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints);
             }
         }
     } else {
@@ -1102,7 +1143,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score);
+            solve_line(buffer.str(), requested_depth, debug, emit_proof, score_mates, score_checks, fast_check_score, refutation_hints);
         }
     }
     return 0;

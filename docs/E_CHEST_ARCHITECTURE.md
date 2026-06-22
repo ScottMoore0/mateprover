@@ -109,6 +109,14 @@ Current E checkpoint:
 
 The prover should learn which defender replies refute candidate keys and try those replies early in later equivalent contexts. This is exact, handcrafted guidance, not probabilistic proof.
 
+Current E checkpoint:
+
+- `--refutation-hints` enables an ordering-only defender refutation table;
+- when a defender reply refutes an attacker move, E records that legal move against the defender-position context without depth;
+- on later visits, E moves that hinted reply to the front only if it is still present in the legal move list;
+- stale hints cannot remove moves, skip replies, or prove anything by themselves;
+- default E keeps this disabled until benchmarks show it is a net improvement.
+
 ### 7. Typed Restrictions
 
 WinChest/Chest options such as `-C`, `-R`, `-K`, `-P`, `-X`, and `-I` must become typed search constraints. They must be part of TT keys and verifier fixtures.
