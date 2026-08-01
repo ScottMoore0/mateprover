@@ -1513,7 +1513,20 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     auto run_parallel_portfolio = [&](Search& report) -> RouteResult {
         const auto& entries = restriction_portfolio();
         const int lanes = static_cast<int>(entries.size());
-        const int per_lane = std::max(1, std::max(1, config.threads) / lanes);
+        const int total_threads = std::max(1, config.threads);
+        // Threads follow the same weights as the time slices did. Splitting
+        // them equally starved the unrestricted lane, which is the most general
+        // and the one whose answer is preferred: it dropped from 15 solved to
+        // 13 while the restricted lanes added 4.
+        std::vector<int> lane_threads(static_cast<std::size_t>(lanes), 1);
+        int assigned = lanes;
+        for (int i = 0; i < lanes && assigned < total_threads; ++i) {
+            const int want = static_cast<int>(
+                static_cast<double>(total_threads) * entries[static_cast<std::size_t>(i)].weight);
+            const int extra = std::min(std::max(0, want - 1), total_threads - assigned);
+            lane_threads[static_cast<std::size_t>(i)] += extra;
+            assigned += extra;
+        }
 
         std::vector<std::unique_ptr<Search>> searches;
         std::vector<std::unique_ptr<std::atomic<bool>>> cancels;
@@ -1536,7 +1549,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.root_depth = max_depth;
             t.portfolio = false;
             t.portfolio_parallel = false;
-            t.threads = per_lane;
+            t.threads = lane_threads[static_cast<std::size_t>(i)];
             t.checks_mask = entries[static_cast<std::size_t>(i)].checks_mask;
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;

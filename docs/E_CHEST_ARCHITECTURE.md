@@ -450,7 +450,14 @@ matetrack mate-in-8, 24 positions, **equal 15-second wall clock**:
 
 The parallel portfolio reaches at 15 seconds what the sequential one needed 45 seconds for -- a threefold budget reduction for the same capability.
 
-The trade is visible in the breakdown: the unrestricted lane gets only 32/8 = 4 threads instead of 8 and solves 13 rather than 15, but the restricted lanes add 4. Giving the unrestricted lane a larger share is an obvious tuning knob and is not yet done.
+Threads follow the same weights as the time slices. Splitting them equally starved the unrestricted lane -- the most general one, and the one whose answer is preferred -- which dropped it from 15 solved to 13 while the restricted lanes added 4. With weighted allocation the unrestricted lane recovers to 15 and the restricted lanes add 2:
+
+| lane allocation | total | unrestricted lane | via restriction |
+|---|---:|---:|---:|
+| equal (4 threads each) | 17/24 | 13 | 4 |
+| **weighted** | 17/24 | **15** | 2 |
+
+The headline is unchanged but the structure is strictly better. Under equal allocation the portfolio *traded* two problems away to gain four; under weighted allocation it gives up nothing relative to running unrestricted alone and adds two on top. A mode that can only help is easier to recommend than one that helps on balance.
 
 **Determinism is traded deliberately.** Which lane wins first can vary between runs, so the *proof* returned is not deterministic. Every proof returned is still valid and verifiable, the lane used is reported, and the unrestricted lane is preferred whenever it also succeeds. Making the choice deterministic would mean waiting for lower-index lanes that may never finish, which is the cost this mode exists to avoid. The suite therefore tests the property every result must have -- solved positions replay to a real mate at the stated depth -- rather than a fixed expected answer.
 
