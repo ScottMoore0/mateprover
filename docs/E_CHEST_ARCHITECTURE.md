@@ -387,6 +387,27 @@ Current E checkpoint:
 
 WinChest/Chest options such as `-C`, `-R`, `-K`, `-P`, `-X`, and `-I` must become typed search constraints. They must be part of TT keys and verifier fixtures.
 
+### 7b. What The Restriction Options Actually Are
+
+Section 7 called `-C`, `-R`, `-K`, `-P`, `-X` and `-I` "Chest/WinChest options" that must become typed search constraints. Checking the source settled two things.
+
+**Chest 3.19 accepts none of them.** Its option set is `? 2 A a b c d D f g l L m p r s S t T u U V x y o h E O H M G z Z Q`, and the six are absent from both its usage text and its parser. They are **WinChest extensions**, and this document and the CLI had been mis-attributing them.
+
+Their meanings, from WinChest's own `Options.txt`:
+
+| option | meaning |
+|---|---|
+| `-C N` | special mate: examine checking moves only |
+| `-R N` | special mate: examine threats only |
+| `-K N` | special mate: limit defender king mobility |
+| `-P N` | special mate: limit the set of moving pieces |
+| `-X N` | special mate: limit maximum moves |
+| `-I N` | special mate: threat flags |
+
+Each selects a **different problem**, not a tuning knob on the same one. That is why rejecting them is right and why implementing them is a feature rather than a refinement: `-C` restricted to checking attacker moves is a distinct composition genre, not a faster route to the same answer.
+
+The rejection message now names the semantics, so a caller can tell whether they asked for something meaningful or made a typo. Implementing any of them remains open, and would need differential validation against the WinChest binary since the semantics are documented only as one-line summaries.
+
 ### 8. Internal Parallelism
 
 E should support root split and deeper work stealing with:

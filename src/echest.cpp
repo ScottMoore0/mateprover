@@ -130,10 +130,17 @@ void print_usage() {
 "  --fast-check-score, --exact-check-score, --score-checks, --no-check-score\n"
 "                                accepted; check scoring is a single shared\n"
 "                                plane query, so these select nothing\n"
-"  -C -R -K -P -X -I -n -N       Chest/WinChest restrictions: NOT IMPLEMENTED.\n"
-"                                Rejected by default so a constrained request\n"
-"                                never returns an unconstrained answer. Pass\n"
-"                                --allow-unimplemented to ignore them instead.\n"
+"  WinChest special-mate variants, NOT IMPLEMENTED. Each selects a different\n"
+"  problem rather than a tuning knob, so they are rejected, not ignored:\n"
+"    -C N                        examine checking moves only\n"
+"    -R N                        examine threats only\n"
+"    -K N                        limit defender king mobility\n"
+"    -P N                        limit the set of moving pieces\n"
+"    -X N                        limit maximum moves\n"
+"    -I N                        threat flags\n"
+"    -n N, -N N                  accepted with a value, same treatment\n"
+"  Pass --allow-unimplemented to search the unrestricted problem instead.\n"
+"  Chest 3.19 has none of these; they are WinChest extensions.\n"
 "\n"
 "  -h, --help                    this message\n"
 "  -V, --version                 version\n"
@@ -398,9 +405,22 @@ int main(int argc, char** argv) {
                 return usage_error("option " + arg + " requires a value");
             }
             if (!allow_unimplemented) {
-                return usage_error("option " + arg + " (Chest restriction) is not implemented; "
-                                   "results would silently ignore it. "
-                                   "Pass --allow-unimplemented to proceed anyway.");
+                // Name the semantics. "Not implemented" alone leaves the
+                // caller unable to tell whether they asked for something
+                // meaningful, or made a typo.
+                std::string meaning = "a restricted mate variant";
+                if (arg == "-C") meaning = "examine checking moves only";
+                else if (arg == "-R") meaning = "examine threats only";
+                else if (arg == "-K") meaning = "limit defender king mobility";
+                else if (arg == "-P") meaning = "limit the set of moving pieces";
+                else if (arg == "-X") meaning = "limit maximum moves";
+                else if (arg == "-I") meaning = "threat flags";
+                return usage_error("option " + arg + " selects a WinChest special-mate "
+                                   "variant (" + meaning + ") that this engine does not "
+                                   "implement. It solves ordinary directmates only, so "
+                                   "the restriction would be silently ignored and the "
+                                   "answer would be to a different problem. Pass "
+                                   "--allow-unimplemented to search unrestricted.");
             }
         } else {
             return usage_error("unknown option " + arg);

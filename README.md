@@ -207,9 +207,13 @@ immediately. Perft is a permanent gate for that reason.
 - Reach, as above: the shallow end of matetrack. This is a limitation of the
   search, not of resources: mate-in-10 solve rate is unchanged from 8 to 32
   threads and from 64 MB to unbounded memory.
-- Chest/WinChest restriction options (`-C -R -K -P -X -I`) are **not
-  implemented** and are rejected rather than ignored, so a constrained request
-  never returns an unconstrained answer. `--allow-unimplemented` overrides.
+- WinChest's special-mate variants are **not implemented**: `-C` (checks only),
+  `-R` (threats only), `-K` (limit king mobility), `-P` (limit moving pieces),
+  `-X` (limit maximum moves), `-I` (threat flags). Each selects a *different
+  problem*, not a tuning knob, so they are rejected rather than ignored — a
+  constrained request never returns an unconstrained answer.
+  `--allow-unimplemented` searches the unrestricted problem instead. Chest 3.19
+  itself has none of these; they are WinChest extensions.
 - `-M` is an entry ceiling derived from an estimated bytes-per-entry, not a
   hard RSS bound; a node-based container cannot give one.
 - A DFPN route exists behind `--route dfpn` but is slower than the default at
