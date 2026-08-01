@@ -105,6 +105,8 @@ Supported now:
 - `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
 - `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
 - `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
+- `--lazy-defender`: unpromoted probe; order pseudo-legal defender replies and test legality only when reached;
+- `--eager-defender`: promoted default; establish legality for all defender replies up front;
 - `--fused-order`: promoted default; compute legality and ordering scores in one pass over the child boards;
 - `--split-order`: rollback path that generates and scores in two passes;
 - `--threads N`: root-split parallel search across `N` worker threads; the benchmark registry promotes `8`;

@@ -194,6 +194,23 @@ Current E checkpoint:
 - throughput on the hard holdout rose from 452 to 473 knps at identical node counts;
 - the fused path is skipped under `--static-pseudo` and `--fast-check-score`, which keep the split path.
 
+#### Lazy Defender Legality: Measured And Not Promoted
+
+The defender-node waste identified above was implemented and measured rather than left as an argument.
+
+`--lazy-defender` orders **pseudo-legal** replies using `move_gives_check_fast`, which answers the check-ordering term by querying the post-move board virtually and so needs no child board at all. Legality is then established only for replies actually reached.
+
+- the ordering predicate is identical to the eager path and the sort is stable, so deleting the illegal moves from the sequence leaves the order of the legal ones unchanged. Node counts and PVs are **identical** on all four suites, confirming the argument empirically;
+- a lazy defender node whose loop ends without finding a legal reply is stalemate, not a proof, and is handled exactly like the empty-list case. Getting this wrong would turn stalemate into a false mate;
+- it works as designed: **89.6% of defender legality tests are avoided**, 25.0M child boards down to 3.39M, a 7.4x reduction;
+- it costs virtual check detection on all 32.7M pseudo moves and sorts 16.7% more moves (54.1M vs 46.3M), because pseudo lists are longer than legal ones;
+- sequential gain is real: `-3.4%` to `-5.6%` across suites. **Parallel is neutral**: over 5 interleaved trials at 8 threads the deltas were `+2.2%`, `-4.1%`, `-2.1%`, all within one standard deviation;
+- **not promoted**, because the promoted configuration is parallel and it does not improve there. Retained as `chest_E_lazy_defender_probe`, and useful for single-core deployment.
+
+**The important finding is the ratio.** Eliminating 7.4x of defender child-board construction bought only 3-5%. That says the ~115-byte board copy is *not* the dominant cost -- the attack scan is, since `move_gives_check_fast` walks eight slider rays plus the knight, pawn and king tables and costs nearly as much as `make_move` plus `in_check`.
+
+This is direct evidence for prioritising the bitboard/incremental-attack board in section 2 over further copy-avoidance work. Cheap attack queries, not cheap board copies, are what E is short of.
+
 #### Profile Findings Still Open
 
 The same profile identified a larger inefficiency that is **not** yet addressed:

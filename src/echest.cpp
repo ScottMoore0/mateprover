@@ -113,6 +113,8 @@ struct Stats {
     std::uint64_t defender_move_lists = 0;
     std::uint64_t defender_moves = 0;
     std::uint64_t defender_replies_tried = 0;
+    std::uint64_t defender_pseudo_moves = 0;
+    std::uint64_t defender_lazy_skipped = 0;
     std::uint64_t order_calls = 0;
     std::uint64_t order_moves = 0;
     std::uint64_t immediate_mate_tests = 0;
@@ -157,6 +159,8 @@ struct Stats {
         defender_move_lists += o.defender_move_lists;
         defender_moves += o.defender_moves;
         defender_replies_tried += o.defender_replies_tried;
+        defender_pseudo_moves += o.defender_pseudo_moves;
+        defender_lazy_skipped += o.defender_lazy_skipped;
         order_calls += o.order_calls;
         order_moves += o.order_moves;
         immediate_mate_tests += o.immediate_mate_tests;
@@ -178,7 +182,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 39 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 41 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
@@ -440,6 +444,7 @@ struct SearchConfig {
     bool ordered_check_shortcut = false;
     int threads = 1;
     bool fused_order = true;
+    bool lazy_defender = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -1460,6 +1465,48 @@ std::vector<Move> generate_ordered_moves(Search& s, const Board& b, bool& moves_
     return moves;
 }
 
+// Pseudo-legal defender replies, ordered WITHOUT building any child board.
+//
+// A defender (AND) node stops at the first reply that survives, so it typically
+// searches ~1 of ~19 generated replies. Eagerly proving legality for all of
+// them builds eighteen child boards that are then discarded.
+//
+// `move_gives_check_fast` answers the check-ordering term by querying the
+// post-move board virtually, so ordering needs no child board at all. Legality
+// is then established lazily, only for replies actually reached.
+//
+// The ordering predicate is identical to the eager path -- both ask whether the
+// move gives check -- and the sort is stable, so removing the illegal moves
+// from the sequence leaves the order of the legal ones unchanged. The sequence
+// of legal replies searched is therefore the same as the eager path's, and so
+// is the resulting search.
+std::vector<Move> pseudo_defender_moves(Search& s, const Board& b) {
+    std::vector<Move> pseudo;
+    if (s.move_reserve) {
+        pseudo.reserve(s.move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+    s.stats.defender_pseudo_moves += pseudo.size();
+    if (pseudo.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += pseudo.size();
+        for (Move& m : pseudo) {
+            int score = static_move_terms(b, m);
+            if (s.score_checks && move_gives_check_fast(b, m)) {
+                score += 50000;
+            }
+            m.score = score;
+        }
+        if (s.bucket_order) {
+            stable_bucket_order(pseudo);
+        } else {
+            std::stable_sort(pseudo.begin(), pseudo.end(),
+                             [](const Move& a, const Move& c) { return a.score > c.score; });
+        }
+    }
+    return pseudo;
+}
+
 bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);
 }
@@ -1587,11 +1634,17 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         }
     }
 
+    // Lazy defender generation is only sound when ordering does not depend on
+    // building the child board, which rules out --score-mates.
+    const bool lazy = s.lazy_defender && !s.static_pseudo && !s.score_mates;
     bool replies_scored = false;
-    auto replies = generate_ordered_moves(s, b, replies_scored);
+    auto replies = lazy ? pseudo_defender_moves(s, b)
+                        : generate_ordered_moves(s, b, replies_scored);
     (void)replies_scored;
     ++s.stats.defender_move_lists;
-    s.stats.defender_moves += replies.size();
+    if (!lazy) {
+        s.stats.defender_moves += replies.size();
+    }
     if (replies.empty()) {
         store_exact_proof_table(s, key, {});
         if (s.bound_tt_enabled) {
@@ -1614,9 +1667,18 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     if (s.emit_proof) {
         branch_certs.reserve(replies.size());
     }
+    bool any_legal = false;
     for (const Move& dmove : replies) {
-        ++s.stats.defender_replies_tried;
         Board nb = make_move(b, dmove);
+        if (lazy) {
+            if (in_check(nb, other(nb.stm))) {
+                ++s.stats.defender_lazy_skipped;
+                continue; // pseudo-legal only: the defender left their king attacked
+            }
+            ++s.stats.defender_moves;
+        }
+        any_legal = true;
+        ++s.stats.defender_replies_tried;
         Proof child = prove_attacker(s, nb, depth);
         if (s.aborted) {
             return {};
@@ -1646,6 +1708,17 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         if (s.emit_proof) {
             branch_certs.push_back("{\"r\":" + json_quote(move_uci(dmove)) + ",\"p\":" + child.cert + "}");
         }
+    }
+    // With lazy generation the list held pseudo-legal moves, so an exhausted
+    // loop does not by itself mean every legal reply was refuted -- it may mean
+    // there were none. That is stalemate, not mate, and must be treated exactly
+    // like the empty-list case above rather than reported as a proof.
+    if (lazy && !any_legal) {
+        store_exact_proof_table(s, key, {});
+        if (s.bound_tt_enabled) {
+            store_bound_tt(s, get_hint_key(), depth, {});
+        }
+        return {};
     }
     std::string cert = "[";
     if (s.emit_proof) {
@@ -2383,6 +2456,9 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"defender_move_lists\":" << st.defender_move_lists
               << ",\"defender_moves\":" << st.defender_moves
               << ",\"defender_replies_tried\":" << st.defender_replies_tried
+              << ",\"defender_pseudo_moves\":" << st.defender_pseudo_moves
+              << ",\"defender_lazy_skipped\":" << st.defender_lazy_skipped
+              << ",\"lazy_defender\":" << (s.lazy_defender ? "true" : "false")
               << ",\"order_calls\":" << st.order_calls
               << ",\"order_moves\":" << st.order_moves
               << ",\"immediate_mate_tests\":" << st.immediate_mate_tests
@@ -2624,6 +2700,10 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--no-parallel-gate") {
             config.parallel_min_nodes = 0;
+        } else if (arg == "--lazy-defender") {
+            config.lazy_defender = true;
+        } else if (arg == "--eager-defender") {
+            config.lazy_defender = false;
         } else if (arg == "--fused-order") {
             config.fused_order = true;
         } else if (arg == "--split-order") {

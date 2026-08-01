@@ -40,6 +40,15 @@ Missing target architecture pieces:
 - internal route portfolio parallelism; root-split parallelism is now promoted as the default (`--threads 8 --shared-tt`, gated by `--parallel-min-nodes 500`), but portfolio-style parallelism across different routes is still absent;
 - neural ordering, which remains later-stage guidance only.
 
+## Measured Bottleneck
+
+Profiling, not intuition, now sets the search-performance order. Removing 7.4x
+of defender child-board construction (`--lazy-defender`) bought only 3-5%
+sequentially and nothing in parallel. Board copying is therefore not the
+dominant cost; the attack scan is. Copy-avoidance work is deprioritised and the
+bitboard/incremental-attack board is prioritised, because cheap attack queries
+are what E is short of.
+
 ## Revised Impact Order
 
 1. Keep the exact proof acceptance boundary small and route-neutral.
