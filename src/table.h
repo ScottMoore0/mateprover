@@ -84,14 +84,6 @@ struct BoundedTable {
     }
 };
 
-struct BoundEntry {
-    bool has_ok = false;
-    int ok_depth = 0;
-    std::vector<Move> ok_pv;
-    std::string ok_cert;
-    bool has_fail = false;
-    int fail_depth = 0;
-};
 
 // Exact proof table shared by every worker of a root-split search.
 //

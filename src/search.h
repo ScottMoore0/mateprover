@@ -31,12 +31,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         }
         return hint_key;
     };
-    if (s.bound_tt_enabled) {
-        Proof cached;
-        if (probe_bound_tt(s, get_hint_key(), depth, cached)) {
-            return cached;
-        }
-    }
 
     // Lazy defender generation is only sound when ordering does not depend on
     // building the child board, which rules out --score-mates.
@@ -51,9 +45,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     }
     if (replies.empty()) {
         store_exact_proof_table(s, key, depth, {});
-        if (s.bound_tt_enabled) {
-            store_bound_tt(s, get_hint_key(), depth, {});
-        }
         return {};
     }
 
@@ -98,9 +89,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
                 s.defender_refutations[get_hint_key()] = dmove;
             }
             store_exact_proof_table(s, key, depth, {});
-            if (s.bound_tt_enabled) {
-                store_bound_tt(s, get_hint_key(), depth, {});
-            }
             return {};
         }
         std::vector<Move> candidate;
@@ -119,9 +107,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     // like the empty-list case above rather than reported as a proof.
     if (lazy && !any_legal) {
         store_exact_proof_table(s, key, depth, {});
-        if (s.bound_tt_enabled) {
-            store_bound_tt(s, get_hint_key(), depth, {});
-        }
         return {};
     }
     std::string cert = "[";
@@ -136,9 +121,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     }
     Proof proof{true, representative, cert};
     store_exact_proof_table(s, key, depth, proof);
-    if (s.bound_tt_enabled) {
-        store_bound_tt(s, get_hint_key(), depth, proof);
-    }
     return proof;
 }
 
@@ -166,12 +148,6 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         }
         return hint_key;
     };
-    if (s.bound_tt_enabled) {
-        Proof cached;
-        if (probe_bound_tt(s, get_hint_key(), depth, cached)) {
-            return cached;
-        }
-    }
 
     bool moves_scored = false;
     auto moves = generate_ordered_moves(s, b, moves_scored);
@@ -216,9 +192,6 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
             Proof proof{true, pv, cert};
             store_exact_proof_table(s, key, depth, proof);
-            if (s.bound_tt_enabled) {
-                store_bound_tt(s, get_hint_key(), depth, proof);
-            }
             return proof;
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {
@@ -266,9 +239,6 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 }
                 Proof proof{true, pv, cert};
                 store_exact_proof_table(s, key, depth, proof);
-                if (s.bound_tt_enabled) {
-                    store_bound_tt(s, get_hint_key(), depth, proof);
-                }
                 return proof;
             }
             if (s.debug) {
@@ -278,9 +248,6 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         }
     }
     store_exact_proof_table(s, key, depth, {});
-    if (s.bound_tt_enabled) {
-        store_bound_tt(s, get_hint_key(), depth, {});
-    }
     return {};
 }
 
@@ -1231,12 +1198,6 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"shallow_fast_attempts\":" << st.shallow_fast_attempts
               << ",\"shallow_fast_hits\":" << st.shallow_fast_hits
               << ",\"shallow_fast_fallbacks\":" << st.shallow_fast_fallbacks
-              << ",\"bound_tt_probes\":" << st.bound_tt_probes
-              << ",\"bound_tt_hits\":" << st.bound_tt_hits
-              << ",\"bound_tt_ok_hits\":" << st.bound_tt_ok_hits
-              << ",\"bound_tt_fail_hits\":" << st.bound_tt_fail_hits
-              << ",\"bound_tt_stores\":" << st.bound_tt_stores
-              << ",\"bound_tt_size\":" << s.bound_tt.size()
               << ",\"attacker_move_lists\":" << st.attacker_move_lists
               << ",\"attacker_moves\":" << st.attacker_moves
               << ",\"attacker_candidates\":" << st.attacker_candidates
@@ -1279,8 +1240,6 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"refutation_hints\":" << (s.refutation_hints ? "true" : "false")
               << ",\"proof_hints\":" << (s.proof_hints ? "true" : "false")
               << ",\"keep_iter_tt\":" << (s.keep_iter_tt ? "true" : "false")
-              << ",\"bound_tt\":" << (s.bound_tt_enabled ? "true" : "false")
-              << ",\"bound_tt_failures\":" << (s.bound_tt_failures ? "true" : "false")
               << ",\"ordered_check_shortcut\":" << (s.ordered_check_shortcut ? "true" : "false")
               << "}\n";
 }

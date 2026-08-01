@@ -31,8 +31,6 @@ struct SearchConfig {
     std::size_t order_min_size = 2;
     bool bucket_order = false;
     bool keep_iter_tt = false;
-    bool bound_tt_enabled = false;
-    bool bound_tt_failures = false;
     bool ordered_check_shortcut = false;
     int threads = 1;
     bool fused_order = true;
@@ -70,7 +68,6 @@ struct PnDnFwd {
 struct Search : SearchConfig {
     Stats stats;
     BoundedTable tt;
-    std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
     std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
     std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
 

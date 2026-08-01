@@ -57,56 +57,7 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
     }
 }
 
-bool probe_bound_tt(Search& s, const TTKey& key, int depth, Proof& out) {
-    if (!s.bound_tt_enabled) {
-        return false;
-    }
-    ++s.stats.bound_tt_probes;
-    auto it = s.bound_tt.find(key);
-    if (it == s.bound_tt.end()) {
-        return false;
-    }
-    const BoundEntry& entry = it->second;
-    if (entry.has_ok && entry.ok_depth <= depth) {
-        ++s.stats.bound_tt_hits;
-        ++s.stats.bound_tt_ok_hits;
-        out = {true, entry.ok_pv, entry.ok_cert};
-        return true;
-    }
-    if (s.bound_tt_failures && entry.has_fail && entry.fail_depth >= depth) {
-        ++s.stats.bound_tt_hits;
-        ++s.stats.bound_tt_fail_hits;
-        out = {};
-        return true;
-    }
-    return false;
-}
 
-void store_bound_tt(Search& s, const TTKey& key, int depth, const Proof& proof) {
-    if (!s.bound_tt_enabled) {
-        return;
-    }
-    // Same invariant as the exact table: an abandoned search has no verdict.
-    if (s.aborted) {
-        return;
-    }
-    if (!proof.ok && !s.bound_tt_failures) {
-        return;
-    }
-    ++s.stats.bound_tt_stores;
-    BoundEntry& entry = s.bound_tt[key];
-    if (proof.ok) {
-        if (!entry.has_ok || depth < entry.ok_depth) {
-            entry.has_ok = true;
-            entry.ok_depth = depth;
-            entry.ok_pv = proof.pv;
-            entry.ok_cert = proof.cert;
-        }
-    } else if (s.bound_tt_failures && (!entry.has_fail || depth > entry.fail_depth)) {
-        entry.has_fail = true;
-        entry.fail_depth = depth;
-    }
-}
 
 } // namespace echest
 

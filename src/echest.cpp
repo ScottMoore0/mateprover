@@ -116,8 +116,6 @@ void print_usage() {
 "  --order-min-size N | --order-all\n"
 "  --bucket-order | --stable-sort-order\n"
 "  --score-mates | --no-mate-score\n"
-"  --bound-tt | --exact-tt-only\n"
-"  --bound-tt-failures | --bound-tt-ok-only\n"
 "  --static-pseudo | --vector-pseudo\n"
 "\n"
 "DFPN route (unpromoted; slower than the default at every measured depth):\n"
@@ -278,14 +276,6 @@ int main(int argc, char** argv) {
             config.keep_iter_tt = true;
         } else if (arg == "--clear-iter-tt") {
             config.keep_iter_tt = false;
-        } else if (arg == "--bound-tt") {
-            config.bound_tt_enabled = true;
-        } else if (arg == "--exact-tt-only") {
-            config.bound_tt_enabled = false;
-        } else if (arg == "--bound-tt-failures") {
-            config.bound_tt_failures = true;
-        } else if (arg == "--bound-tt-ok-only") {
-            config.bound_tt_failures = false;
         } else if (arg == "--ordered-check-shortcut") {
             config.ordered_check_shortcut = true;
         } else if (arg == "--no-ordered-check-shortcut") {

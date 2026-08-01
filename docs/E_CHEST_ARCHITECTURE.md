@@ -186,16 +186,33 @@ Current E checkpoint:
 - `--keep-iter-tt` is a promoted exact-TT mode that retains entries across iterative-depth passes instead of clearing them before each pass;
 - this is proof-safe because depth is part of the TT key, so a shallower proof result cannot satisfy a deeper lookup unless the exact keyed depth matches;
 - `--clear-iter-tt` restores the previous per-depth clear behavior for rollback and A/B checks;
-- `--bound-tt` adds a separate depth-bound TT probe keyed without depth but with the full board, side to move, attacker color, node type, castling, and en-passant context;
 - bound reuse is monotonic: a proven entry may satisfy only equal-or-greater requested depth, and if failed-node bounds are enabled a failed entry may refute only equal-or-smaller requested depth;
-- failed-node bounds are off by default under `--bound-tt`. **The originally recorded reason was wrong** and is corrected here: the first smoke profile showed only two failed-bound hits from over two hundred thousand probes, but smoke positions are trivial and have nothing to transpose. Profiled on a hard matetrack mate-in-8 position the same mechanism produces **10,691** fail-bound hits, roughly five thousand times more;
 - the rejection nonetheless stands, for a different reason. On that position the prune removes 8.6% of nodes (268,260 to 245,083) and costs 14.5% more time, because it is paid for with a *second table*: 126k extra probes, 116k extra stores, and a 96k-entry structure competing for cache. Capability is unchanged at 13/24 mate-in-8 and 3/20 mate-in-10;
 - the correct summary is "the prune fires and the bookkeeping costs more than the search it saves", which points directly at the shared proof/disproof table: keying by position without depth and storing `max_disproved_depth` and `min_proved_depth` in one entry makes the same prune free, since one probe would answer both questions and the second table would disappear;
-- `--bound-tt-ok-only` restores the positive-bound-only probe behavior;
-- `--exact-tt-only` restores the promoted exact-depth-only behavior while bound-TT validation is in progress;
 - the first guarded positive-bound probe stayed correctness-clean but was not promoted because the balanced no-EP suite slowed down despite smoke/regression average improvements;
 - `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
+
+### 3e. The Bound Table Is Retired
+
+`--bound-tt` existed to recover the monotone depth implications that a
+depth-keyed table threw away. The shared proof/disproof table provides them
+directly, so the second table had nothing left to contribute.
+
+It was not merely dead: measured after the shared table landed, `--bound-tt`
+produced an **identical node count** (245,083 — it changed nothing) while
+costing **25% more time**, because it still allocated a table and performed its
+own probes and stores. A flag that can only make the engine slower is a trap,
+not an option.
+
+Removed: `BoundEntry`, the bound map, `probe_bound_tt`, `store_bound_tt`, five
+counters, nine guard blocks in the search, and the flags `--bound-tt`,
+`--exact-tt-only`, `--bound-tt-failures`, `--bound-tt-ok-only`. 121 lines gone
+from the proof path, which is the component where less code is worth most.
+
+The `Stats` size guard did its job during this work: removing five counters
+tripped the `static_assert` immediately rather than letting the merge silently
+drop fields.
 
 ### 3d. Shared Proof/Disproof Table
 

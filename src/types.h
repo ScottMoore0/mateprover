@@ -136,11 +136,6 @@ struct Stats {
     std::uint64_t shallow_fast_attempts = 0;
     std::uint64_t shallow_fast_hits = 0;
     std::uint64_t shallow_fast_fallbacks = 0;
-    std::uint64_t bound_tt_probes = 0;
-    std::uint64_t bound_tt_hits = 0;
-    std::uint64_t bound_tt_ok_hits = 0;
-    std::uint64_t bound_tt_fail_hits = 0;
-    std::uint64_t bound_tt_stores = 0;
     std::uint64_t attacker_move_lists = 0;
     std::uint64_t attacker_moves = 0;
     std::uint64_t attacker_candidates = 0;
@@ -192,11 +187,6 @@ struct Stats {
         shallow_fast_attempts += o.shallow_fast_attempts;
         shallow_fast_hits += o.shallow_fast_hits;
         shallow_fast_fallbacks += o.shallow_fast_fallbacks;
-        bound_tt_probes += o.bound_tt_probes;
-        bound_tt_hits += o.bound_tt_hits;
-        bound_tt_ok_hits += o.bound_tt_ok_hits;
-        bound_tt_fail_hits += o.bound_tt_fail_hits;
-        bound_tt_stores += o.bound_tt_stores;
         attacker_move_lists += o.attacker_move_lists;
         attacker_moves += o.attacker_moves;
         attacker_candidates += o.attacker_candidates;
@@ -236,7 +226,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 51 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 46 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
