@@ -31,6 +31,12 @@ add_executable(echest
 target_link_libraries(echest PRIVATE Threads::Threads)
 target_compile_definitions(echest PRIVATE ECHEST_VERSION="${PROJECT_VERSION}")
 
+# Cost attribution for the move-generation path. Not built by default: it is a
+# development tool, not part of the shipped engine.
+add_executable(bench_movegen EXCLUDE_FROM_ALL tools/bench_movegen.cpp)
+target_include_directories(bench_movegen PRIVATE src)
+target_link_libraries(bench_movegen PRIVATE Threads::Threads)
+
 if(MSVC)
     target_compile_options(echest PRIVATE /W4 /permissive-)
 else()

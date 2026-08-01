@@ -1122,6 +1122,58 @@ a real test. This is the standard technique and it attacks the one cost that has
 survived elimination. It is also a genuine movegen rewrite with real correctness
 risk, which is exactly what the perft gate exists for.
 
+### 8k. Node Cost Is Diffuse, So Micro-Optimisation Cannot Reach The Target
+
+8j ended by proposing a pin- and checker-based legality rewrite, on the estimate
+that per-move plane construction dominates the node. That estimate was arithmetic,
+not measurement, and two such estimates had already failed. It was checked before
+being built on.
+
+The first attempt to check it failed instructively. Disabling check scoring
+removes one `attacked_on_planes` call per move, so the node rate should rise; it
+*fell*, 466 to 439 k/s. Scoring drives move ordering, ordering changes which
+nodes get visited, and the node mix changes with it. **Ablations inside the
+search are confounded whenever the ablation changes the tree** -- nodes/sec moves
+for reasons unrelated to the cost of what was removed. That rules out the whole
+family of in-search ablations for cost attribution.
+
+`tools/bench_movegen.cpp` measures instead by timing nested stages on a fixed
+position set, where there is no tree to perturb. Twelve holdout positions, 20,000
+repetitions:
+
+| stage | cost | share |
+|---|---|---|
+| generation only | 186 ns | 25% |
+| + legality (planes per move) | 500 ns | 43% |
+| + scoring and list build (fused) | 734 ns | 32% |
+
+No stage dominates. A pin-based rewrite attacks the 43%, and cannot take all of
+it -- king moves, en passant and the check-scoring scan still need real tests --
+so on a node that is roughly half fused-generation the realistic ceiling is
+15-20% of node time. Set against 8h's measured curve, where **4x buys +5
+positions**, 15-20% is worth a fraction of one position, for a genuine movegen
+rewrite with the correctness risk that implies. Not worth building; rejected on
+its measured value rather than on its difficulty.
+
+The wider conclusion is the useful one. Three efficiency hypotheses have now been
+measured and all three found the cost spread thin: `make_move` removal bought 4%
+(8i), halving allocation bought nothing (8j), and the remaining candidate caps
+out near 15%. **There is no concentrated hotspot left, so constant-factor work
+cannot deliver the 4-20x that 8h says coverage requires.** Speed is a spent
+direction at this depth.
+
+What remains is node-count reduction: solving the same positions by visiting
+fewer nodes -- ordering quality, transposition effectiveness, and restrictions.
+That is not a new idea here, it is a re-derivation of why the restriction
+portfolio worked. The portfolio's gains (8f: 39/60 to 44/60) came from searching
+different, smaller problems, not from searching the same problem faster, and this
+is the measurement that explains why that was the axis that moved.
+
+The benchmark is kept in-tree as a `bench_movegen` CMake target, excluded from
+the default build: attribution by nested timing is the only method here that has
+produced a trustworthy answer, and it should not have to be rebuilt from scratch
+next time.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
