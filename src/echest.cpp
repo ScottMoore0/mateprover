@@ -2851,19 +2851,32 @@ RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
 RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
     for (int depth = 1; depth <= max_depth; ++depth) {
+        if (s.timed_out) {
+            break;
+        }
         if (!s.keep_iter_tt) {
             s.tt.clear();
             s.dfpn_tt.clear();
         }
+        // The preconditioner may stop early on its own node budget; that is not
+        // a verdict, so the exact pass still runs. But a wall-clock expiry ends
+        // the whole search, and clearing  past it would restart a
+        // search that has no time left.
         s.aborted = false;
         dfpn_attacker(s, b, depth, DFPN_INF, DFPN_INF);
-        s.aborted = false;
         s.stats.dfpn_table_size = s.dfpn_tt.size();
+        if (s.timed_out) {
+            break;
+        }
+        s.aborted = false;
 
         result.proof = prove_attacker(s, b, depth);
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
             break;
+        }
+        if (s.timed_out) {
+            break; // the depth was abandoned, so its failure is not a verdict
         }
     }
     return result;
