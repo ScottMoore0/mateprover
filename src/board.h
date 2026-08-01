@@ -1,0 +1,413 @@
+// board.h -- Board geometry, attack tables, FEN parsing and formatting, attack queries.
+//
+// Part of a header-based split of a single translation unit. The modules are
+// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+
+#ifndef ECHEST_BOARD_H_INCLUDED
+#define ECHEST_BOARD_H_INCLUDED
+
+namespace echest {
+
+struct SquareList {
+    std::array<int, 8> sq{};
+    int count = 0;
+};
+
+void add_square(SquareList& list, int sq) {
+    list.sq[list.count++] = sq;
+}
+
+constexpr int DIRS[8][2] = {
+    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+    {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+};
+
+const std::array<SquareList, 64>& knight_table() {
+    static const std::array<SquareList, 64> table = [] {
+        std::array<SquareList, 64> out{};
+        static const int delta[8][2] = {
+            {1, 2}, {2, 1}, {2, -1}, {1, -2},
+            {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2},
+        };
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            for (const auto& d : delta) {
+                int tf = f + d[0];
+                int tr = r + d[1];
+                if (on_board(tf, tr)) {
+                    add_square(out[sq], square_of(tf, tr));
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<SquareList, 64>& king_table() {
+    static const std::array<SquareList, 64> table = [] {
+        std::array<SquareList, 64> out{};
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            for (int df = -1; df <= 1; ++df) {
+                for (int dr = -1; dr <= 1; ++dr) {
+                    if (df == 0 && dr == 0) continue;
+                    int tf = f + df;
+                    int tr = r + dr;
+                    if (on_board(tf, tr)) {
+                        add_square(out[sq], square_of(tf, tr));
+                    }
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<std::array<SquareList, 64>, 2>& pawn_attacker_table() {
+    static const std::array<std::array<SquareList, 64>, 2> table = [] {
+        std::array<std::array<SquareList, 64>, 2> out{};
+        for (int sq = 0; sq < 64; ++sq) {
+            int f = file_of(sq);
+            int r = rank_of(sq);
+            int white_rank = r - 1;
+            int black_rank = r + 1;
+            for (int df : {-1, 1}) {
+                int pf = f + df;
+                if (on_board(pf, white_rank)) {
+                    add_square(out[WHITE][sq], square_of(pf, white_rank));
+                }
+                if (on_board(pf, black_rank)) {
+                    add_square(out[BLACK][sq], square_of(pf, black_rank));
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+const std::array<std::array<SquareList, 64>, 8>& ray_table() {
+    static const std::array<std::array<SquareList, 64>, 8> table = [] {
+        std::array<std::array<SquareList, 64>, 8> out{};
+        for (int dir = 0; dir < 8; ++dir) {
+            for (int sq = 0; sq < 64; ++sq) {
+                int f = file_of(sq) + DIRS[dir][0];
+                int r = rank_of(sq) + DIRS[dir][1];
+                while (on_board(f, r)) {
+                    add_square(out[dir][sq], square_of(f, r));
+                    f += DIRS[dir][0];
+                    r += DIRS[dir][1];
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+std::string sq_name(int sq) {
+    std::string out;
+    out.push_back(static_cast<char>('a' + file_of(sq)));
+    out.push_back(static_cast<char>('1' + rank_of(sq)));
+    return out;
+}
+
+std::string move_uci(const Move& m) {
+    std::string out = sq_name(m.from) + sq_name(m.to);
+    if (m.promo) {
+        out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(m.promo))));
+    }
+    return out;
+}
+
+std::string json_quote(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    out.push_back('"');
+    for (char ch : s) {
+        if (ch == '"' || ch == '\\') {
+            out.push_back('\\');
+        }
+        out.push_back(ch);
+    }
+    out.push_back('"');
+    return out;
+}
+
+std::string trim(const std::string& s) {
+    std::size_t a = 0;
+    while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) {
+        ++a;
+    }
+    std::size_t b = s.size();
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) {
+        --b;
+    }
+    return s.substr(a, b - a);
+}
+
+std::vector<std::string> split_ws(const std::string& s) {
+    std::istringstream in(s);
+    std::vector<std::string> out;
+    std::string tok;
+    while (in >> tok) {
+        out.push_back(tok);
+    }
+    return out;
+}
+
+const char* route_name(RouteKind route) {
+    switch (route) {
+        case RouteKind::DepthFirst: return "depth-first";
+        case RouteKind::ShallowFast: return "shallow-fast";
+        case RouteKind::Dfpn: return "dfpn";
+    }
+    return "unknown";
+}
+
+std::optional<RouteKind> parse_route_kind(const std::string& name) {
+    if (name == "dfpn") {
+        return RouteKind::Dfpn;
+    }
+    if (name == "depth-first" || name == "depth_first" || name == "df" || name == "dfs" || name == "default") {
+        return RouteKind::DepthFirst;
+    }
+    if (name == "shallow-fast" || name == "shallow_fast" || name == "shallow" || name == "sf") {
+        return RouteKind::ShallowFast;
+    }
+    return std::nullopt;
+}
+
+std::optional<Board> parse_fen4(const std::string& line) {
+    auto tokens = split_ws(line);
+    if (tokens.size() < 4) {
+        return std::nullopt;
+    }
+    Board b;
+    b.sq.fill('.');
+    b.packed.fill(0);
+
+    int rank = 7;
+    int file = 0;
+    for (char ch : tokens[0]) {
+        if (ch == '/') {
+            if (file != 8) {
+                return std::nullopt;
+            }
+            --rank;
+            file = 0;
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(ch))) {
+            int n = ch - '0';
+            if (n <= 0 || file + n > 8) {
+                return std::nullopt;
+            }
+            file += n;
+            continue;
+        }
+        if (std::string("PNBRQKpnbrqk").find(ch) == std::string::npos) {
+            return std::nullopt;
+        }
+        if (!on_board(file, rank)) {
+            return std::nullopt;
+        }
+        int sq = square_of(file, rank);
+        set_square(b, sq, ch);
+        if (ch == 'K') {
+            b.king_sq[WHITE] = sq;
+        } else if (ch == 'k') {
+            b.king_sq[BLACK] = sq;
+        }
+        ++file;
+    }
+    if (rank != 0 || file != 8) {
+        return std::nullopt;
+    }
+
+    b.stm = tokens[1] == "b" ? BLACK : WHITE;
+    b.castling = 0;
+    if (tokens[2].find('K') != std::string::npos) b.castling |= 1;
+    if (tokens[2].find('Q') != std::string::npos) b.castling |= 2;
+    if (tokens[2].find('k') != std::string::npos) b.castling |= 4;
+    if (tokens[2].find('q') != std::string::npos) b.castling |= 8;
+
+    b.ep = -1;
+    if (tokens[3] != "-" && tokens[3].size() >= 2) {
+        int ef = tokens[3][0] - 'a';
+        int er = tokens[3][1] - '1';
+        if (on_board(ef, er)) {
+            b.ep = square_of(ef, er);
+        }
+    }
+    return b;
+}
+
+std::string fen4(const Board& b) {
+    std::ostringstream out;
+    for (int rank = 7; rank >= 0; --rank) {
+        int empty = 0;
+        for (int file = 0; file < 8; ++file) {
+            char p = b.sq[square_of(file, rank)];
+            if (p == '.') {
+                ++empty;
+            } else {
+                if (empty) {
+                    out << empty;
+                    empty = 0;
+                }
+                out << p;
+            }
+        }
+        if (empty) out << empty;
+        if (rank) out << '/';
+    }
+    out << (b.stm == WHITE ? " w " : " b ");
+    std::string c;
+    if (b.castling & 1) c.push_back('K');
+    if (b.castling & 2) c.push_back('Q');
+    if (b.castling & 4) c.push_back('k');
+    if (b.castling & 8) c.push_back('q');
+    out << (c.empty() ? "-" : c) << ' ';
+    out << (b.ep >= 0 ? sq_name(b.ep) : "-");
+    return out.str();
+}
+
+int king_square(const Board& b, Color c) {
+    int cached = b.king_sq[c];
+    char k = c == WHITE ? 'K' : 'k';
+    if (cached >= 0 && cached < 64 && b.sq[cached] == k) {
+        return cached;
+    }
+    for (int i = 0; i < 64; ++i) {
+        if (b.sq[i] == k) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+
+
+// Bitboard forms of the leaper and ray tables, derived from the same square
+// lists so the two representations cannot disagree.
+struct AttackBitboards {
+    std::array<std::uint64_t, 64> knight{};
+    std::array<std::uint64_t, 64> king{};
+    std::array<std::array<std::uint64_t, 64>, 2> pawn{}; // squares a pawn of [color] attacks target from
+    std::array<std::array<std::uint64_t, 64>, 8> ray{};
+    std::array<bool, 8> ray_ascending{};
+};
+
+const AttackBitboards& attack_bb() {
+    static const AttackBitboards table = [] {
+        AttackBitboards out{};
+        auto pack = [](const SquareList& list) {
+            std::uint64_t bb = 0;
+            for (int i = 0; i < list.count; ++i) {
+                bb |= 1ull << list.sq[i];
+            }
+            return bb;
+        };
+        for (int sq = 0; sq < 64; ++sq) {
+            out.knight[sq] = pack(knight_table()[sq]);
+            out.king[sq] = pack(king_table()[sq]);
+            out.pawn[WHITE][sq] = pack(pawn_attacker_table()[WHITE][sq]);
+            out.pawn[BLACK][sq] = pack(pawn_attacker_table()[BLACK][sq]);
+            for (int dir = 0; dir < 8; ++dir) {
+                out.ray[dir][sq] = pack(ray_table()[dir][sq]);
+            }
+        }
+        // Whether a ray's squares ascend in index, which decides whether the
+        // nearest blocker is the lowest or highest set bit. Derived from the
+        // table rather than assumed from a direction convention.
+        for (int dir = 0; dir < 8; ++dir) {
+            for (int sq = 0; sq < 64; ++sq) {
+                const SquareList& ray = ray_table()[dir][sq];
+                if (ray.count > 0) {
+                    out.ray_ascending[dir] = ray.sq[0] > sq;
+                    break;
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+bool attacked_on_planes(std::uint64_t occ,
+                        const std::array<std::uint64_t, 2>& by_color,
+                        const std::array<std::uint64_t, 6>& by_type,
+                        int target, Color by) {
+    const AttackBitboards& tb = attack_bb();
+    const std::uint64_t them = by_color[by];
+
+    if (tb.knight[target] & by_type[PT_KNIGHT] & them) {
+        return true;
+    }
+    if (tb.king[target] & by_type[PT_KING] & them) {
+        return true;
+    }
+    if (tb.pawn[by][target] & by_type[PT_PAWN] & them) {
+        return true;
+    }
+
+    const std::uint64_t queens = by_type[PT_QUEEN] & them;
+    const std::uint64_t diagonal = (by_type[PT_BISHOP] & them) | queens;
+    const std::uint64_t straight = (by_type[PT_ROOK] & them) | queens;
+
+    // Directions 0-3 are orthogonal and 4-7 diagonal, matching ray_table.
+    for (int dir = 0; dir < 8; ++dir) {
+        const std::uint64_t sliders = dir < 4 ? straight : diagonal;
+        if (!sliders) {
+            continue;
+        }
+        const std::uint64_t blockers = tb.ray[dir][target] & occ;
+        if (!blockers) {
+            continue;
+        }
+        // Only the nearest piece along the ray can attack the target.
+        const int first = tb.ray_ascending[dir] ? lsb_index(blockers) : msb_index(blockers);
+        if ((1ull << first) & sliders) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_attacked(const Board& b, int target, Color by) {
+    return attacked_on_planes(b.occ, b.by_color, b.by_type, target, by);
+}
+
+bool in_check(const Board& b, Color c) {
+    int k = king_square(b, c);
+    return k < 0 || is_attacked(b, k, other(c));
+}
+
+void add_move(std::vector<Move>& moves, int from, int to, char promo = 0, bool castle = false, bool ep = false) {
+    Move m;
+    m.from = from;
+    m.to = to;
+    m.promo = promo;
+    m.castle = castle;
+    m.ep = ep;
+    moves.push_back(m);
+}
+
+void add_move(MoveList& moves, int from, int to, char promo = 0, bool castle = false, bool ep = false) {
+    Move m;
+    m.from = from;
+    m.to = to;
+    m.promo = promo;
+    m.castle = castle;
+    m.ep = ep;
+    moves.push_back(m);
+}
+
+} // namespace echest
+
+#endif // ECHEST_BOARD_H_INCLUDED

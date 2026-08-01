@@ -1,0 +1,325 @@
+// movegen.h -- Pseudo-legal generation, make_move, legality, and occupancy-plane queries.
+//
+// Part of a header-based split of a single translation unit. The modules are
+// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+
+#ifndef ECHEST_MOVEGEN_H_INCLUDED
+#define ECHEST_MOVEGEN_H_INCLUDED
+
+namespace echest {
+
+template <typename MoveSink>
+void gen_pseudo(const Board& b, MoveSink& moves) {
+    Color us = b.stm;
+    for (int from = 0; from < 64; ++from) {
+        char p = b.sq[from];
+        if (!is_piece_color(p, us)) continue;
+        char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+        int f = file_of(from);
+        int r = rank_of(from);
+
+        if (lp == 'p') {
+            int dir = us == WHITE ? 1 : -1;
+            int start_rank = us == WHITE ? 1 : 6;
+            int promo_rank = us == WHITE ? 7 : 0;
+            int one_r = r + dir;
+            if (on_board(f, one_r)) {
+                int one = square_of(f, one_r);
+                if (b.sq[one] == '.') {
+                    if (one_r == promo_rank) {
+                        for (char pr : {'q', 'r', 'b', 'n'}) add_move(moves, from, one, pr);
+                    } else {
+                        add_move(moves, from, one);
+                        int two_r = r + 2 * dir;
+                        if (r == start_rank && on_board(f, two_r)) {
+                            int two = square_of(f, two_r);
+                            if (b.sq[two] == '.') add_move(moves, from, two);
+                        }
+                    }
+                }
+            }
+            for (int df : {-1, 1}) {
+                int cf = f + df;
+                int cr = r + dir;
+                if (!on_board(cf, cr)) continue;
+                int to = square_of(cf, cr);
+                if ((is_enemy_piece(b.sq[to], us) && !is_king_piece(b.sq[to])) || to == b.ep) {
+                    bool is_ep = to == b.ep && b.sq[to] == '.';
+                    if (cr == promo_rank) {
+                        for (char pr : {'q', 'r', 'b', 'n'}) add_move(moves, from, to, pr, false, is_ep);
+                    } else {
+                        add_move(moves, from, to, 0, false, is_ep);
+                    }
+                }
+            }
+        } else if (lp == 'n') {
+            const SquareList& targets = knight_table()[from];
+            for (int i = 0; i < targets.count; ++i) {
+                int to = targets.sq[i];
+                if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
+            }
+        } else if (lp == 'b' || lp == 'r' || lp == 'q') {
+            int first = lp == 'b' ? 4 : 0;
+            int last = lp == 'r' ? 4 : 8;
+            const auto& rays = ray_table();
+            for (int i = first; i < last; ++i) {
+                const SquareList& ray = rays[i][from];
+                for (int j = 0; j < ray.count; ++j) {
+                    int to = ray.sq[j];
+                    if (is_piece_color(b.sq[to], us)) break;
+                    if (is_king_piece(b.sq[to])) break;
+                    add_move(moves, from, to);
+                    if (b.sq[to] != '.') break;
+                }
+            }
+        } else if (lp == 'k') {
+            const SquareList& targets = king_table()[from];
+            for (int i = 0; i < targets.count; ++i) {
+                int to = targets.sq[i];
+                if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
+            }
+            if (us == WHITE && from == square_of(4, 0) && !in_check(b, WHITE)) {
+                if ((b.castling & 1) && b.sq[square_of(5, 0)] == '.' && b.sq[square_of(6, 0)] == '.' &&
+                    !is_attacked(b, square_of(5, 0), BLACK) && !is_attacked(b, square_of(6, 0), BLACK)) {
+                    add_move(moves, from, square_of(6, 0), 0, true);
+                }
+                if ((b.castling & 2) && b.sq[square_of(3, 0)] == '.' && b.sq[square_of(2, 0)] == '.' && b.sq[square_of(1, 0)] == '.' &&
+                    !is_attacked(b, square_of(3, 0), BLACK) && !is_attacked(b, square_of(2, 0), BLACK)) {
+                    add_move(moves, from, square_of(2, 0), 0, true);
+                }
+            }
+            if (us == BLACK && from == square_of(4, 7) && !in_check(b, BLACK)) {
+                if ((b.castling & 4) && b.sq[square_of(5, 7)] == '.' && b.sq[square_of(6, 7)] == '.' &&
+                    !is_attacked(b, square_of(5, 7), WHITE) && !is_attacked(b, square_of(6, 7), WHITE)) {
+                    add_move(moves, from, square_of(6, 7), 0, true);
+                }
+                if ((b.castling & 8) && b.sq[square_of(3, 7)] == '.' && b.sq[square_of(2, 7)] == '.' && b.sq[square_of(1, 7)] == '.' &&
+                    !is_attacked(b, square_of(3, 7), WHITE) && !is_attacked(b, square_of(2, 7), WHITE)) {
+                    add_move(moves, from, square_of(2, 7), 0, true);
+                }
+            }
+        }
+    }
+}
+
+Board make_move(Board b, const Move& m) {
+    char p = b.sq[m.from];
+    set_square(b, m.from, '.');
+
+    if (m.ep) {
+        int cap_sq = m.to + (b.stm == WHITE ? -8 : 8);
+        set_square(b, cap_sq, '.');
+    }
+
+    char placed = p;
+    if (m.promo) {
+        placed = b.stm == WHITE ? static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))) : m.promo;
+    }
+    set_square(b, m.to, placed);
+    if (p == 'K') {
+        b.king_sq[WHITE] = m.to;
+    } else if (p == 'k') {
+        b.king_sq[BLACK] = m.to;
+    }
+
+    if (m.castle) {
+        if (p == 'K' && m.to == square_of(6, 0)) {
+            set_square(b, square_of(5, 0), 'R');
+            set_square(b, square_of(7, 0), '.');
+        } else if (p == 'K' && m.to == square_of(2, 0)) {
+            set_square(b, square_of(3, 0), 'R');
+            set_square(b, square_of(0, 0), '.');
+        } else if (p == 'k' && m.to == square_of(6, 7)) {
+            set_square(b, square_of(5, 7), 'r');
+            set_square(b, square_of(7, 7), '.');
+        } else if (p == 'k' && m.to == square_of(2, 7)) {
+            set_square(b, square_of(3, 7), 'r');
+            set_square(b, square_of(0, 7), '.');
+        }
+    }
+
+    if (p == 'K') b.castling &= ~3u;
+    if (p == 'k') b.castling &= ~12u;
+    // Castling rights are revoked by SQUARE, never by captured piece type.
+    //
+    // Keying off the piece type is wrong once promotion exists: capturing a
+    // promoted rook anywhere on the board would strip the owner's rights even
+    // though both original corner rooks are untouched. The square tests below
+    // are already complete -- a move from a corner covers the rook leaving, and
+    // a move to a corner covers the rook being captured there (if some other
+    // piece occupies that corner, the right was necessarily already gone).
+    if (m.from == square_of(0, 0) || m.to == square_of(0, 0)) b.castling &= ~2u;
+    if (m.from == square_of(7, 0) || m.to == square_of(7, 0)) b.castling &= ~1u;
+    if (m.from == square_of(0, 7) || m.to == square_of(0, 7)) b.castling &= ~8u;
+    if (m.from == square_of(7, 7) || m.to == square_of(7, 7)) b.castling &= ~4u;
+
+    b.ep = -1;
+    if (std::tolower(static_cast<unsigned char>(p)) == 'p' && std::abs(m.to - m.from) == 16) {
+        b.ep = (m.from + m.to) / 2;
+    }
+    b.stm = other(b.stm);
+    return b;
+}
+
+std::vector<Move> legal_moves_vector(const Board& b, bool move_reserve, std::size_t move_reserve_capacity) {
+    std::vector<Move> pseudo;
+    if (move_reserve) {
+        pseudo.reserve(move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+    std::vector<Move> legal;
+    legal.reserve(pseudo.size());
+    for (const Move& m : pseudo) {
+        Board nb = make_move(b, m);
+        if (!in_check(nb, other(nb.stm))) {
+            legal.push_back(m);
+        }
+    }
+    return legal;
+}
+
+std::vector<Move> legal_moves(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    if (static_pseudo) {
+        MoveList pseudo;
+        gen_pseudo(b, pseudo);
+        if (!pseudo.overflow) {
+            std::vector<Move> legal;
+            legal.reserve(pseudo.size());
+            for (const Move& m : pseudo) {
+                Board nb = make_move(b, m);
+                if (!in_check(nb, other(nb.stm))) {
+                    legal.push_back(m);
+                }
+            }
+            return legal;
+        }
+    }
+    return legal_moves_vector(b, move_reserve, move_reserve_capacity);
+}
+
+bool has_legal_move_vector(const Board& b, bool move_reserve, std::size_t move_reserve_capacity) {
+    std::vector<Move> pseudo;
+    if (move_reserve) {
+        pseudo.reserve(move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+    for (const Move& m : pseudo) {
+        Board nb = make_move(b, m);
+        if (!in_check(nb, other(nb.stm))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool has_legal_move(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    if (static_pseudo) {
+        MoveList pseudo;
+        gen_pseudo(b, pseudo);
+        if (!pseudo.overflow) {
+            for (const Move& m : pseudo) {
+                Board nb = make_move(b, m);
+                if (!in_check(nb, other(nb.stm))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    return has_legal_move_vector(b, move_reserve, move_reserve_capacity);
+}
+
+bool is_checkmate(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    return in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
+}
+
+// Occupancy planes only: enough to answer attack queries, without the mailbox,
+// packed TT words, castling rights or side-to-move that a full Board carries.
+struct Planes {
+    std::uint64_t occ = 0;
+    std::array<std::uint64_t, 2> by_color{};
+    std::array<std::uint64_t, 6> by_type{};
+};
+
+inline void plane_clear(Planes& pl, int sq, Color c, PieceType t) {
+    const std::uint64_t bit = 1ull << sq;
+    pl.occ &= ~bit;
+    pl.by_color[c] &= ~bit;
+    pl.by_type[t] &= ~bit;
+}
+
+inline void plane_set(Planes& pl, int sq, Color c, PieceType t) {
+    const std::uint64_t bit = 1ull << sq;
+    pl.occ |= bit;
+    pl.by_color[c] |= bit;
+    pl.by_type[t] |= bit;
+}
+
+// Apply a move to occupancy planes alone, mirroring make_move's piece movement
+// exactly: source vacated, en-passant victim removed, ordinary capture removed,
+// promotion piece substituted, destination occupied, castling rook relocated.
+//
+// This exists so that move generation never has to build a child Board. The
+// only questions generation asks of the child position are "is the mover's king
+// attacked" (legality) and "is the opponent's king attacked" (check ordering),
+// and both are answered by these planes.
+Planes planes_after_move(const Board& b, const Move& m, int& mover_king_sq) {
+    Planes pl;
+    pl.occ = b.occ;
+    pl.by_color = b.by_color;
+    pl.by_type = b.by_type;
+
+    const Color us = b.stm;
+    const Color them = other(us);
+    const char moving = b.sq[m.from];
+    const PieceType pt = type_of(moving);
+
+    plane_clear(pl, m.from, us, pt);
+    if (m.ep) {
+        plane_clear(pl, m.to + (us == WHITE ? -8 : 8), them, PT_PAWN);
+    } else {
+        const char captured = b.sq[m.to];
+        if (type_of(captured) != PT_NONE) {
+            plane_clear(pl, m.to, them, type_of(captured));
+        }
+    }
+    plane_set(pl, m.to, us, m.promo ? type_of(m.promo) : pt);
+
+    if (m.castle && pt == PT_KING) {
+        const int home = us == WHITE ? 0 : 7;
+        if (m.to == square_of(6, home)) {
+            plane_clear(pl, square_of(7, home), us, PT_ROOK);
+            plane_set(pl, square_of(5, home), us, PT_ROOK);
+        } else if (m.to == square_of(2, home)) {
+            plane_clear(pl, square_of(0, home), us, PT_ROOK);
+            plane_set(pl, square_of(3, home), us, PT_ROOK);
+        }
+    }
+
+    mover_king_sq = (pt == PT_KING) ? m.to : b.king_sq[us];
+    return pl;
+}
+
+
+
+
+// Does this move give check, without materialising the child board?
+//
+// This used to be a second, independent implementation of "is square X attacked
+// after move M" -- 84 lines duplicating the attack logic against a virtual
+// mailbox. Two implementations of the same predicate is the exact shape of
+// hazard that hid the castling-rights bug, so it now shares the single plane
+// path used by move generation.
+bool move_gives_check_fast(const Board& b, const Move& m) {
+    const int enemy_king = king_square(b, other(b.stm));
+    if (enemy_king < 0) {
+        return true;
+    }
+    int ignored = -1;
+    const Planes pl = planes_after_move(b, m, ignored);
+    return attacked_on_planes(pl.occ, pl.by_color, pl.by_type, enemy_king, b.stm);
+}
+
+} // namespace echest
+
+#endif // ECHEST_MOVEGEN_H_INCLUDED

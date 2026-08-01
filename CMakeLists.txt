@@ -15,7 +15,19 @@ endif()
 
 find_package(Threads REQUIRED)
 
-add_executable(echest src/echest.cpp)
+# Deliberately a unity build: the modules are headers included in order by one
+# translation unit, because the search relies on cross-module inlining in its
+# hottest paths. Listing the headers keeps IDEs and install rules aware of them.
+add_executable(echest
+    src/echest.cpp
+    src/types.h
+    src/table.h
+    src/search_state.h
+    src/board.h
+    src/movegen.h
+    src/ordering.h
+    src/prooftable.h
+    src/search.h)
 target_link_libraries(echest PRIVATE Threads::Threads)
 target_compile_definitions(echest PRIVATE ECHEST_VERSION="${PROJECT_VERSION}")
 

@@ -500,6 +500,29 @@ Current E checkpoint:
 - output carries an explicit `timeout` marker, so a caller can distinguish "gave up" from "proved there is no mate". Without it a released tool reports the same thing for both;
 - soundness was verified under pressure rather than only at rest: across three budgets and both threading modes on 24 mate-in-8 positions, 16 proofs were emitted and **0 were invalid**, with 128 timeout markers, and negative controls under a 0.05 s budget produced no false mates.
 
+### 12c. Source Layout
+
+The prover had grown to 3,534 lines in one translation unit. It is now split into eight modules, each with a stated purpose:
+
+| module | lines | purpose |
+|---|---:|---|
+| `types.h` | 270 | colours, moves, boards, proofs, statistics, table keys |
+| `table.h` | 192 | bounded and shared proof tables, memory-budget conversion |
+| `search_state.h` | 215 | search configuration, per-search state, cancellation |
+| `board.h` | 400 | geometry, attack tables, FEN parsing, attack queries |
+| `movegen.h` | 312 | pseudo-legal generation, make_move, legality, planes |
+| `ordering.h` | 293 | ordering scores and ordered move-list generators |
+| `prooftable.h` | 96 | centralised exact proof-table probe and store |
+| `search.h` | 1361 | proof kernel, DFPN preconditioner, routes, parallel search |
+
+**Compilation remains a unity build, deliberately.** The modules are headers included in their original order by one translation unit, so the preprocessed result is textually equivalent to the previous single file. Two reasons: the search depends on cross-module inlining in its hottest paths, and preserving textual order makes the refactor behaviour-preserving *by construction* rather than by inspection.
+
+That was verified rather than assumed: node counts, key moves and PVs are identical to the pre-split binary on all four suites, and paired 3-trial timing shows -1.5% and -0.3%, both inside noise. 92/92 in-repo, ctest green, Linux green, `-Werror` clean.
+
+The split was performed by a script that cuts on declaration boundaries and backs up over preceding comment blocks and `template` headers, so no cut orphans a comment from the code it documents. The first attempt did exactly that -- it separated `template <typename MoveSink>` from `gen_pseudo` -- which is why the boundary logic exists.
+
+`search.h` remains large at 1,361 lines and is the obvious candidate for a further split into kernel, routes, and parallel scheduling.
+
 ### 13. CLI Contract
 
 A released prover is a tool other people drive from scripts, so the argument parser is part of the correctness surface, not decoration.

@@ -1,0 +1,306 @@
+// ordering.h -- Move-ordering scores and the ordered move-list generators.
+//
+// Part of a header-based split of a single translation unit. The modules are
+// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+
+#ifndef ECHEST_ORDERING_H_INCLUDED
+#define ECHEST_ORDERING_H_INCLUDED
+
+namespace echest {
+
+// Move-ordering terms that need no child board: capture, promotion, and moving
+// piece. Shared by the fused and split scoring paths so the two cannot drift.
+int static_move_terms(const Board& b, const Move& m) {
+    int score = 0;
+    if (b.sq[m.to] != '.' || m.ep) score += 10000;
+    if (m.promo) score += 8000;
+    char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
+    if (p == 'q') score += 50;
+    if (p == 'r') score += 40;
+    if (p == 'b' || p == 'n') score += 30;
+    return score;
+}
+
+// Ordering terms that require the child board, given that board.
+int child_move_terms(const Board& nb, bool score_mates, bool score_checks,
+                     bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
+    int score = 0;
+    if (score_mates) {
+        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
+        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+    } else if (score_checks) {
+        if (in_check(nb, nb.stm)) score += 50000;
+    }
+    return score;
+}
+
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
+    int score = 0;
+    if (score_mates) {
+        Board nb = make_move(b, m);
+        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
+        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+    } else if (score_checks) {
+        bool gives_check = false;
+        if (fast_check_score) {
+            gives_check = move_gives_check_fast(b, m);
+        } else {
+            Board nb = make_move(b, m);
+            gives_check = in_check(nb, nb.stm);
+        }
+        if (gives_check) score += 50000;
+    }
+    return score + static_move_terms(b, m);
+}
+
+void stable_bucket_order(std::vector<Move>& moves) {
+    std::vector<int> scores;
+    scores.reserve(moves.size());
+    for (const Move& move : moves) {
+        auto it = std::find(scores.begin(), scores.end(), move.score);
+        if (it != scores.end()) {
+            continue;
+        }
+        auto insert_at = std::find_if(scores.begin(), scores.end(), [&](int score) {
+            return move.score > score;
+        });
+        scores.insert(insert_at, move.score);
+    }
+
+    std::vector<Move> ordered;
+    ordered.reserve(moves.size());
+    for (int score : scores) {
+        for (const Move& move : moves) {
+            if (move.score == score) {
+                ordered.push_back(move);
+            }
+        }
+    }
+    moves.swap(ordered);
+}
+
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo, bool inplace_order, bool bucket_order) {
+    if (moves.size() < 2) {
+        return;
+    }
+    if (inplace_order) {
+        for (Move& move : moves) {
+            move.score = move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo);
+        }
+        if (bucket_order) {
+            stable_bucket_order(moves);
+            return;
+        }
+        std::stable_sort(moves.begin(), moves.end(), [](const Move& a, const Move& c) {
+            return a.score > c.score;
+        });
+        return;
+    }
+    struct ScoredMove {
+        Move move;
+        int score = 0;
+    };
+    std::vector<ScoredMove> scored;
+    scored.reserve(moves.size());
+    for (const Move& move : moves) {
+        scored.push_back({move, move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo)});
+    }
+    std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
+        return a.score > c.score;
+    });
+    for (std::size_t i = 0; i < scored.size(); ++i) {
+        moves[i] = scored[i].move;
+    }
+}
+
+TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
+    TTKey k;
+    k.board = b.packed;
+    std::uint64_t ep = static_cast<std::uint64_t>(b.ep + 1);
+    k.context = static_cast<std::uint64_t>(static_cast<std::uint32_t>(depth))
+        | (static_cast<std::uint64_t>(b.stm) << 32)
+        | (static_cast<std::uint64_t>(attacker) << 33)
+        | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 34)
+        | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 35)
+        | (ep << 39);
+    return k;
+}
+
+TTKey move_hint_key(const Board& b, char kind, Color attacker) {
+    return tt_key(b, 0, kind, attacker);
+}
+
+bool same_move(const Move& a, const Move& b) {
+    return a.from == b.from
+        && a.to == b.to
+        && a.promo == b.promo
+        && a.castle == b.castle
+        && a.ep == b.ep;
+}
+
+bool move_to_front(std::vector<Move>& moves, const Move& hint) {
+    for (std::size_t i = 0; i < moves.size(); ++i) {
+        if (same_move(moves[i], hint)) {
+            if (i != 0) {
+                std::rotate(moves.begin(), moves.begin() + static_cast<std::ptrdiff_t>(i), moves.begin() + static_cast<std::ptrdiff_t>(i + 1));
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// Generate legal moves and their ordering scores in a single pass.
+//
+// Legality already requires building the child board and asking whether the
+// mover left their own king in check. The check-scoring term asks whether the
+// OPPONENT is now in check -- the same child board, the other king. Computing
+// the two separately builds every child board twice. Fusing them removes one
+// full board copy per move from every ordered move list, which on a hard-suite
+// run is tens of millions of copies.
+//
+// This is an evaluation-order change only. The scores produced are identical to
+// the split path, so the resulting move order, and therefore the search, is
+// unchanged.
+std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, bool& out_scored) {
+    out_scored = false;
+    std::vector<Move> pseudo;
+    if (cfg.move_reserve) {
+        pseudo.reserve(cfg.move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+
+    std::vector<Move> legal;
+    legal.reserve(pseudo.size());
+    // Always score. `--fast-check-score` used to select a delta-based check
+    // test; now that move_gives_check_fast shares this same plane path, "fast"
+    // and "exact" check scoring are the identical computation, so the flag has
+    // nothing left to select. It previously suppressed scoring entirely here,
+    // which silently disabled move ordering and cost ~30x on every suite.
+    const bool want_scores = true;
+    const Color us = b.stm;
+    const Color them = other(us);
+    const int enemy_king = b.king_sq[them];
+
+    // --score-mates needs is_checkmate on a real child board, so it keeps the
+    // materialising path. Every other configuration answers both of its
+    // questions from occupancy planes and never builds a child Board here.
+    if (cfg.score_mates) {
+        for (Move m : pseudo) {
+            Board nb = make_move(b, m);
+            if (in_check(nb, other(nb.stm))) {
+                continue;
+            }
+            if (want_scores) {
+                m.score = child_move_terms(nb, cfg.score_mates, cfg.score_checks,
+                                           cfg.move_reserve, cfg.move_reserve_capacity,
+                                           cfg.static_pseudo)
+                        + static_move_terms(b, m);
+            }
+            legal.push_back(m);
+        }
+        out_scored = want_scores;
+        return legal;
+    }
+
+    for (Move m : pseudo) {
+        int king_after = -1;
+        const Planes pl = planes_after_move(b, m, king_after);
+        if (king_after >= 0 && attacked_on_planes(pl.occ, pl.by_color, pl.by_type, king_after, them)) {
+            continue; // illegal: the mover left their own king attacked
+        }
+        if (want_scores) {
+            int score = static_move_terms(b, m);
+            if (cfg.score_checks && enemy_king >= 0 &&
+                attacked_on_planes(pl.occ, pl.by_color, pl.by_type, enemy_king, us)) {
+                score += 50000;
+            }
+            m.score = score;
+        }
+        legal.push_back(m);
+    }
+    out_scored = want_scores;
+    return legal;
+}
+
+// Obtain the move list for a search node, ordered if the node warrants it.
+// Returns whether the returned moves carry ordering scores.
+std::vector<Move> generate_ordered_moves(Search& s, const Board& b, bool& moves_scored) {
+    moves_scored = false;
+    if (s.fused_order && !s.static_pseudo) {
+        bool scored = false;
+        std::vector<Move> moves = legal_moves_fused(b, s, scored);
+        if (scored && moves.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+            ++s.stats.order_calls;
+            s.stats.order_moves += moves.size();
+            if (s.bucket_order) {
+                stable_bucket_order(moves);
+            } else {
+                std::stable_sort(moves.begin(), moves.end(),
+                                 [](const Move& a, const Move& c) { return a.score > c.score; });
+            }
+            moves_scored = true;
+        }
+        return moves;
+    }
+    std::vector<Move> moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    if (moves.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += moves.size();
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score,
+                    s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
+                    s.inplace_order, s.bucket_order);
+        moves_scored = true;
+    }
+    return moves;
+}
+
+// Pseudo-legal defender replies, ordered WITHOUT building any child board.
+//
+// A defender (AND) node stops at the first reply that survives, so it typically
+// searches ~1 of ~19 generated replies. Eagerly proving legality for all of
+// them builds eighteen child boards that are then discarded.
+//
+// `move_gives_check_fast` answers the check-ordering term by querying the
+// post-move board virtually, so ordering needs no child board at all. Legality
+// is then established lazily, only for replies actually reached.
+//
+// The ordering predicate is identical to the eager path -- both ask whether the
+// move gives check -- and the sort is stable, so removing the illegal moves
+// from the sequence leaves the order of the legal ones unchanged. The sequence
+// of legal replies searched is therefore the same as the eager path's, and so
+// is the resulting search.
+std::vector<Move> pseudo_defender_moves(Search& s, const Board& b) {
+    std::vector<Move> pseudo;
+    if (s.move_reserve) {
+        pseudo.reserve(s.move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+    s.stats.defender_pseudo_moves += pseudo.size();
+    if (pseudo.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += pseudo.size();
+        for (Move& m : pseudo) {
+            int score = static_move_terms(b, m);
+            if (s.score_checks && move_gives_check_fast(b, m)) {
+                score += 50000;
+            }
+            m.score = score;
+        }
+        if (s.bucket_order) {
+            stable_bucket_order(pseudo);
+        } else {
+            std::stable_sort(pseudo.begin(), pseudo.end(),
+                             [](const Move& a, const Move& c) { return a.score > c.score; });
+        }
+    }
+    return pseudo;
+}
+
+bool should_order(const Search& s, std::size_t move_count) {
+    return move_count >= std::max<std::size_t>(2, s.order_min_size);
+}
+
+} // namespace echest
+
+#endif // ECHEST_ORDERING_H_INCLUDED

@@ -1,0 +1,283 @@
+// types.h -- Core value types: colours, moves, boards, proofs, statistics, table keys.
+//
+// Part of a header-based split of a single translation unit. The modules are
+// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+
+#ifndef ECHEST_TYPES_H_INCLUDED
+#define ECHEST_TYPES_H_INCLUDED
+
+namespace echest {
+
+
+enum Color { WHITE = 0, BLACK = 1 };
+
+// Index of the least/most significant set bit. Portable across the compilers
+// the CI matrix builds with; the generic fallbacks keep this correct anywhere.
+inline int lsb_index(std::uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ctzll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return static_cast<int>(i);
+#else
+    int n = 0;
+    while ((x & 1ull) == 0ull) { x >>= 1; ++n; }
+    return n;
+#endif
+}
+
+inline int msb_index(std::uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return 63 - __builtin_clzll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return static_cast<int>(i);
+#else
+    int n = 63;
+    while ((x & (1ull << 63)) == 0ull) { x <<= 1; --n; }
+    return n;
+#endif
+}
+
+enum class RouteKind {
+    DepthFirst,
+    ShallowFast,
+    Dfpn,
+};
+
+struct Move {
+    int from = -1;
+    int to = -1;
+    char promo = 0;
+    bool castle = false;
+    bool ep = false;
+    int score = 0;
+};
+
+struct MoveList {
+    std::array<Move, 256> moves{};
+    std::size_t count = 0;
+    bool overflow = false;
+
+    void push_back(const Move& move) {
+        if (count < moves.size()) {
+            moves[count++] = move;
+        } else {
+            overflow = true;
+        }
+    }
+
+    std::size_t size() const {
+        return count;
+    }
+
+    const Move* begin() const {
+        return moves.data();
+    }
+
+    const Move* end() const {
+        return moves.data() + count;
+    }
+};
+
+struct Proof {
+    bool ok = false;
+    std::vector<Move> pv;
+    std::string cert;
+};
+
+struct RouteResult {
+    Proof proof;
+    int proved_depth = 0;
+};
+
+// Piece-type indices for the bitboard planes.
+enum PieceType { PT_PAWN = 0, PT_KNIGHT, PT_BISHOP, PT_ROOK, PT_QUEEN, PT_KING, PT_NONE };
+
+inline PieceType type_of(char p) {
+    switch (std::tolower(static_cast<unsigned char>(p))) {
+        case 'p': return PT_PAWN;
+        case 'n': return PT_KNIGHT;
+        case 'b': return PT_BISHOP;
+        case 'r': return PT_ROOK;
+        case 'q': return PT_QUEEN;
+        case 'k': return PT_KING;
+        default: return PT_NONE;
+    }
+}
+
+struct Board {
+    std::array<char, 64> sq{};
+    std::array<std::uint64_t, 4> packed{};
+    // Occupancy planes maintained incrementally by set_square. Attack queries
+    // read these instead of walking squares one at a time.
+    std::uint64_t occ = 0;
+    std::array<std::uint64_t, 2> by_color{};
+    std::array<std::uint64_t, 6> by_type{};
+    std::array<int, 2> king_sq{{-1, -1}};
+    Color stm = WHITE;
+    unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
+    int ep = -1;
+};
+
+struct Stats {
+    std::uint64_t nodes = 0;
+    std::uint64_t attacker_nodes = 0;
+    std::uint64_t defender_nodes = 0;
+    std::uint64_t tt_probes = 0;
+    std::uint64_t tt_hits = 0;
+    std::uint64_t tt_stores = 0;
+    std::uint64_t exact_tt_proof_hits = 0;
+    std::uint64_t exact_tt_disproof_hits = 0;
+    std::uint64_t exact_tt_proof_stores = 0;
+    std::uint64_t exact_tt_disproof_stores = 0;
+    std::uint64_t shallow_fast_attempts = 0;
+    std::uint64_t shallow_fast_hits = 0;
+    std::uint64_t shallow_fast_fallbacks = 0;
+    std::uint64_t bound_tt_probes = 0;
+    std::uint64_t bound_tt_hits = 0;
+    std::uint64_t bound_tt_ok_hits = 0;
+    std::uint64_t bound_tt_fail_hits = 0;
+    std::uint64_t bound_tt_stores = 0;
+    std::uint64_t attacker_move_lists = 0;
+    std::uint64_t attacker_moves = 0;
+    std::uint64_t attacker_candidates = 0;
+    std::uint64_t defender_move_lists = 0;
+    std::uint64_t defender_moves = 0;
+    std::uint64_t defender_replies_tried = 0;
+    std::uint64_t defender_pseudo_moves = 0;
+    std::uint64_t defender_lazy_skipped = 0;
+    std::uint64_t dfpn_nodes = 0;
+    std::uint64_t dfpn_proved = 0;
+    std::uint64_t dfpn_disproved = 0;
+    std::uint64_t dfpn_table_size = 0;
+    std::uint64_t dfpn_abandoned = 0;
+    std::uint64_t root_sequential_tried = 0;
+    std::uint64_t root_sequential_hits = 0;
+    std::uint64_t dfpn_movegen = 0;
+    std::uint64_t dfpn_mate_tests = 0;
+    std::uint64_t deadline_checks = 0;
+    std::uint64_t order_calls = 0;
+    std::uint64_t order_moves = 0;
+    std::uint64_t immediate_mate_tests = 0;
+    std::uint64_t ordered_check_shortcut_uses = 0;
+    std::uint64_t ordered_check_shortcut_checks = 0;
+    std::uint64_t ordered_check_shortcut_skips = 0;
+    std::uint64_t immediate_mates = 0;
+    std::uint64_t refutation_hint_probes = 0;
+    std::uint64_t refutation_hint_hits = 0;
+    std::uint64_t refutation_hint_stores = 0;
+    std::uint64_t proof_hint_probes = 0;
+    std::uint64_t proof_hint_hits = 0;
+    std::uint64_t proof_hint_stores = 0;
+    std::uint64_t route_rejections = 0;
+    std::uint64_t defender_refutations = 0;
+
+    // Accumulate another search's counters into this one. Used to fold
+    // per-worker statistics back into the reported totals after a root
+    // split, so acn stays an honest whole-search node count.
+    Stats& operator+=(const Stats& o) {
+        nodes += o.nodes;
+        attacker_nodes += o.attacker_nodes;
+        defender_nodes += o.defender_nodes;
+        tt_probes += o.tt_probes;
+        tt_hits += o.tt_hits;
+        tt_stores += o.tt_stores;
+        exact_tt_proof_hits += o.exact_tt_proof_hits;
+        exact_tt_disproof_hits += o.exact_tt_disproof_hits;
+        exact_tt_proof_stores += o.exact_tt_proof_stores;
+        exact_tt_disproof_stores += o.exact_tt_disproof_stores;
+        shallow_fast_attempts += o.shallow_fast_attempts;
+        shallow_fast_hits += o.shallow_fast_hits;
+        shallow_fast_fallbacks += o.shallow_fast_fallbacks;
+        bound_tt_probes += o.bound_tt_probes;
+        bound_tt_hits += o.bound_tt_hits;
+        bound_tt_ok_hits += o.bound_tt_ok_hits;
+        bound_tt_fail_hits += o.bound_tt_fail_hits;
+        bound_tt_stores += o.bound_tt_stores;
+        attacker_move_lists += o.attacker_move_lists;
+        attacker_moves += o.attacker_moves;
+        attacker_candidates += o.attacker_candidates;
+        defender_move_lists += o.defender_move_lists;
+        defender_moves += o.defender_moves;
+        defender_replies_tried += o.defender_replies_tried;
+        defender_pseudo_moves += o.defender_pseudo_moves;
+        defender_lazy_skipped += o.defender_lazy_skipped;
+        dfpn_nodes += o.dfpn_nodes;
+        dfpn_proved += o.dfpn_proved;
+        dfpn_disproved += o.dfpn_disproved;
+        dfpn_table_size += o.dfpn_table_size;
+        dfpn_abandoned += o.dfpn_abandoned;
+        root_sequential_tried += o.root_sequential_tried;
+        root_sequential_hits += o.root_sequential_hits;
+        dfpn_movegen += o.dfpn_movegen;
+        dfpn_mate_tests += o.dfpn_mate_tests;
+        deadline_checks += o.deadline_checks;
+        order_calls += o.order_calls;
+        order_moves += o.order_moves;
+        immediate_mate_tests += o.immediate_mate_tests;
+        ordered_check_shortcut_uses += o.ordered_check_shortcut_uses;
+        ordered_check_shortcut_checks += o.ordered_check_shortcut_checks;
+        ordered_check_shortcut_skips += o.ordered_check_shortcut_skips;
+        immediate_mates += o.immediate_mates;
+        refutation_hint_probes += o.refutation_hint_probes;
+        refutation_hint_hits += o.refutation_hint_hits;
+        refutation_hint_stores += o.refutation_hint_stores;
+        proof_hint_probes += o.proof_hint_probes;
+        proof_hint_hits += o.proof_hint_hits;
+        proof_hint_stores += o.proof_hint_stores;
+        route_rejections += o.route_rejections;
+        defender_refutations += o.defender_refutations;
+        return *this;
+    }
+};
+
+// Guard: every Stats member is a counter folded by operator+=. If a field is
+// added without extending the merge, this assertion fails at compile time.
+static_assert(sizeof(Stats) == 51 * sizeof(std::uint64_t),
+              "Stats gained a field; extend Stats::operator+= to match.");
+
+struct TTKey {
+    std::array<std::uint64_t, 4> board{};
+    std::uint64_t context = 0;
+
+    bool operator==(const TTKey& other) const {
+        return board == other.board && context == other.context;
+    }
+};
+
+struct TTKeyHash {
+    std::size_t operator()(const TTKey& key) const noexcept {
+        std::uint64_t h = 0x9e3779b97f4a7c15ull;
+        auto mix64 = [&](std::uint64_t value) {
+            value += 0x9e3779b97f4a7c15ull;
+            value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+            value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+            value ^= value >> 31;
+            h ^= value + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+        };
+        for (std::uint64_t word : key.board) {
+            mix64(word);
+        }
+        mix64(key.context);
+        return static_cast<std::size_t>(h);
+    }
+};
+
+enum class TTEntryKind {
+    Disproof,
+    Proof,
+};
+
+struct TTEntry {
+    TTEntryKind kind = TTEntryKind::Disproof;
+    std::vector<Move> pv;
+    std::string cert;
+    std::uint32_t gen = 0;
+};
+
+} // namespace echest
+
+#endif // ECHEST_TYPES_H_INCLUDED
