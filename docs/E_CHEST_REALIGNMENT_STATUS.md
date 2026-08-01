@@ -2,14 +2,21 @@
 
 ## Current Status
 
-E is now aligned around a route-neutral exact prover boundary:
+**Configuration note (2026-08-01).** Everything measured as a win now ships as a
+default rather than behind a flag: all cores up to 16, the search tunings, a
+256 MB table, and the restriction portfolio whenever `--time-limit` is given.
+A bare `echest -z 8 --time-limit 15 -` previously solved half of what the tuned
+invocation did; it now matches it. Each default has an opt-out. See architecture
+sections 8n and 8l.
+
+E is aligned around a route-neutral exact prover boundary:
 
 - `run_route` dispatches the selected route;
 - `--route depth-first` selects the current exact iterative depth-first route and remains the default;
 - `--route shallow-fast` is an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first from the first untried depth for deeper requests;
 - `route_result_is_acceptable` is the single output guard for route results;
 - normal output is emitted only for a non-empty accepted proof whose reported mate depth matches the representative PV and is within the requested depth;
-- proof-tree output remains opt-in through `--emit-proof` and is independently verified by `benchmarks\scripts\e_verify_proof_tree.py`.
+- proof-tree output remains opt-in through `--emit-proof` and is independently verified by the shipped `tools/verify_proof.py`.
 
 Implemented core pieces:
 

@@ -6,6 +6,61 @@ E Chest is a from-scratch exact directmate prover designed to exceed the current
 
 The current D line wins mostly through orchestration: batching, route selection, memory sizing, load balancing, and worker fanout. E aims to improve the core prover itself and then regain or exceed D's orchestration advantages.
 
+## Contents
+
+Sections are numbered by the order they were written, not the order they
+appear, and the numbers are stable: they are cited across commit messages
+and by each other, so they are never renumbered. This index is the way to
+navigate them.
+
+- [1. Exact Proof Kernel](#1-exact-proof-kernel)
+- [2. Modern Board And Move Engine](#2-modern-board-and-move-engine)
+- [2b. Move Generation Gate: Perft](#2b-move-generation-gate-perft)
+- [3. Context-Safe Proof Table / TT](#3-context-safe-proof-table--tt)
+- [3e. The Bound Table Is Retired](#3e-the-bound-table-is-retired)
+- [3d. Shared Proof/Disproof Table](#3d-shared-proofdisproof-table)
+- [3c. Bounded Tables And Honoured `-M`](#3c-bounded-tables-and-honoured--m)
+- [4. Native DFPN / Proof-Number Search](#4-native-dfpn--proof-number-search)
+- [5. Proof-Safe Move Ordering](#5-proof-safe-move-ordering)
+- [5b. Fused Legality And Ordering](#5b-fused-legality-and-ordering)
+- [6. Defender Refutation Memory](#6-defender-refutation-memory)
+- [7. Typed Restrictions](#7-typed-restrictions)
+- [7b. What The Restriction Options Actually Are](#7b-what-the-restriction-options-actually-are)
+- [7c. ChecksOnly Implemented](#7c-checksonly-implemented)
+- [7h. Portfolio Parallelism](#7h-portfolio-parallelism)
+- [7g. The Restriction Portfolio](#7g-the-restriction-portfolio)
+- [7f. ChecksOnly Completed](#7f-checksonly-completed)
+- [7d. KingSquares, PieceLimit and MaxMoves Implemented](#7d-kingsquares-piecelimit-and-maxmoves-implemented)
+- [7e. ThreatDepth Implemented](#7e-threatdepth-implemented)
+- [8. Internal Parallelism](#8-internal-parallelism)
+- [8f. The Scaling Cliff](#8f-the-scaling-cliff)
+- [8e. Resource Scaling Is Exhausted](#8e-resource-scaling-is-exhausted)
+- [8d. Parallelism Saturates At About 16 Threads](#8d-parallelism-saturates-at-about-16-threads)
+- [8c. Root Young-Brothers-Wait (measured, not promoted)](#8c-root-young-brothers-wait-measured-not-promoted)
+- [8b. Parallel Cost Gate](#8b-parallel-cost-gate)
+- [3b. Shared Exact Proof Table](#3b-shared-exact-proof-table)
+- [9. Persistent Service Mode](#9-persistent-service-mode)
+- [10. Memory And Locality](#10-memory-and-locality)
+- [10b. Input Validation And A Castling Bug It Uncovered](#10b-input-validation-and-a-castling-bug-it-uncovered)
+- [11. Verification Harness](#11-verification-harness)
+- [12. Benchmark And Mining System](#12-benchmark-and-mining-system)
+- [4b. Direct-Depth Search](#4b-direct-depth-search)
+- [12b. Wall-Clock Budget](#12b-wall-clock-budget)
+- [12c. Source Layout](#12c-source-layout)
+- [13. CLI Contract](#13-cli-contract)
+- [8e. Rejected Routes Are Not Worth A Portfolio Lane (measured, not promoted)](#8e-rejected-routes-are-not-worth-a-portfolio-lane-measured-not-promoted)
+- [8f. The Restriction Portfolio, Derived Rather Than Hand-Picked (promoted)](#8f-the-restriction-portfolio-derived-rather-than-hand-picked-promoted)
+- [8g. Compound Restrictions (measured, not promoted)](#8g-compound-restrictions-measured-not-promoted)
+- [8h. Mate-8 Is Budget-Limited, Not Capability-Limited (diagnostic)](#8h-mate-8-is-budget-limited-not-capability-limited-diagnostic)
+- [8i. Legality Without A Child Board, And What It Says About Bitboards (promoted)](#8i-legality-without-a-child-board-and-what-it-says-about-bitboards-promoted)
+- [8j. Allocator Traffic Is Not The Bottleneck Either (promoted on resources, not speed)](#8j-allocator-traffic-is-not-the-bottleneck-either-promoted-on-resources-not-speed)
+- [8k. Node Cost Is Diffuse, So Micro-Optimisation Cannot Reach The Target](#8k-node-cost-is-diffuse-so-micro-optimisation-cannot-reach-the-target)
+- [8l. Transposition Density Is Low, And The Memory Default Was Below The Knee](#8l-transposition-density-is-low-and-the-memory-default-was-below-the-knee)
+- [8m. The Defender Side Is Already Tight, And Refutation Hints Cost More Than They Save](#8m-the-defender-side-is-already-tight-and-refutation-hints-cost-more-than-they-save)
+- [8n. The Shipped Defaults Were The Untuned Ones (promoted)](#8n-the-shipped-defaults-were-the-untuned-ones-promoted)
+- [8o. The Corpus Did Not Round-Trip, And The Registry Measured A Dead Configuration](#8o-the-corpus-did-not-round-trip-and-the-registry-measured-a-dead-configuration)
+
+
 ## Impact-Ordered Architecture
 
 ### 1. Exact Proof Kernel
@@ -28,7 +83,7 @@ Current E checkpoint:
 - attacker nodes contain one selected proof move;
 - immediate mate leaves use `mate:true`;
 - defender nodes contain exactly one branch per legal defender reply;
-- `benchmarks\scripts\e_verify_proof_tree.py` independently verifies certificates with python-chess.
+- `tools/verify_proof.py` independently verifies certificates with python-chess. It ships with the engine, so a reader can check a proof without trusting the prover that produced it.
 
 ### 2. Modern Board And Move Engine
 
@@ -190,7 +245,7 @@ Current E checkpoint:
 - the rejection nonetheless stands, for a different reason. On that position the prune removes 8.6% of nodes (268,260 to 245,083) and costs 14.5% more time, because it is paid for with a *second table*: 126k extra probes, 116k extra stores, and a 96k-entry structure competing for cache. Capability is unchanged at 13/24 mate-in-8 and 3/20 mate-in-10;
 - the correct summary is "the prune fires and the bookkeeping costs more than the search it saves", which points directly at the shared proof/disproof table: keying by position without depth and storing `max_disproved_depth` and `min_proved_depth` in one entry makes the same prune free, since one probe would answer both questions and the second table would disappear;
 - the first guarded positive-bound probe stayed correctness-clean but was not promoted because the balanced no-EP suite slowed down despite smoke/regression average improvements;
-- `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
+- `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and a collector in the private benchmark harness (not shipped with the engine) stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
 ### 3e. The Bound Table Is Retired
@@ -763,7 +818,7 @@ E needs a larger corpus than the current suite:
 
 Current E checkpoint:
 
-- `benchmarks/scripts/e_mine_deep_mates.py` mines directmates deeper than the frozen suites, using the engine's own iterative deepening to establish the exact mate distance and grading positions by measured node cost;
+- a deep-mate miner in the private benchmark harness (not shipped with the engine) finds directmates deeper than the frozen suites, using the engine's own iterative deepening to establish the exact mate distance and grading positions by measured node cost;
 - `benchmarks/suites/e_deep_mined_20260622.jsonl` holds 42 verified positions, 35 mate-in-6 and 7 mate-in-7, with a maximum cost of 25.6M nodes -- **138x** the previous corpus maximum of 185k, and a median 13x it;
 - every position is PV-replay verified (42/42) and the mate-6 subset is proof-certificate verified (35/35, 0 invalid);
 - **this corpus immediately corrected a headline claim.** Parallel speedup measured 3.51x on the easy suites but only **1.36x** here, and 16 threads is slower than 8. Node counts reveal why: 8 threads explores 2.2x the sequential nodes and 16 threads 2.9x, because sibling root subtrees share far more structure deep in the tree than shallow, so root splitting duplicates increasing amounts of work as depth grows;
@@ -1362,6 +1417,54 @@ that builds its own inputs and its own configuration validates the engine
 against itself, and is blind in exactly the direction a first-time user
 approaches from. The fix in both cases was to make a gate consume the shipped
 artefact as shipped.
+
+### 8p. The Published Tree, Checked As Published
+
+8o established that gates which build their own inputs validate the engine
+against itself. The same argument applies to the tree: every check so far ran
+against the working copy, inside a larger private workspace, which is not what a
+reader receives.
+
+Checked as published, by extracting the tracked files with `git archive` into an
+empty directory and running the documented build:
+
+| step | result |
+|---|---|
+| extracted tree | 22 files, no build artefacts, no absolute paths |
+| `cmake -S . -B build` | configures |
+| `cmake --build build` | builds |
+| `ctest` | 1/1, the full self-test, 11.4 s against a 900 s timeout |
+
+The build path a reader is told to follow works, and the CI workflow's exact
+sequence reproduces locally. (The workflow itself still cannot run: GitHub reads
+workflows only from a repository root, and it sits at `chest-e/.github/` awaiting
+extraction. That is deliberate and documented, but it does mean CI is staged
+rather than active.)
+
+What extraction *did* break was documentation. The docs were written while
+chest-e was a subdirectory beside a private benchmark harness, and several
+referenced it:
+
+- two places, including the status document, told the reader that certificates
+  are verified by a proof-tree script in the private harness. The engine ships
+  exactly that capability as `tools/verify_proof.py`. A reader following the
+  instruction would conclude the verifier was missing, when the most important
+  claim the project makes -- that proofs are independently checkable -- is the
+  one thing it does ship a tool for;
+- two more cited harness scripts for profiling and mining, which genuinely are
+  not shipped and now say so.
+
+`test_docs_reference_shipped_files` now fails on any documentation reference
+that does not resolve inside the tree, with an allowlist for deliberately
+external citations (WinChest's own `Options.txt`). The gate was verified by
+injecting a dangling reference and confirming it fails with the file and line,
+because a gate that has never failed has not been shown to work.
+
+The architecture document also passed 1,300 lines and 46 subsections with no way
+to navigate it. It now opens with a generated index. The section numbers are
+deliberately **not** renumbered despite being out of order: they are cited by
+each other and by commit messages, so their stability is worth more than their
+tidiness.
 
 ## Promotion Rule
 

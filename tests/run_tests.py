@@ -750,6 +750,46 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
 
 
+def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
+    """Documentation must not point at files the published tree does not contain.
+
+    The docs were written while chest-e was a subdirectory of a larger private
+    workspace, so several of them referenced the benchmark harness alongside it.
+    Extracted for publication, those became instructions to run scripts that are
+    not there -- including one telling the reader to verify proofs with a script
+    that the engine actually ships under a different name.
+
+    Deliberately external references are allowed by name; everything else that
+    looks like a repository path must resolve inside the tree.
+    """
+    print("\n[docs] every referenced file ships with the engine")
+
+    root = HERE.parent
+    external = {"Options.txt"}          # WinChest's own documentation, cited not shipped
+    pattern = re.compile(
+        r"`([^`\s]+\.(?:py|cpp|h|md|txt|epd|ps1|yml|json))`"
+        r"|(?:^|\s)((?:benchmarks|tools|tests|src|docs)[/\\\\][^\s`,;)]+)")
+
+    dangling = []
+    for path in sorted(root.rglob("*.md")):
+        if "build" in path.parts:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for match in pattern.finditer(line):
+                ref = (match.group(1) or match.group(2) or "").strip()
+                if not ref or ref.startswith("http") or ref in external:
+                    continue
+                norm = ref.replace(chr(92), "/")
+                tail = norm.split("/")[-1]
+                if any((root / norm).exists() or (base / norm).exists() or (base / tail).exists()
+                       for base in (path.parent, root, root / "src", root / "tools", root / "tests")):
+                    continue
+                dangling.append(f"{path.relative_to(root)}:{number} -> {ref}")
+
+    res.check("no documentation reference points outside the shipped tree",
+              not dangling, "; ".join(dangling[:4]))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -784,6 +824,7 @@ def main() -> int:
     test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
+    test_docs_reference_shipped_files(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
     for failure in res.failed:
