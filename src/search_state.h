@@ -54,6 +54,16 @@ struct SearchConfig {
     // a solution is a serial-check mate. This selects a different problem, not
     // a faster route to the same one.
     bool checks_only = false;
+    // WinChest KingSquares: allow only attacker moves after which the defender
+    // king has at most this many squares available, counting the one it stands
+    // on. 0 means off; 1 means the king cannot move at all.
+    int king_squares = 0;
+    // WinChest PieceLimit: at most this many defender pieces may have a legal
+    // move after the attacker's move. 0 means off.
+    int piece_limit = 0;
+    // WinChest MaxMoves: the defender may have at most this many legal moves in
+    // total after the attacker's move. 0 means off.
+    int max_defender_moves = 0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

@@ -434,6 +434,38 @@ Implementation and validation:
 
 The manual also records that under restriction "it can not be guaranteed that there will be found any solution at all, or that a given solution is the best (i.e. shortest) one" -- which matches how E behaves: a restricted search may legitimately report nothing.
 
+### 7d. KingSquares, PieceLimit and MaxMoves Implemented
+
+Three more WinChest variants are implemented, all per-move filters on the attacker's list:
+
+| option | condition on the position after the attacker's move |
+|---|---|
+| `-K N` | the defender king has at most N squares available, **counting the one it stands on** |
+| `-P N` | at most N defender pieces have a legal move |
+| `-X N` | the defender has at most N legal moves in total |
+
+Off values follow WinChest exactly: `-K 0` or `9`, `-P 0` or `16`, `-X 0` or `222`. Negative values select automatic-mode lower bounds, which this engine has no automatic mode for, so they are refused rather than silently reinterpreted.
+
+All three ask about the defender's replies, so they share one child materialisation and one move generation per candidate; the cost is paid only when a restriction is active.
+
+**Differentially validated against the WinChest binary**: 23 positions x 9 option settings, **207 comparisons, 0 disagreements** on solvedness.
+
+Agreement alone would be weak if the restrictions never bound, so that was measured too. Against 13 solved unrestricted:
+
+| setting | solved |
+|---|---:|
+| unrestricted | 13/23 |
+| `-C 1` | 3/23 |
+| `-K 1` / `-K 2` | 7/23 / 11/23 |
+| `-P 1` / `-P 2` | 3/23 / 6/23 |
+| `-X 1` / `-X 2` / `-X 4` | 2/23 / 3/23 / 4/23 |
+
+Every setting binds substantially, so the agreement is informative rather than vacuous.
+
+The suite also checks the property directly rather than only through the oracle: for every solution found under a restriction, the condition is re-derived with python-chess at the position after *every* attacker move in the PV. A restriction that applied at the root but leaked deeper would fail that check.
+
+`-R` (ThreatDepth) and `-I` (threat flags) remain unimplemented. Both need null-move threat machinery that the exact kernel does not have, which is a larger change than a per-move filter.
+
 ### 8. Internal Parallelism
 
 E should support root split and deeper work stealing with:

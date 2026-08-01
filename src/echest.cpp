@@ -130,18 +130,21 @@ void print_usage() {
 "  --fast-check-score, --exact-check-score, --score-checks, --no-check-score\n"
 "                                accepted; check scoring is a single shared\n"
 "                                plane query, so these select nothing\n"
-"  WinChest special-mate variants, NOT IMPLEMENTED. Each selects a different\n"
-"  problem rather than a tuning knob, so they are rejected, not ignored:\n"
-"    -C N                        ChecksOnly bitmask; -C 1 IS implemented\n"
-"    -R N                        examine threats only\n"
-"    -K N                        limit defender king mobility\n"
-"    -P N                        limit the set of moving pieces\n"
-"    -X N                        limit maximum moves\n"
-"    -I N                        threat flags\n"
+"WinChest special-mate variants. -C 1, -K, -P and -X are implemented and\n"
+"validated against the WinChest binary. Each selects a different problem, so\n"
+"the unimplemented ones are rejected rather than ignored:\n"
+"    -C N                        ChecksOnly bitmask; -C 1 implemented\n"
+"    -K N                        KingSquares: defender king has at most N\n"
+"                                squares, counting the one it stands on\n"
+"    -P N                        PieceLimit: at most N defender pieces may\n"
+"                                move\n"
+"    -X N                        MaxMoves: at most N defender moves in total\n"
+"    -R N                        examine threats only (not implemented)\n"
+"    -I N                        threat flags (not implemented)\n"
 "    -n N, -N N                  accepted with a value, same treatment\n"
 "  Pass --allow-unimplemented to search the unrestricted problem instead.\n"
-"  -C 1 restricts the attacker to check-moves (serial-check mate) and is\n"
-"  supported. ChecksOnly bits 2/4/8/16 and the other variants are not.\n"
+"  Off values follow WinChest: -C 0, -K 0 or 9, -P 0 or 16, -X 0 or 222.\n"
+"  Negative values select automatic-mode bounds, which are not implemented.\n"
 "  Chest 3.19 has none of these; they are WinChest extensions.\n"
 "\n"
 "  -h, --help                    this message\n"
@@ -417,17 +420,40 @@ int main(int argc, char** argv) {
                                    "bits 2, 4, 8 and 16 are not. Pass "
                                    "--allow-unimplemented to search unrestricted.");
             }
-        } else if (arg == "-R" || arg == "-K" || arg == "-P" ||
-                   arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") {
+        } else if (arg == "-K" || arg == "-P" || arg == "-X") {
+            // KingSquares / PieceLimit / MaxMoves: each bounds what the
+            // defender may do after an attacker move, so each is a
+            // per-move filter rather than a search heuristic.
+            //   -K N  king has at most N squares, counting its own
+            //   -P N  at most N defender pieces can move
+            //   -X N  at most N defender moves in total
+            // Off values follow WinChest: K 0 or 9, P 0 or 16, X 0 or 222.
+            const char* v = need_value(i);
+            if (!v) return usage_error("option " + arg + " requires a value");
+            const int n = std::atoi(v);
+            if (n < 0) {
+                // Negative values are lower bounds for WinChest's automatic
+                // search, which this engine does not have.
+                if (!allow_unimplemented) {
+                    return usage_error("option " + arg + " with a negative value selects "
+                                       "WinChest automatic-mode bounds, which this engine "
+                                       "does not implement. Use a positive limit, or "
+                                       "--allow-unimplemented to search unrestricted.");
+                }
+            } else if (arg == "-K") {
+                config.king_squares = (n == 0 || n >= 9) ? 0 : n;
+            } else if (arg == "-P") {
+                config.piece_limit = (n == 0 || n >= 16) ? 0 : n;
+            } else {
+                config.max_defender_moves = (n == 0 || n >= 222) ? 0 : n;
+            }
+        } else if (arg == "-R" || arg == "-I" || arg == "-n" || arg == "-N") {
             if (!need_value(i)) {
                 return usage_error("option " + arg + " requires a value");
             }
             if (!allow_unimplemented) {
                 std::string meaning = "a restricted mate variant";
                 if (arg == "-R") meaning = "examine threats only";
-                else if (arg == "-K") meaning = "limit defender king mobility";
-                else if (arg == "-P") meaning = "limit the set of moving pieces";
-                else if (arg == "-X") meaning = "limit maximum moves";
                 else if (arg == "-I") meaning = "threat flags";
                 return usage_error("option " + arg + " selects a WinChest special-mate "
                                    "variant (" + meaning + ") that this engine does not "

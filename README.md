@@ -119,7 +119,7 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-120 checks covering:
+129 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -207,15 +207,16 @@ immediately. Perft is a permanent gate for that reason.
 - Reach, as above: the shallow end of matetrack. This is a limitation of the
   search, not of resources: mate-in-10 solve rate is unchanged from 8 to 32
   threads and from 64 MB to unbounded memory.
-- WinChest's special-mate variants are mostly **not implemented**. `-C 1`
-  (attacker plays check-moves only, i.e. serial-check mate) *is* supported and
-  is validated against the WinChest binary. The remaining ChecksOnly bits
-  (2/4/8/16) and `-R` (threats only), `-K` (king mobility), `-P` (moving
-  pieces), `-X` (maximum moves), `-I` (threat flags) are not. Each selects a
-  *different problem*, not a tuning knob, so they are rejected rather than
-  ignored — a constrained request never returns an unconstrained answer.
-  `--allow-unimplemented` searches the unrestricted problem instead. Chest 3.19
-  itself has none of these; they are WinChest extensions.
+- WinChest's special-mate variants are **partly implemented**: `-C 1`
+  (serial-check mate), `-K N` (defender king squares), `-P N` (defender pieces
+  able to move) and `-X N` (defender moves in total) all work and are validated
+  against the WinChest binary — 207 comparisons, 0 disagreements. Still
+  unimplemented: ChecksOnly bits 2/4/8/16, `-R` (threat depth) and `-I` (threat
+  flags), which need null-move threat machinery the exact kernel lacks. Those
+  are rejected rather than ignored, since each selects a *different problem* —
+  a constrained request never returns an unconstrained answer.
+  `--allow-unimplemented` searches unrestricted instead. Chest 3.19 itself has
+  none of these; they are WinChest extensions.
 - `-M` is an entry ceiling derived from an estimated bytes-per-entry, not a
   hard RSS bound; a node-based container cannot give one.
 - A DFPN route exists behind `--route dfpn` but is slower than the default at

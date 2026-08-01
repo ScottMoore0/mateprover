@@ -398,6 +398,61 @@ def test_checks_only_restriction(engine: Path, res: Results) -> None:
               f"exit={proc.returncode}")
 
 
+def test_defender_restrictions(engine: Path, res: Results) -> None:
+    """-K, -P and -X must bound the defender exactly as WinChest defines them.
+
+    KingSquares counts the square the king stands on, PieceLimit counts distinct
+    defender pieces that can move, and MaxMoves counts total defender replies.
+    Each is checked against the position reached after every attacker move in a
+    solution, so a restriction that quietly failed to apply would be caught.
+    """
+    print("\n[restriction] -K/-P/-X bound the defender as specified")
+
+    if not HAVE_CHESS:
+        res.skip("defender restrictions", "python-chess not installed")
+        return
+
+    cases = load_epd(HERE / "mates.epd")
+    baseline = sum(1 for l in solve(engine, cases, ["-M", "64"]) if DM_RE.search(l))
+
+    def check(flag: str, value: int, measure) -> None:
+        lines = solve(engine, cases, ["-M", "64", flag, str(value)])
+        solved = sum(1 for l in lines if DM_RE.search(l))
+        res.check(f"{flag} {value} is no less restrictive than none",
+                  solved <= baseline, f"{solved} > {baseline}")
+        violations = 0
+        for (fen, _), line in zip(cases, lines):
+            pv = PV_RE.search(line)
+            if not pv:
+                continue
+            board = chess.Board(fen + " 0 1")
+            for i, token in enumerate(pv.group(1).split()):
+                board.push(chess.Move.from_uci(token))
+                if i % 2 == 0 and measure(board) > value:
+                    violations += 1
+        res.check(f"{flag} {value} holds after every attacker move",
+                  violations == 0, f"{violations} violation(s)")
+
+    def king_squares(board) -> int:
+        king = board.king(board.turn)
+        return 1 + sum(1 for m in board.legal_moves if m.from_square == king)
+
+    def piece_count(board) -> int:
+        return len({m.from_square for m in board.legal_moves})
+
+    def move_count(board) -> int:
+        return board.legal_moves.count()
+
+    check("-K", 2, king_squares)
+    check("-P", 2, piece_count)
+    check("-X", 3, move_count)
+
+    # Off values must leave the search unrestricted, as WinChest defines them.
+    for flag, off in (("-K", 9), ("-P", 16), ("-X", 222)):
+        n = sum(1 for l in solve(engine, cases, ["-M", "64", flag, str(off)]) if DM_RE.search(l))
+        res.check(f"{flag} {off} is off", n == baseline, f"{n} != {baseline}")
+
+
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.
 
@@ -604,6 +659,7 @@ def main() -> int:
     test_cli_contract(args.engine, res)
     test_help_documents_every_option(args.engine, res)
     test_checks_only_restriction(args.engine, res)
+    test_defender_restrictions(args.engine, res)
     test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
