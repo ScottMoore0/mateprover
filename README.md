@@ -89,21 +89,32 @@ mate is N":
 Ranges reflect run-to-run variation for problems sitting near the budget
 boundary.
 
-**Read this honestly:** echest solves mate-in-5 and below essentially always,
-mate-in-6/7 reliably in seconds, and a small fraction of mate-in-10. It
-addresses the shallow end of a standard benchmark.
+**Read this honestly:** echest solves mate-in-5 and below essentially always and
+mate-in-6/7 reliably in seconds. Deeper problems are where the interesting
+numbers are, and they depend on which axis you spend.
 
-At mate-in-8 the default configuration solves **52 of 60** held-out matetrack
-positions in 15 seconds, 56 in 60 seconds and **all 60** in 300 seconds. There,
-waiting longer does help: nothing at that depth is out of reach, it is a matter
-of budget.
+At **mate-in-8**, the default configuration solves 52 of 60 held-out matetrack
+positions in 15 seconds, 56 in 60 seconds and all 60 in 300 seconds. There,
+waiting longer works: nothing at that depth is out of reach, it is a matter of
+budget.
 
-**At mate-in-10 waiting longer does not help.** The solve rate is identical at
-5 s, 20 s and 60 s, a 12x increase in budget that solves nothing extra, and the
-same is true across 8 to 32 threads and from 64 MB to unbounded memory. That
-result is specific to that depth and does not describe mate-in-8. Where it
-applies, problems echest does not solve quickly are far out of reach, and the
-limitation is the search rather than the resources given to it.
+At **mate-in-10** (24 fresh positions, 30 s, 32 threads, `--direct-depth`, which
+proves "a mate within N" rather than "the shortest mate is N"):
+
+| configuration | solved |
+|---|---|
+| unrestricted search alone | 13/24 |
+| with the restriction portfolio | **18/24** |
+| portfolio, 120 s instead of 30 s | 18/24 |
+| portfolio, 8 threads instead of 32 | 17/24 |
+| portfolio, 256 MB instead of 2 GB | 18/24 |
+
+All 18 certificates verify independently. The shape of that table is the point:
+**at this depth only the portfolio buys reach.** Four times the time buys
+nothing, four times the memory buys nothing, and four times the threads buys one
+position. Problems the portfolio does not reach are not a little out of reach,
+and no amount of hardware will change that -- the limit is what the search can
+express, not what it is given.
 
 ## Build
 
@@ -232,12 +243,12 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- Reach, as above: the shallow end of matetrack. **At mate-in-10** this is a
-  limitation of the search rather than of resources: the solve rate is unchanged
-  from 8 to 32 threads and from 64 MB to unbounded memory. That does not carry
-  down a depth. At mate-in-8 the engine is budget-limited, not capability-limited
-  -- 51/60 held-out positions at 15s, 56/60 at 60s and 60/60 at 300s -- so there,
-  time and memory do buy reach.
+- Reach: see the table above. The two depths behave differently and the
+  difference is measured, not assumed. At mate-in-8 the engine is
+  budget-limited, so time buys reach. At mate-in-10 it is not: time and memory
+  buy nothing and only the restriction portfolio helps. A result about one depth
+  does not describe the other, and neither survives a change of configuration --
+  both of these numbers replaced earlier ones that had quietly gone stale.
 - The `-M` budget is an entry-count ceiling computed from an estimated bytes per
   entry, not a hard cap on process memory, and it excludes fixed overhead. Small
   budgets overshoot proportionally most: a 64 MB request peaks near 91 MB

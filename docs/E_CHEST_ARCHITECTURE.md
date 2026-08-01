@@ -1776,6 +1776,51 @@ implementation -- after DFPN (8e), bitboards (8i, 8k) and the transposition tabl
 were guesses about where value lay, made before any of it was measured, and most
 have not survived contact with measurement.
 
+### 8x. Mate-In-10 Re-Measured: 3/20 Was Obsolete, It Is Now 18/24
+
+8d concluded that mate-in-10 is capability-limited, on a measured 3/20 that was
+flat across threads, memory and time. That number has been quoted ever since,
+including in the README. It was measured before the derived portfolio (8f), before
+the memory default moved off the knee (8l), and before the tuned settings became
+the defaults (8n) -- that is, on a configuration the engine no longer has. 8h
+already caught this class of error once, where a saturation result true at
+mate-in-10 was silently describing mate-in-8. This is the same error at the depth
+it was originally measured.
+
+Re-measured on 24 fresh mate-in-10 positions, none previously used, at 30 s and
+32 threads with `--direct-depth`:
+
+| axis varied | solved |
+|---|---|
+| unrestricted search alone | 13/24 |
+| **with the derived portfolio** | **18/24** |
+| 30 s → 120 s | 18/24 (+0) |
+| 8 → 32 threads | 17 → 18 (+1) |
+| 256 MB → 2 GB | 18/24 (+0) |
+
+All 18 certificates verify independently against the shipped checker.
+
+Two conclusions, and they point in opposite directions from 8d's.
+
+**The coverage figure was badly stale.** 3/20 (15%) has become 18/24 (75%) --
+mostly from work that was never aimed at mate-in-10 at all. The restriction
+portfolio was derived on mate-in-8 (8f) and is the single largest contributor
+here too, adding five positions the unrestricted search cannot reach.
+
+**The saturation conclusion was right, and remains right.** Four times the time
+buys nothing. Four times the memory buys nothing. Four times the threads buys one
+position, which is noise. At this depth the portfolio is the only axis that pays,
+exactly as at mate-in-8 (8f) and for the same reason: it changes *which problem*
+is searched rather than how fast the same problem is searched. Every other axis
+this project has measured -- faster nodes (8i, 8j, 8k), a bigger table (8l),
+alternative routes (8e), stricter restrictions (8g) -- has failed, and they have
+now failed at both depths.
+
+The practical statement for a reader, now in the README, is that mate-in-8 is
+budget-limited and mate-in-10 is not. Spending more time helps at one depth and
+does nothing at the other, and there is no configuration in which hardware
+substitutes for the portfolio.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
