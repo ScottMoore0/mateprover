@@ -474,6 +474,18 @@ Current E checkpoint:
 - **this corpus immediately corrected a headline claim.** Parallel speedup measured 3.51x on the easy suites but only **1.36x** here, and 16 threads is slower than 8. Node counts reveal why: 8 threads explores 2.2x the sequential nodes and 16 threads 2.9x, because sibling root subtrees share far more structure deep in the tree than shallow, so root splitting duplicates increasing amounts of work as depth grows;
 - the frozen easy suites remain the correctness and regression gates. They are not informative about scaling, and search-algorithm work must be measured here instead.
 
+### 4b. Direct-Depth Search
+
+E ran iterative deepening from depth 1 to the requested depth N, so a mate-in-10 cost nine passes that cannot succeed before the one that can. Iterative deepening earns that two ways -- it finds the *shortest* mate, and it warms the table for the next pass -- and whether the warming pays for the wasted passes is empirical.
+
+- `--direct-depth` starts at N; `--iterative-depth` is the default and the rollback;
+- solve rate at budget, 8 threads: mate-8 goes 7/24 to **9/24** at 2 s and 11/24 to **12/24** at 5 s; mate-10 goes **0/20 to 3/20** at 2 s and 2/20 to 3/20 at 5 s;
+- at mate-in-10 with a 2 s budget iterative solves nothing and direct-depth solves three. This is the first change in this line that improves capability where E was failing outright, rather than shifting the curve of what it already solved;
+- **the semantics differ**: searching at depth N proves "a mate within N", iterative deepening proves "the shortest mate is N". They diverge when more than one first move works at different depths, since the attacker loop returns the first proving move in ordering order;
+- measured on 72 solved positions with known exact depths across four suites there were **0 mismatches**, which is reassuring and not a guarantee -- composed problems usually admit only one working first move, so ordering has nothing wrong to pick;
+- **not promoted as the default.** Promoting it would silently change what `dm` means for any caller relying on shortest-mate semantics, and that class of silent behavioural change is exactly what the `--fast-check-score` cliff and the ignored restriction options were. The default stays conservative and the flag is documented;
+- recommended for "verify a mate in exactly N" workloads, which is what EPD `bm #N` supplies.
+
 ### 12b. Wall-Clock Budget
 
 A released mate solver that cannot be told to stop is unusable: E solves 2 of 8 matetrack mate-in-8 positions, so on the other six it simply ran forever. And once reach rather than throughput is the limiting factor, *solve rate within a budget* is the metric that matters, which requires a budget to exist.

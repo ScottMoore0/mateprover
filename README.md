@@ -110,6 +110,8 @@ Supported now:
 - `--eager-defender`: promoted default; establish legality for all defender replies up front;
 - `--fused-order`: promoted default; compute legality and ordering scores in one pass over the child boards;
 - `--split-order`: rollback path that generates and scores in two passes;
+- `--direct-depth`: start iterative deepening at the requested depth instead of 1. Proves "a mate within N" rather than "the shortest mate is N". Materially better solve rate at a fixed budget; see docs;
+- `--iterative-depth`: promoted default, shortest-mate semantics;
 - `--time-limit S`: wall-clock budget in seconds; on expiry the search stops and reports a `timeout` marker rather than a mate. 0 (default) is unlimited;
 - `--threads N`: root-split parallel search across `N` worker threads; the benchmark registry promotes `8`;
 - `--parallel-min-nodes N`: cost gate; a depth runs sequentially until it exceeds `N` nodes, then escalates to a split. Default `500`;

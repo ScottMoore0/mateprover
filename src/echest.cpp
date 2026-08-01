@@ -532,6 +532,9 @@ struct SearchConfig {
     bool dfpn_sort = false;
     // Wall-clock budget in seconds. 0 means unlimited.
     double time_limit = 0.0;
+    // Begin iterative deepening at the requested depth instead of 1. Only valid
+    // when the caller wants "a mate within N" rather than "the shortest mate".
+    bool direct_depth = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -2670,7 +2673,11 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
 }
 
 RouteResult run_depth_first_route(Search& s, const Board& b, int max_depth) {
-    return run_depth_first_route_from(s, b, 1, max_depth);
+    // Iterative deepening exists to find the SHORTEST mate and to warm the
+    // table for the next pass. When the caller only needs "a mate within N",
+    // the shallower passes are optional. Whether they pay for themselves is an
+    // empirical question, so this is a flag rather than an assumption.
+    return run_depth_first_route_from(s, b, s.direct_depth ? max_depth : 1, max_depth);
 }
 
 Proof prove_shallow_mate1(Search& s, const Board& b) {
@@ -3425,6 +3432,10 @@ int main(int argc, char** argv) {
             config.root_sequential_first = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
+        } else if (arg == "--direct-depth") {
+            config.direct_depth = true;
+        } else if (arg == "--iterative-depth") {
+            config.direct_depth = false;
         } else if (arg == "--time-limit") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--time-limit' requires seconds");
