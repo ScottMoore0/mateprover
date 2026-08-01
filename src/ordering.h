@@ -164,14 +164,29 @@ bool move_to_front(std::vector<Move>& moves, const Move& hint) {
 // unchanged.
 std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, bool& out_scored) {
     out_scored = false;
-    std::vector<Move> pseudo;
-    if (cfg.move_reserve) {
-        pseudo.reserve(cfg.move_reserve_capacity);
+    // Generate into a stack buffer.
+    //
+    // This runs at nearly every node, and the heap move list it allocated per
+    // call was the largest single source of allocator traffic in the search:
+    // measured at 3.3 allocations and ~2.4 KB per node, 28 GB churned in a
+    // 25-second search. MoveList is fixed-capacity and reports overflow rather
+    // than truncating, so the heap path is kept as a spill for positions that
+    // exceed it -- the same fallback shape legal_moves uses under
+    // --static-pseudo.
+    MoveList buf;
+    gen_pseudo(b, buf);
+    std::vector<Move> spill;
+    if (buf.overflow) {
+        if (cfg.move_reserve) {
+            spill.reserve(cfg.move_reserve_capacity);
+        }
+        gen_pseudo(b, spill);
     }
-    gen_pseudo(b, pseudo);
+    const Move* const pseudo_data = buf.overflow ? spill.data() : buf.moves.data();
+    const std::size_t pseudo_n = buf.overflow ? spill.size() : buf.count;
 
     std::vector<Move> legal;
-    legal.reserve(pseudo.size());
+    legal.reserve(pseudo_n);
     // Always score. `--fast-check-score` used to select a delta-based check
     // test; now that move_gives_check_fast shares this same plane path, "fast"
     // and "exact" check scoring are the identical computation, so the flag has
@@ -186,7 +201,8 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
     // materialising path. Every other configuration answers both of its
     // questions from occupancy planes and never builds a child Board here.
     if (cfg.score_mates) {
-        for (Move m : pseudo) {
+        for (std::size_t pi = 0; pi < pseudo_n; ++pi) {
+        Move m = pseudo_data[pi];
             Board nb = make_move(b, m);
             if (in_check(nb, other(nb.stm))) {
                 continue;
@@ -203,7 +219,8 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
         return legal;
     }
 
-    for (Move m : pseudo) {
+    for (std::size_t pi = 0; pi < pseudo_n; ++pi) {
+        Move m = pseudo_data[pi];
         int king_after = -1;
         const Planes pl = planes_after_move(b, m, king_after);
         if (king_after >= 0 && attacked_on_planes(pl.occ, pl.by_color, pl.by_type, king_after, them)) {

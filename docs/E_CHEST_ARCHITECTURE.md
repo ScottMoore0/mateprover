@@ -1070,6 +1070,58 @@ point is a single position on a wall-clock-limited parallel search, which is
 inside the noise; the trustworthy claims here are the perft speedup and the
 identical node counts, not the coverage delta.
 
+### 8j. Allocator Traffic Is Not The Bottleneck Either (promoted on resources, not speed)
+
+8i left the search's cost unaccounted for and named the suspects: TT traffic,
+ordering and scoring, certificate construction, allocation. Certificates were
+cleared immediately -- they are already gated behind `emit_proof` and cost
+nothing when unused. Allocation was not.
+
+Counting with a replaced global `operator new` (single-threaded, same hard
+position, 25s): **39.3M allocations, 28.2 GB, for 11.8M nodes** -- 3.3
+allocations and roughly 2.4 KB churned per node. The average allocation was
+~717 bytes, which is a move-list vector at `--move-reserve-cap 96`.
+`legal_moves_fused` was allocating two heap vectors per call, at nearly every
+node.
+
+Fixed by generating into the fixed-capacity `MoveList` already used by
+`legal_moves` under `--static-pseudo`, keeping the heap path as an overflow
+spill:
+
+| measure | before | after |
+|---|---|---|
+| allocations | 39.3M | 28.7M (-27%) |
+| bytes allocated | 28.2 GB | **12.7 GB (-55%)** |
+| perft(5) rate | 28.7 M/s | 31.3 M/s |
+| perft(5) node count | 10,819,001 | identical |
+| search rate, 1 thread | 467 k/s | 459 k/s |
+| holdout @15s, 32 threads | 52/60 | 52/60 |
+
+Halving the allocation volume changed the search rate by -1.7%, which is noise,
+and coverage not at all. **Allocator traffic is not the bottleneck.** That is the
+second efficiency hypothesis to die this way: 8i removed 57% of `make_move`
+calls for 4%, and this removes 55% of allocated bytes for nothing.
+
+Kept, but on narrower grounds than intended, and it is worth being precise about
+which: it is semantically identical (perft counts unchanged, 135/135), it makes
+the fused path consistent with the idiom the rest of the file already uses, and
+15.5 GB less churn per 25-second search is a real resource property for a
+released engine. It is **not** a speed improvement and is not claimed as one.
+
+Where the time actually goes, by elimination and arithmetic rather than by
+measurement: a node costs ~2.2us at 459 k/s, and generates ~30 moves, each of
+which builds a `Planes` copy and runs one or two `attacked_on_planes` scans in
+the fused legality-and-scoring loop. Thirty such operations plausibly account
+for most of the node. That is movegen-adjacent work, but it is not `make_move`
+and not allocation, which is why both previous attempts missed it.
+
+If that estimate is right, the target is legality that does not touch the planes
+per move at all: compute checkers and absolute pins once per position, after
+which most moves are legal by inspection and only king moves and en passant need
+a real test. This is the standard technique and it attacks the one cost that has
+survived elimination. It is also a genuine movegen rewrite with real correctness
+risk, which is exactly what the perft gate exists for.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
