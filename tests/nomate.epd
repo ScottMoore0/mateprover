@@ -1,0 +1,14 @@
+# Negative controls: no directmate exists at the stated depth.
+# The prover must emit no dm token for any of these.
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - ; dm 1
+8/8/8/8/8/8/5k2/7K w - - ; dm 1
+8/8/8/8/8/8/5k2/7K b - - ; dm 1
+4k3/8/8/8/8/8/8/4K3 w - - ; dm 1
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - ; dm 1
+8/8/8/8/8/8/5k2/7K w - - ; dm 2
+8/8/8/8/8/8/5K2/7k b - - ; dm 2
+4k3/8/8/8/8/8/8/4K3 w - - ; dm 2
+4k3/8/8/8/8/8/8/4K1N1 w - - ; dm 2
+4k3/8/8/8/8/8/8/4K1B1 w - - ; dm 2
+4K3/8/8/8/8/8/8/4k1n1 b - - ; dm 2
+4K3/8/8/8/8/8/8/4k1b1 b - - ; dm 2

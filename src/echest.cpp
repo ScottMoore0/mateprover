@@ -1021,12 +1021,10 @@ void gen_pseudo(const Board& b, MoveSink& moves) {
 
 Board make_move(Board b, const Move& m) {
     char p = b.sq[m.from];
-    char captured = b.sq[m.to];
     set_square(b, m.from, '.');
 
     if (m.ep) {
         int cap_sq = m.to + (b.stm == WHITE ? -8 : 8);
-        captured = b.sq[cap_sq];
         set_square(b, cap_sq, '.');
     }
 
@@ -1059,10 +1057,18 @@ Board make_move(Board b, const Move& m) {
 
     if (p == 'K') b.castling &= ~3u;
     if (p == 'k') b.castling &= ~12u;
-    if (m.from == square_of(0, 0) || m.to == square_of(0, 0) || captured == 'R') b.castling &= ~2u;
-    if (m.from == square_of(7, 0) || m.to == square_of(7, 0) || captured == 'R') b.castling &= ~1u;
-    if (m.from == square_of(0, 7) || m.to == square_of(0, 7) || captured == 'r') b.castling &= ~8u;
-    if (m.from == square_of(7, 7) || m.to == square_of(7, 7) || captured == 'r') b.castling &= ~4u;
+    // Castling rights are revoked by SQUARE, never by captured piece type.
+    //
+    // Keying off the piece type is wrong once promotion exists: capturing a
+    // promoted rook anywhere on the board would strip the owner's rights even
+    // though both original corner rooks are untouched. The square tests below
+    // are already complete -- a move from a corner covers the rook leaving, and
+    // a move to a corner covers the rook being captured there (if some other
+    // piece occupies that corner, the right was necessarily already gone).
+    if (m.from == square_of(0, 0) || m.to == square_of(0, 0)) b.castling &= ~2u;
+    if (m.from == square_of(7, 0) || m.to == square_of(7, 0)) b.castling &= ~1u;
+    if (m.from == square_of(0, 7) || m.to == square_of(0, 7)) b.castling &= ~8u;
+    if (m.from == square_of(7, 7) || m.to == square_of(7, 7)) b.castling &= ~4u;
 
     b.ep = -1;
     if (std::tolower(static_cast<unsigned char>(p)) == 'p' && std::abs(m.to - m.from) == 16) {
@@ -2164,6 +2170,77 @@ bool route_result_is_acceptable(const RouteResult& result, int max_depth) {
     return result.proved_depth == pv_depth && result.proved_depth > 0 && result.proved_depth <= max_depth;
 }
 
+// Perft: count leaf nodes of the legal move tree to a fixed depth.
+//
+// This is the engine's self-contained move-generation gate. Directmate proofs
+// are only as trustworthy as legality, and perft against published reference
+// counts exercises castling rights, en-passant capture and expiry, promotion,
+// and pinned-piece legality far more thoroughly than the mate suites do -- a
+// movegen bug usually shows up as a wrong perft number long before it shows up
+// as a wrong mate.
+std::uint64_t perft(const Board& b, int depth) {
+    if (depth <= 0) {
+        return 1;
+    }
+    auto moves = legal_moves(b);
+    if (depth == 1) {
+        return moves.size();
+    }
+    std::uint64_t total = 0;
+    for (const Move& m : moves) {
+        total += perft(make_move(b, m), depth - 1);
+    }
+    return total;
+}
+
+// Per-root-move perft breakdown: the standard tool for bisecting a movegen or
+// make/unmake discrepancy against a reference implementation.
+void perft_divide_line(const std::string& raw, int depth) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        line = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; perft error input;\n";
+        return;
+    }
+    const Board b = *parsed;
+    auto moves = legal_moves(b);
+    std::vector<std::pair<std::string, std::uint64_t>> rows;
+    rows.reserve(moves.size());
+    std::uint64_t total = 0;
+    for (const Move& m : moves) {
+        const std::uint64_t n = perft(make_move(b, m), depth - 1);
+        rows.emplace_back(move_uci(m), n);
+        total += n;
+    }
+    std::sort(rows.begin(), rows.end());
+    for (const auto& row : rows) {
+        std::cout << row.first << ' ' << row.second << '\n';
+    }
+    std::cout << "total " << total << '\n';
+}
+
+void perft_line(const std::string& raw, int depth) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        line = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; perft error input;\n";
+        return;
+    }
+    const Board b = *parsed;
+    for (int d = 1; d <= depth; ++d) {
+        const auto start = std::chrono::steady_clock::now();
+        const std::uint64_t nodes = perft(b, d);
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        std::cout << fen4(b) << "; perft " << d << "; nodes " << nodes << "; acs " << seconds << ";\n";
+    }
+}
+
 int infer_mate_depth(const std::string& line) {
     auto pos = line.find('#');
     if (pos == std::string::npos) {
@@ -2334,6 +2411,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
 int main(int argc, char** argv) {
     SearchConfig config;
     int requested_depth = 0;
+    int perft_depth = 0;
+    bool perft_divide = false;
     bool read_stdin = false;
     bool list_legal = false;
 
@@ -2364,6 +2443,11 @@ int main(int argc, char** argv) {
             config.debug = true;
         } else if (arg == "--list-legal") {
             list_legal = true;
+        } else if (arg == "--perft" && i + 1 < argc) {
+            perft_depth = std::atoi(argv[++i]);
+        } else if (arg == "--perft-divide" && i + 1 < argc) {
+            perft_depth = std::atoi(argv[++i]);
+            perft_divide = true;
         } else if (arg == "--emit-proof") {
             config.emit_proof = true;
         } else if (arg == "--profile") {
@@ -2480,7 +2564,9 @@ int main(int argc, char** argv) {
     if (read_stdin) {
         std::string line;
         while (std::getline(std::cin, line)) {
-            if (list_legal) {
+            if (perft_depth > 0) {
+                if (perft_divide) perft_divide_line(line, perft_depth); else perft_line(line, perft_depth);
+            } else if (list_legal) {
                 list_legal_line(line);
             } else {
                 solve_line(line, requested_depth, config);
@@ -2489,7 +2575,9 @@ int main(int argc, char** argv) {
     } else {
         std::ostringstream buffer;
         buffer << std::cin.rdbuf();
-        if (list_legal) {
+        if (perft_depth > 0) {
+            if (perft_divide) perft_divide_line(buffer.str(), perft_depth); else perft_line(buffer.str(), perft_depth);
+        } else if (list_legal) {
             list_legal_line(buffer.str());
         } else {
             solve_line(buffer.str(), requested_depth, config);

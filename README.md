@@ -23,11 +23,45 @@ The first implementation is intentionally conservative. It prioritizes correctne
 
 ## Build
 
-From the repository root:
+Requires a C++17 compiler and CMake 3.16+. No third-party libraries.
 
-```powershell
-g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra -pedantic -o chest-e\build\echest.exe chest-e\src\echest.cpp
 ```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+The binary lands at `build/echest` (`build/echest.exe` on Windows).
+
+Verified on Linux/GCC 13, Windows/MinGW-w64 GCC 15, and configured for
+macOS/Clang and Windows/MSVC in CI.
+
+## Test
+
+```
+ctest --test-dir build --output-on-failure
+```
+
+or directly:
+
+```
+python tests/run_tests.py --engine build/echest
+```
+
+The suite covers:
+
+- **perft** against published reference counts for six standard positions,
+  exercising castling rights, en-passant capture and expiry, promotion
+  including under-promotion, and pinned-piece legality;
+- **known directmates** solved at the exact stated depth with a PV of the
+  right length;
+- **negative controls** that must produce no `dm` token;
+- **invariance**: the key move and mate depth must not change with thread
+  count, table sharing, the parallel cost gate, or the memory budget --
+  including a budget tight enough to force heavy eviction;
+- **PV replay and proof-certificate verification**, enabled automatically when
+  `python-chess` is installed and skipped cleanly when it is not.
+
+The core tests have no third-party dependency.
 
 ## CLI Shape
 
@@ -79,6 +113,8 @@ Supported now:
 - `--shared-tt-shards N`: shard count for the shared table, default 256;
 - `--threads auto`: use the detected hardware concurrency;
 - `--single-thread`: keep the promoted default of one thread and the exact sequential path;
+- `--perft N`: print perft counts for depths 1..N for the position on stdin;
+- `--perft-divide N`: print the per-root-move perft breakdown at depth N;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.

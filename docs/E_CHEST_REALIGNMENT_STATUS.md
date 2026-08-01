@@ -13,6 +13,9 @@ E is now aligned around a route-neutral exact prover boundary:
 
 Implemented core pieces:
 
+- perft and perft-divide as a permanent move-generation gate, which immediately found a castling-rights soundness bug the mate corpus had missed;
+- a cross-platform CMake build and an in-repo dependency-free test suite wired into CTest, with CI staged for extraction;
+
 - root-split internal parallelism, promoted as the default, returning the lowest-index successful root move so the key move matches sequential E exactly, with cooperative cancellation that never lets an abandoned subtree be cached as a disproof;
 - a shared sharded exact proof table for the parallel path;
 - a probe-don't-predict parallel cost gate that keeps trivially cheap positions sequential and reuses the abort invariant to make the sequential prelude free;

@@ -1,0 +1,26 @@
+# Known directmates. Format: <fen4> ; dm <depth>
+#
+# Generated for this project by seeded random construction, then classified by
+# the prover and confirmed independently with python-chess: each position mates
+# at the depth stated and does NOT mate one ply shallower, so every label is
+# exact rather than an upper bound.
+#
+# ORDERING MATTERS: the first entry must have depth >= 2. The certificate
+# forgery tests mutate a defender branch of the first proof, and a mate-in-1
+# certificate is a leaf with no branches to mutate.
+#
+# The two entries with an en-passant square are deliberate, and in both the
+# en-passant capture is itself the mate: a FEN-validation bug class has been
+# found in this engine before, and only a crafted position exposed it.
+8/2Q5/R7/8/1k4K1/8/8/8 w - - ; dm 2
+1R6/8/8/8/7k/4Q3/4K3/8 w - - ; dm 2
+8/2k5/8/4K1R1/8/8/6Q1/8 w - - ; dm 3
+8/8/4Q3/8/2NK4/8/2k5/8 w - - ; dm 3
+6k1/4n2R/8/8/8/3R4/8/6K1 w - - ; dm 3
+8/6K1/6R1/7R/8/8/3k4/8 w - - ; dm 4
+7k/5nN1/8/K7/1Q6/8/8/8 w - - ; dm 4
+8/R3K3/8/6R1/8/2k5/8/8 w - - ; dm 5
+6k1/8/8/8/8/5K2/5Q1N/8 w - - ; dm 5
+8/4R3/8/1K6/8/8/2R5/k7 w - - ; dm 1
+2Q5/k3K3/8/1pP5/8/8/8/1R6 w - b6 ; dm 1
+7k/5K2/8/6pP/8/2R5/7Q/8 w - g6 ; dm 1

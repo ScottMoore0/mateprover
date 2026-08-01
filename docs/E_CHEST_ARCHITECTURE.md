@@ -54,6 +54,20 @@ Current board checkpoint:
 - the first stack-buffer probe was correctness-clean on smoke, regression-control, and balanced-no-EP suites, but it was slightly slower than the promoted vector path and is therefore not promoted;
 - the checkpoint was validated with python-chess movegen comparisons, proof-tree verification, PV replay, and D-oracle directmate verification.
 
+### 2b. Move Generation Gate: Perft
+
+Directmate proofs are only as trustworthy as move legality. A missing legal defender reply does not produce a slow search, it produces a **false mate**, so movegen needs a gate stronger than the mate corpus itself.
+
+Current E checkpoint:
+
+- `--perft N` prints leaf counts for depths 1..N; `--perft-divide N` prints the per-root-move breakdown, which is the standard tool for bisecting a discrepancy against a reference implementation;
+- six standard reference positions are checked in the in-repo test suite, exercising castling rights, en-passant capture and expiry, promotion including under-promotion, and pinned-piece legality;
+- **this immediately found a real soundness bug.** Castling rights were being revoked by captured *piece type*: `captured == 'R'` stripped both of White's rights whenever any White rook was captured anywhere. Once promotion exists that is wrong, because capturing a promoted rook on an arbitrary square would strip rights while both original corner rooks stood untouched;
+- the failure was localized by divide to `d7c8r` then `d8c8` in the standard position 5: a pawn promotes to a rook on c8, Black's queen captures it, and White silently loses the right to castle kingside. The missing `O-O` was exactly the one absent node;
+- rights are now revoked by **square** only. The square tests are already complete: a move *from* a corner covers the rook leaving, and a move *to* a corner covers the rook being captured there, since any other piece occupying that corner implies the right was already gone;
+- this class of bug is invisible to the mate suites. Solvedness, mate depth and key move were unchanged on every frozen suite after the fix, because no benchmark position happened to involve a promoted-rook capture that mattered. Roughly four thousand directmate positions did not catch what six perft positions caught immediately;
+- perft is therefore a permanent promotion gate, not a one-off check.
+
 ### 3. Context-Safe Proof Table / TT
 
 TT keys must include all proof-relevant context:
