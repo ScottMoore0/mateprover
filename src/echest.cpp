@@ -217,6 +217,70 @@ struct TTEntry {
     TTEntryKind kind = TTEntryKind::Disproof;
     std::vector<Move> pv;
     std::string cert;
+    std::uint32_t gen = 0;
+};
+
+// A memo of exact verdicts with a bounded entry count.
+//
+// The safety argument for bounding is short: the table is a pure memo of
+// verdicts that are themselves pure functions of the key. An absent entry only
+// means the verdict is recomputed. Eviction therefore trades time for memory
+// and can never trade correctness -- it cannot manufacture a false proof or a
+// false disproof, only make the search slower.
+//
+// Replacement is generation-aged. Entries carry the pass in which they were
+// last useful, refreshed on every probe hit, and a shard over capacity first
+// sheds entries that no probe touched during the current pass.
+struct BoundedTable {
+    std::unordered_map<TTKey, TTEntry, TTKeyHash> map;
+    std::size_t capacity = 0; // 0 means unbounded
+    std::uint32_t generation = 1;
+    std::uint64_t evictions = 0;
+
+    bool probe(const TTKey& key, TTEntry& out) {
+        auto it = map.find(key);
+        if (it == map.end()) {
+            return false;
+        }
+        it->second.gen = generation; // this entry is still earning its space
+        out = it->second;
+        return true;
+    }
+
+    void store(const TTKey& key, TTEntry entry) {
+        entry.gen = generation;
+        map[key] = std::move(entry);
+        if (capacity != 0 && map.size() > capacity) {
+            evict();
+        }
+    }
+
+    void evict() {
+        // First pass: drop anything untouched during the current generation.
+        for (auto it = map.begin(); it != map.end();) {
+            if (it->second.gen != generation) {
+                it = map.erase(it);
+                ++evictions;
+            } else {
+                ++it;
+            }
+        }
+        // Everything is current, so age alone cannot choose a victim. Shed down
+        // to a low-water mark to keep this from re-triggering on every store.
+        const std::size_t low_water = capacity - capacity / 8;
+        for (auto it = map.begin(); it != map.end() && map.size() > low_water;) {
+            it = map.erase(it);
+            ++evictions;
+        }
+    }
+
+    void clear() {
+        map.clear();
+    }
+
+    std::size_t size() const {
+        return map.size();
+    }
 };
 
 struct BoundEntry {
@@ -242,7 +306,7 @@ struct BoundEntry {
 // independent of the low bits an unordered_map uses for bucketing.
 class SharedProofTable {
 public:
-    explicit SharedProofTable(std::size_t shard_count, std::size_t reserve_total) {
+    SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total) {
         std::size_t shards = 1;
         while (shards < shard_count) {
             shards <<= 1;
@@ -252,32 +316,31 @@ public:
         for (std::size_t i = 0; i < shards; ++i) {
             shards_.emplace_back(new Shard());
             if (reserve_total > 0) {
-                shards_.back()->map.reserve(reserve_total / shards + 1);
+                shards_.back()->table.map.reserve(reserve_total / shards + 1);
             }
+            // The budget is split evenly across shards. Hash spreading keeps
+            // shard occupancy close enough that a per-shard cap is a faithful
+            // proxy for a global cap, without a global counter on the hot path.
+            shards_.back()->table.capacity = capacity_total == 0 ? 0 : std::max<std::size_t>(1, capacity_total / shards);
         }
     }
 
-    bool probe(const TTKey& key, TTEntry& out) const {
-        const Shard& shard = shard_for(key);
+    bool probe(const TTKey& key, TTEntry& out) {
+        Shard& shard = shard_for(key);
         std::lock_guard<std::mutex> lock(shard.mutex);
-        auto it = shard.map.find(key);
-        if (it == shard.map.end()) {
-            return false;
-        }
-        out = it->second;
-        return true;
+        return shard.table.probe(key, out);
     }
 
     void store(const TTKey& key, TTEntry entry) {
         Shard& shard = shard_for(key);
         std::lock_guard<std::mutex> lock(shard.mutex);
-        shard.map[key] = std::move(entry);
+        shard.table.store(key, std::move(entry));
     }
 
     // Adopt entries computed before the table existed, so the sequential
     // prelude of the cost gate is carried forward rather than redone.
-    void import_from(const std::unordered_map<TTKey, TTEntry, TTKeyHash>& src) {
-        for (const auto& kv : src) {
+    void import_from(const BoundedTable& src) {
+        for (const auto& kv : src.map) {
             store(kv.first, kv.second);
         }
     }
@@ -285,7 +348,16 @@ public:
     void clear() {
         for (auto& shard : shards_) {
             std::lock_guard<std::mutex> lock(shard->mutex);
-            shard->map.clear();
+            shard->table.clear();
+        }
+    }
+
+    // Advance the aging generation. Called at depth boundaries, where no worker
+    // is running, so no lock dance is needed beyond the per-shard guard.
+    void next_generation() {
+        for (auto& shard : shards_) {
+            std::lock_guard<std::mutex> lock(shard->mutex);
+            ++shard->table.generation;
         }
     }
 
@@ -293,7 +365,16 @@ public:
         std::size_t total = 0;
         for (const auto& shard : shards_) {
             std::lock_guard<std::mutex> lock(shard->mutex);
-            total += shard->map.size();
+            total += shard->table.size();
+        }
+        return total;
+    }
+
+    std::uint64_t evictions() const {
+        std::uint64_t total = 0;
+        for (const auto& shard : shards_) {
+            std::lock_guard<std::mutex> lock(shard->mutex);
+            total += shard->table.evictions;
         }
         return total;
     }
@@ -301,7 +382,7 @@ public:
 private:
     struct Shard {
         mutable std::mutex mutex;
-        std::unordered_map<TTKey, TTEntry, TTKeyHash> map;
+        BoundedTable table;
     };
 
     std::size_t shard_index(const TTKey& key) const {
@@ -313,13 +394,23 @@ private:
         return *shards_[shard_index(key)];
     }
 
-    const Shard& shard_for(const TTKey& key) const {
-        return *shards_[shard_index(key)];
-    }
-
     std::vector<std::unique_ptr<Shard>> shards_;
     std::size_t mask_ = 0;
 };
+
+// Approximate resident cost of one table entry: the 40-byte exact key, the
+// entry header, and the per-node and bucket overhead an unordered_map adds.
+// This is an estimate, not an exact accounting -- the node-based container
+// cannot give a hard byte bound -- so `-M` is honoured as a documented entry
+// ceiling derived from this figure rather than as a guaranteed RSS limit.
+constexpr std::size_t EST_BYTES_PER_ENTRY = 192;
+
+inline std::size_t entry_capacity_for_mb(std::size_t megabytes) {
+    if (megabytes == 0) {
+        return 0; // explicit "unbounded"
+    }
+    return (megabytes * 1024u * 1024u) / EST_BYTES_PER_ENTRY;
+}
 
 // All tunable search options. This is the single value passed from the CLI to
 // the search, and is also what each worker copies when a search is split
@@ -351,6 +442,8 @@ struct SearchConfig {
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
+    // -M megabytes. Converted to an entry ceiling via EST_BYTES_PER_ENTRY.
+    std::size_t memory_mb = 64;
 };
 
 // Per-search mutable state. Inheriting the config keeps every existing
@@ -358,7 +451,7 @@ struct SearchConfig {
 // copyable.
 struct Search : SearchConfig {
     Stats stats;
-    std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
+    BoundedTable tt;
     std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
     std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
     std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
@@ -1279,12 +1372,8 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
         if (!s.shared_table->probe(key, entry)) {
             return false;
         }
-    } else {
-        auto it = s.tt.find(key);
-        if (it == s.tt.end()) {
-            return false;
-        }
-        entry = it->second;
+    } else if (!s.tt.probe(key, entry)) {
+        return false;
     }
     ++s.stats.tt_hits;
     if (entry.kind == TTEntryKind::Proof) {
@@ -1315,7 +1404,7 @@ void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
     if (s.shared_table != nullptr) {
         s.shared_table->store(key, std::move(entry));
     } else {
-        s.tt[key] = std::move(entry);
+        s.tt.store(key, std::move(entry));
     }
 }
 
@@ -1791,7 +1880,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             return;
         }
         if (s.shared_tt) {
-            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve));
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb)));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -1801,14 +1890,23 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
             ws->cancel = &slots.back()->cancel;
             ws->shared_table = shared_table.get();
-            if (ws->shared_table == nullptr && ws->tt_reserve > 0) {
-                ws->tt.reserve(ws->tt_reserve);
+            if (ws->shared_table == nullptr) {
+                ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                if (ws->tt_reserve > 0) {
+                    ws->tt.map.reserve(ws->tt_reserve);
+                }
             }
             workers.push_back(std::move(ws));
         }
     };
 
     for (int depth = start_depth; depth <= max_depth; ++depth) {
+        // Advance the aging generation so entries that go untouched during this
+        // pass become the first candidates for eviction if the table is full.
+        ++s.tt.generation;
+        if (shared_table) {
+            shared_table->next_generation();
+        }
         if (!s.keep_iter_tt) {
             s.tt.clear();
             for (auto& ws : workers) {
@@ -2101,7 +2199,10 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"tt_probes\":" << st.tt_probes
               << ",\"tt_hits\":" << st.tt_hits
               << ",\"tt_stores\":" << st.tt_stores
-              << ",\"tt_size\":" << s.tt.size()
+              << ",\"tt_size\":" << (s.shared_table != nullptr ? s.shared_table->size() : s.tt.size())
+              << ",\"tt_capacity\":" << s.tt.capacity
+              << ",\"tt_evictions\":" << (s.shared_table != nullptr ? s.shared_table->evictions() : s.tt.evictions)
+              << ",\"memory_mb\":" << s.memory_mb
               << ",\"exact_tt_proof_hits\":" << st.exact_tt_proof_hits
               << ",\"exact_tt_disproof_hits\":" << st.exact_tt_disproof_hits
               << ",\"exact_tt_proof_stores\":" << st.exact_tt_proof_stores
@@ -2196,8 +2297,9 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     static_cast<SearchConfig&>(s) = config;
     s.attacker = b.stm;
     s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+    s.tt.capacity = entry_capacity_for_mb(s.memory_mb);
     if (s.tt_reserve > 0) {
-        s.tt.reserve(s.tt_reserve);
+        s.tt.map.reserve(s.tt_reserve);
     }
     auto start = std::chrono::steady_clock::now();
 
@@ -2365,8 +2467,13 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--order-all") {
             config.order_min_size = 2;
-        } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
-            ++i; // accepted for CLI compatibility in the initial E checkpoint
+        } else if (arg == "-M" && i + 1 < argc) {
+            std::size_t value = 0;
+            if (parse_size(argv[++i], value)) {
+                config.memory_mb = value; // 0 means unbounded
+            }
+        } else if ((arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
+            ++i; // accepted for CLI compatibility; not yet semantically implemented
         }
     }
 

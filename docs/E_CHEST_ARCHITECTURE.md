@@ -88,6 +88,32 @@ Current E checkpoint:
 - `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
+### 3c. Bounded Tables And Honoured `-M`
+
+Until this checkpoint every table was an unbounded `unordered_map`, and `-M` was parsed and discarded. A sufficiently deep problem could grow the table until the process died, and the CLI advertised a memory option it did not implement.
+
+The safety argument for bounding is short. The table is a pure memo of verdicts that are themselves pure functions of the exact key, so an absent entry only means the verdict is recomputed. **Eviction trades time for memory and can never trade correctness**: it cannot manufacture a false proof or a false disproof, only a slower search.
+
+Current E checkpoint:
+
+- `-M N` is honoured as a megabyte budget, converted to an entry ceiling through the documented constant `EST_BYTES_PER_ENTRY = 192`; `-M 0` restores unbounded behaviour;
+- this is an **entry ceiling, not a guaranteed RSS limit**. A node-based container cannot give a hard byte bound, so the figure is an estimate covering the 40-byte exact key, the entry header, and per-node plus bucket overhead. Documented as such rather than overclaimed;
+- replacement is generation-aged. Entries record the pass in which they were last useful, refreshed on every probe hit, and a shard over capacity first sheds entries that no probe touched during the current pass, then shed to a low-water mark if age alone cannot choose a victim;
+- one `BoundedTable` implementation backs both the sequential table and every shard of the shared table, so the two paths cannot drift apart in replacement behaviour;
+- the budget is split evenly across shards; hash spreading keeps occupancy close enough that a per-shard cap is a faithful proxy for a global cap without a global counter on the hot path;
+- degradation is graceful and was measured on the 40-case hard holdout, where the working set is about 157k entries:
+
+| `-M` | entry ceiling | max table | evictions | avg ms | nodes |
+|---:|---:|---:|---:|---:|---:|
+| 0 | unbounded | 156836 | 0 | 191.5 | 3342710 |
+| 64 | 349525 | 156836 | 0 | 203.0 | 3342710 |
+| 8 | 43690 | 43690 | 1398226 | 270.7 | 3500392 |
+| 1 | 5461 | 5453 | 3967962 | 326.9 | 4863130 |
+
+- a 28x smaller budget costs 71% more time and 45% more nodes, and changes no answer;
+- correctness was verified under eviction pressure, not only at the comfortable default: at `-M 1`, with a 5461-entry ceiling against a 157k working set and roughly 4M evictions, solvedness, mate depth and key move stayed identical to the unbounded run, and proof-tree verification stayed 9/9 on smoke, 11/11 on regression controls, and 0 false proofs on negative controls;
+- the promoted default `-M 64` does not bind on any frozen suite, and a paired 3-trial comparison against the previous binary showed no regression in either sequential or parallel mode.
+
 ### 4. Native DFPN / Proof-Number Search
 
 DFPN should become a native search mode, not a fallback wrapper. E should have:

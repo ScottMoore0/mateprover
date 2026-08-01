@@ -42,7 +42,7 @@ Supported now:
 - `-b`: accepted for compatibility;
 - `-1`: accepted for compatibility;
 - `-5`: output UCI-style coordinate moves;
-- `-M N`: accepted for compatibility;
+- `-M N`: table memory budget in megabytes, honoured as an entry ceiling; `-M 0` is unbounded;
 - `-z N`: requested mate depth;
 - `--route depth-first`: select the current exact depth-first route; this is the promoted default;
 - `--route shallow-fast`: unpromoted exact route that tries mate-in-1 and mate-in-2 directly, then falls back to depth-first for deeper requests;
