@@ -1172,7 +1172,10 @@ RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
     }
     if (max_depth > 2) {
         ++s.stats.shallow_fast_fallbacks;
-        return run_depth_first_route_from(s, b, 3, max_depth);
+        // The shallow probes above already covered depths 1 and 2, so the
+    // fallback starts at 3 -- or at the requested depth under
+    // --direct-depth, which asks for that depth specifically.
+    return run_depth_first_route_from(s, b, s.direct_depth ? max_depth : 3, max_depth);
     }
     return {};
 }
@@ -1183,7 +1186,11 @@ RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
 // already settled subtrees and identified proof moves.
 RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
-    for (int depth = 1; depth <= max_depth; ++depth) {
+    // Honour --direct-depth like the depth-first route does. This was hardcoded
+    // to 1, so the flag silently did nothing here: a comparison against the
+    // other routes under --direct-depth was measuring iterative deepening
+    // against a direct search, which is not the same question.
+    for (int depth = s.direct_depth ? max_depth : 1; depth <= max_depth; ++depth) {
         if (s.timed_out) {
             break;
         }

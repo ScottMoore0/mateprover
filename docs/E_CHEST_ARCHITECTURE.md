@@ -836,6 +836,46 @@ Current checkpoint:
 
 The promoted search path is unchanged: identical node counts, key moves and PVs on all four suites.
 
+### 8e. Rejected Routes Are Not Worth A Portfolio Lane (measured, not promoted)
+
+The parallel portfolio does not require a lane to be *good*, only to be
+*different*: a lane earns its threads if it solves anything the other lanes
+miss, however badly it does overall. That is a much weaker bar than standalone
+promotion, so the two routes previously rejected on capability -- `dfpn` and
+`shallow-fast` -- were re-tested against it.
+
+Measuring this exposed a defect first. `--direct-depth` was honoured only by
+the depth-first route; the DFPN route hardcoded a start depth of 1 and the
+shallow-fast fallback hardcoded 3. The flag therefore did nothing on two of
+three routes, and the original DFPN comparison had been scoring iterative
+deepening against a direct search -- not the same question. Both routes now
+honour the flag, and the measurement below is the post-fix one.
+
+matetrack mate-in-8, 24 positions, 15s, 4 threads, `--direct-depth`:
+
+| route                    | solved | solves that the default does not |
+|--------------------------|--------|----------------------------------|
+| depth-first (default)    | 14/24  | --                               |
+| shallow-fast             | 14/24  | none                             |
+| dfpn                     |  0/24  | none                             |
+
+Against the full 32-thread portfolio (17/24) the marginal contribution of each
+is likewise empty.
+
+Rejected. `shallow-fast` matches the default's count but its solution set is a
+strict subset -- it finds the same positions by a different order, so a lane
+would spend threads re-deriving results the unrestricted lane already has.
+`dfpn` solves nothing at all at this depth even given a fair start depth, which
+closes the question the earlier 4/24-vs-7/24 result had left open: DFPN is not
+merely weaker here, it is not competitive at any margin, and no scheduling or
+lane-level reuse rescues it.
+
+The useful general result is that **route diversity is not the same as solution
+diversity**. The restriction lanes pay off because a restriction changes which
+mates are reachable at all; an alternative *search order* over the same move set
+cannot, so it has no marginal value no matter how it is scheduled. Only lanes
+that change the problem are worth parallelising over.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
