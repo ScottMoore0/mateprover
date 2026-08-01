@@ -72,7 +72,14 @@ boundary.
 **Read this honestly:** echest solves mate-in-5 and below essentially always,
 mate-in-6/7 reliably in seconds, roughly half of mate-in-8 within 5 seconds,
 and a small fraction of mate-in-10. It addresses the shallow end of a standard
-benchmark. Its limitation is reach, not throughput.
+benchmark.
+
+**Waiting longer does not help.** On sampled mate-in-10 problems the solve rate
+is identical at 5 s, 20 s and 60 s — a 12x increase in budget solves nothing
+extra. The same is true across 8 to 32 threads and from 64 MB to unbounded
+memory. Problems echest does not solve quickly are not a little out of reach,
+they are far out of reach, and the limitation is the search rather than the
+resources given to it.
 
 ## Build
 

@@ -374,6 +374,26 @@ Current E checkpoint:
 - key move, mate depth and solvedness are identical to sequential E on every validated row; only node counts differ, because workers explore concurrently;
 - `--threads 8` beat 16, 24 and `auto` (32 here) once the cost gate was in place, geometric mean 2.35x versus 2.22x/2.19x/2.16x. With cheap depths no longer split, these suites' root branching does not keep more than about eight workers usefully busy, and extra threads only add contention and duplicated search. This is a suite- and machine-specific tuning that should be re-swept on a larger corpus and on smaller machines;
 
+### 8f. The Scaling Cliff
+
+The decisive question after this line's performance work: is E slow at mate-in-10, or unable to reach it?
+
+10 sampled matetrack mate-in-10 problems, 8 threads, `--direct-depth`, `-M 1024`:
+
+| time budget | solved |
+|---:|---:|
+| 5 s | 3/10 |
+| 20 s | 3/10 |
+| 60 s | **3/10** |
+
+Flat across a **12x** increase in time. The three solved problems resolve inside 5 s; the other seven do not resolve in 60. That is a cliff, not a slope.
+
+Together with the other axes the picture is complete: threads 8 to 32, memory 64 MB to unbounded, and time 5 s to 60 s all leave mate-in-10 unchanged. **No resource axis extends reach.**
+
+This bounds the value of the performance work in this document. The 1.44x sequential gain and the parallel speedup are real and verified, and they move problems across a budget boundary at mate-in-8 — but at mate-in-10 a further 12x would solve nothing, because 12x more time is equivalent to a 12x faster engine at a fixed budget. The unsolved problems are likely orders of magnitude away, which is what exhaustive AND/OR search at depth 10 with branching near 39 implies.
+
+Every avenue that redistributes or accelerates the same search is therefore closed: more cores, more memory, more time, faster nodes, DFPN, and root scheduling have each been measured and each changed nothing at this depth. What remains is **reducing the size of the tree** — proof-safe pruning, meaning exact tests that discharge subtrees without traversing them.
+
 ### 8e. Resource Scaling Is Exhausted
 
 Solve rate at a 5 s budget with `--direct-depth`, varying memory at 8 threads:
