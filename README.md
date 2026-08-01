@@ -105,6 +105,8 @@ Supported now:
 - `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
 - `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
 - `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
+- `--fused-order`: promoted default; compute legality and ordering scores in one pass over the child boards;
+- `--split-order`: rollback path that generates and scores in two passes;
 - `--threads N`: root-split parallel search across `N` worker threads; the benchmark registry promotes `8`;
 - `--parallel-min-nodes N`: cost gate; a depth runs sequentially until it exceeds `N` nodes, then escalates to a split. Default `500`;
 - `--no-parallel-gate`: always split, never probe sequentially first;

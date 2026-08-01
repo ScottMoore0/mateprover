@@ -178,6 +178,32 @@ Current E checkpoint:
 - a temporary ordinary `std::sort` probe was PV-clean but slower than the promoted stable sort on the smoke suite, so no unstable-sort flag is retained;
 - this is proof-safe because it changes only move ordering, not legal move generation, proof tests, or pruning.
 
+### 5b. Fused Legality And Ordering
+
+A profile of the 40-case hard holdout found a structural redundancy rather than a hot loop to micro-tune.
+
+Legal move generation builds each child board and asks whether the mover left **their own** king in check. Move-order check scoring then rebuilt the *same* child board to ask whether the **opponent** is now in check. Every ordered move therefore paid two `make_move` board copies where one would serve. On that suite it was 46.3M ordered moves, so tens of millions of redundant ~115-byte board copies.
+
+Current E checkpoint:
+
+- scoring is split into `static_move_terms` (capture, promotion, moving piece -- needs no child board) and `child_move_terms` (check and mate -- needs the child board), shared by both paths so they cannot drift;
+- `legal_moves_fused` generates legal moves and their ordering scores in one pass, reusing the child board it already built for the legality test;
+- `--fused-order` is promoted and default; `--split-order` is the rollback and A/B control;
+- this is an **evaluation-order change only**. The scores produced are identical, so move order and therefore the entire search is unchanged. Verified: identical node counts and identical PVs on smoke, regression controls, negative controls, and the hard holdout;
+- measured gains over 3 interleaved trials: hard holdout `-6.7%` sequential and `-7.1%` at 8 threads, regression controls `-4.7%`, negative controls `-4.3%`, smoke `-4.0%` sequential;
+- throughput on the hard holdout rose from 452 to 473 knps at identical node counts;
+- the fused path is skipped under `--static-pseudo` and `--fast-check-score`, which keep the split path.
+
+#### Profile Findings Still Open
+
+The same profile identified a larger inefficiency that is **not** yet addressed:
+
+- defender (AND) nodes generate on average 18.6 legal replies but try only **1.07**. Only 5.7% of generated defender moves are ever searched, because most defender nodes are refutations that end at the first surviving reply;
+- attacker nodes are far better balanced, trying 87.9% of what they generate;
+- the naive fix -- lazy legality with ordering deferred -- is not obviously correct as an optimisation. Ordering is what makes the 1.07 figure so low, and `--no-check-score` was already tested and rejected as substantially slower. Ordering by static terms alone would trade cheap move generation for expensive extra subtree searches;
+- a real fix needs ordering signal that does not require the child board, so legality can be evaluated lazily in score order. That is a bitboard/incremental-attack concern, and belongs with section 2's board rewrite;
+- proof-hint probes hit only 0.7% of the time on this suite (9624 hits from 1296036 probes) and are worth re-examining on a larger corpus.
+
 ### 6. Defender Refutation Memory
 
 The prover should learn which defender replies refute candidate keys and try those replies early in later equivalent contexts. This is exact, handcrafted guidance, not probabilistic proof.

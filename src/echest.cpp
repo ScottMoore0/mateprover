@@ -439,6 +439,7 @@ struct SearchConfig {
     bool bound_tt_failures = false;
     bool ordered_check_shortcut = false;
     int threads = 1;
+    bool fused_order = true;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -1245,6 +1246,32 @@ bool move_gives_check_fast(const Board& b, const Move& m) {
     return enemy_king < 0 || is_attacked_after_move(b, m, enemy_king, b.stm);
 }
 
+// Move-ordering terms that need no child board: capture, promotion, and moving
+// piece. Shared by the fused and split scoring paths so the two cannot drift.
+int static_move_terms(const Board& b, const Move& m) {
+    int score = 0;
+    if (b.sq[m.to] != '.' || m.ep) score += 10000;
+    if (m.promo) score += 8000;
+    char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
+    if (p == 'q') score += 50;
+    if (p == 'r') score += 40;
+    if (p == 'b' || p == 'n') score += 30;
+    return score;
+}
+
+// Ordering terms that require the child board, given that board.
+int child_move_terms(const Board& nb, bool score_mates, bool score_checks,
+                     bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
+    int score = 0;
+    if (score_mates) {
+        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
+        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+    } else if (score_checks) {
+        if (in_check(nb, nb.stm)) score += 50000;
+    }
+    return score;
+}
+
 int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
     int score = 0;
     if (score_mates) {
@@ -1261,13 +1288,7 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
         }
         if (gives_check) score += 50000;
     }
-    if (b.sq[m.to] != '.' || m.ep) score += 10000;
-    if (m.promo) score += 8000;
-    char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
-    if (p == 'q') score += 50;
-    if (p == 'r') score += 40;
-    if (p == 'b' || p == 'n') score += 30;
-    return score;
+    return score + static_move_terms(b, m);
 }
 
 void stable_bucket_order(std::vector<Move>& moves) {
@@ -1365,6 +1386,78 @@ bool move_to_front(std::vector<Move>& moves, const Move& hint) {
         }
     }
     return false;
+}
+
+// Generate legal moves and their ordering scores in a single pass.
+//
+// Legality already requires building the child board and asking whether the
+// mover left their own king in check. The check-scoring term asks whether the
+// OPPONENT is now in check -- the same child board, the other king. Computing
+// the two separately builds every child board twice. Fusing them removes one
+// full board copy per move from every ordered move list, which on a hard-suite
+// run is tens of millions of copies.
+//
+// This is an evaluation-order change only. The scores produced are identical to
+// the split path, so the resulting move order, and therefore the search, is
+// unchanged.
+std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, bool& out_scored) {
+    out_scored = false;
+    std::vector<Move> pseudo;
+    if (cfg.move_reserve) {
+        pseudo.reserve(cfg.move_reserve_capacity);
+    }
+    gen_pseudo(b, pseudo);
+
+    std::vector<Move> legal;
+    legal.reserve(pseudo.size());
+    const bool want_scores = !cfg.fast_check_score;
+    for (Move m : pseudo) {
+        Board nb = make_move(b, m);
+        if (in_check(nb, other(nb.stm))) {
+            continue; // illegal: the mover left their own king attacked
+        }
+        if (want_scores) {
+            m.score = child_move_terms(nb, cfg.score_mates, cfg.score_checks,
+                                       cfg.move_reserve, cfg.move_reserve_capacity,
+                                       cfg.static_pseudo)
+                    + static_move_terms(b, m);
+        }
+        legal.push_back(m);
+    }
+    out_scored = want_scores;
+    return legal;
+}
+
+// Obtain the move list for a search node, ordered if the node warrants it.
+// Returns whether the returned moves carry ordering scores.
+std::vector<Move> generate_ordered_moves(Search& s, const Board& b, bool& moves_scored) {
+    moves_scored = false;
+    if (s.fused_order && !s.static_pseudo) {
+        bool scored = false;
+        std::vector<Move> moves = legal_moves_fused(b, s, scored);
+        if (scored && moves.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+            ++s.stats.order_calls;
+            s.stats.order_moves += moves.size();
+            if (s.bucket_order) {
+                stable_bucket_order(moves);
+            } else {
+                std::stable_sort(moves.begin(), moves.end(),
+                                 [](const Move& a, const Move& c) { return a.score > c.score; });
+            }
+            moves_scored = true;
+        }
+        return moves;
+    }
+    std::vector<Move> moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    if (moves.size() >= std::max<std::size_t>(2, s.order_min_size)) {
+        ++s.stats.order_calls;
+        s.stats.order_moves += moves.size();
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score,
+                    s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
+                    s.inplace_order, s.bucket_order);
+        moves_scored = true;
+    }
+    return moves;
 }
 
 bool should_order(const Search& s, std::size_t move_count) {
@@ -1494,7 +1587,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         }
     }
 
-    auto replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    bool replies_scored = false;
+    auto replies = generate_ordered_moves(s, b, replies_scored);
+    (void)replies_scored;
     ++s.stats.defender_move_lists;
     s.stats.defender_moves += replies.size();
     if (replies.empty()) {
@@ -1505,11 +1600,6 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
-    if (should_order(s, replies.size())) {
-        ++s.stats.order_calls;
-        s.stats.order_moves += replies.size();
-        order_moves(b, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
-    }
     if (s.refutation_hints) {
         const TTKey& refutation_key = get_hint_key();
         ++s.stats.refutation_hint_probes;
@@ -1605,16 +1695,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         }
     }
 
-    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    bool moves_scored = false;
+    auto moves = generate_ordered_moves(s, b, moves_scored);
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
-    bool moves_scored = false;
-    if (should_order(s, moves.size())) {
-        ++s.stats.order_calls;
-        s.stats.order_moves += moves.size();
-        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
-        moves_scored = true;
-    }
     if (s.proof_hints) {
         const TTKey& proof_key = get_hint_key();
         ++s.stats.proof_hint_probes;
@@ -2540,6 +2624,10 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--no-parallel-gate") {
             config.parallel_min_nodes = 0;
+        } else if (arg == "--fused-order") {
+            config.fused_order = true;
+        } else if (arg == "--split-order") {
+            config.fused_order = false;
         } else if (arg == "--shared-tt") {
             config.shared_tt = true;
         } else if (arg == "--private-tt") {
