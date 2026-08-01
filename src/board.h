@@ -182,6 +182,10 @@ std::optional<RouteKind> parse_route_kind(const std::string& name) {
     return std::nullopt;
 }
 
+// Defined below; parse_fen4 uses it to reject positions in which the side
+// that just moved is left in check.
+bool in_check(const Board& b, Color c);
+
 std::optional<Board> parse_fen4(const std::string& line) {
     auto tokens = split_ws(line);
     if (tokens.size() < 4) {
@@ -229,6 +233,9 @@ std::optional<Board> parse_fen4(const std::string& line) {
         return std::nullopt;
     }
 
+    if (tokens[1] != "w" && tokens[1] != "b") {
+        return std::nullopt; // side to move must be w or b, not silently white
+    }
     b.stm = tokens[1] == "b" ? BLACK : WHITE;
     b.castling = 0;
     if (tokens[2].find('K') != std::string::npos) b.castling |= 1;
@@ -237,12 +244,50 @@ std::optional<Board> parse_fen4(const std::string& line) {
     if (tokens[2].find('q') != std::string::npos) b.castling |= 8;
 
     b.ep = -1;
-    if (tokens[3] != "-" && tokens[3].size() >= 2) {
-        int ef = tokens[3][0] - 'a';
-        int er = tokens[3][1] - '1';
-        if (on_board(ef, er)) {
-            b.ep = square_of(ef, er);
+    if (tokens[3] != "-") {
+        if (tokens[3].size() < 2) {
+            return std::nullopt;
         }
+        const int ef = tokens[3][0] - 'a';
+        const int er = tokens[3][1] - '1';
+        // An en-passant square is only meaningful on the third or sixth rank.
+        // Accepting anything else silently would let a malformed field through.
+        if (!on_board(ef, er) || (er != 2 && er != 5)) {
+            return std::nullopt;
+        }
+        b.ep = square_of(ef, er);
+    }
+
+    // Reject positions that are not legal chess before any search runs.
+    //
+    // Without this an input such as "8/8/8/8/8/8/8/KKKKKKKK w - -" -- eight
+    // white kings and no black king -- was accepted and reported "dm 1", a
+    // mate claim in a position with no king to mate. A prover whose output is
+    // a proof must refuse to answer questions that are not well posed.
+    int kings[2] = {0, 0};
+    for (int sq = 0; sq < 64; ++sq) {
+        const char p = b.sq[sq];
+        if (p == 'K') ++kings[WHITE];
+        if (p == 'k') ++kings[BLACK];
+        // Pawns cannot stand on the first or last rank.
+        if ((p == 'P' || p == 'p') && (rank_of(sq) == 0 || rank_of(sq) == 7)) {
+            return std::nullopt;
+        }
+    }
+    if (kings[WHITE] != 1 || kings[BLACK] != 1) {
+        return std::nullopt;
+    }
+    b.king_sq[WHITE] = -1;
+    b.king_sq[BLACK] = -1;
+    for (int sq = 0; sq < 64; ++sq) {
+        if (b.sq[sq] == 'K') b.king_sq[WHITE] = sq;
+        if (b.sq[sq] == 'k') b.king_sq[BLACK] = sq;
+    }
+    // The side that just moved cannot be left in check; such a position is
+    // unreachable, and searching it would answer a question about a game that
+    // could not have occurred.
+    if (in_check(b, other(b.stm))) {
+        return std::nullopt;
     }
     return b;
 }

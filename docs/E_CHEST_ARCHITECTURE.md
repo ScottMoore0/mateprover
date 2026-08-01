@@ -533,6 +533,20 @@ Current E checkpoint:
 
 - `chest-e\build.ps1` uses the linker no-timestamp option so repeated builds from identical source produce a stable executable hash for benchmark registry pinning.
 
+### 10b. Input Validation And A Castling Bug It Uncovered
+
+The architecture listed "malformed FEN/EPD tests" as part of the verification harness and had never implemented them. Probing the parser with malformed input found no crashes, but three real defects.
+
+**A prover must refuse questions that are not well posed.** `8/8/8/8/8/8/8/KKKKKKKK w - -` -- eight white kings, no black king -- was accepted and reported `dm 1`: a mate claim in a position with no king to mate. An invalid side-to-move letter was silently treated as white, and a malformed en-passant field was silently treated as absent.
+
+`parse_fen4` now rejects: a side other than `w`/`b`, an en-passant field that is malformed or off the third/sixth rank, a pawn on the first or last rank, any king count other than one per side, and a position where the side *not* to move is in check, which is unreachable.
+
+**A castling bug fell out of the same probe.** Castling generation checked the rights bit and the empty squares between, but never that the rook was actually on its corner -- while `make_move` writes a rook onto f1/d1 unconditionally. A FEN claiming a right whose rook is absent therefore generated a castling move that **materialised a piece from nothing**: `4k3/8/8/8/8/8/8/4K3 w K -` produced six legal moves where python-chess gives five.
+
+Every standard perft position has consistent castling rights, which is why six reference positions at depth 4-5 never exercised it. This is the second castling defect in this engine that perft alone could not reach; the first, revoking rights by captured piece type, was found *by* perft. Both were only visible from a direction the existing gates did not cover.
+
+Thirteen illegal-position checks and four castling checks are now part of the suite, including a direct comparison against python-chess on both the phantom-rook and real-rook positions. All 86 positions in the deep-mined and matetrack corpora are still accepted, so the validation rejects only what is genuinely illegal.
+
 ### 11. Verification Harness
 
 A certificate format is only worth having if someone other than the engine can check it. `chest-e/tools/verify_proof.py` ships with the prover for that reason: it reads engine output, re-derives every legal move with python-chess, and never consults the engine.

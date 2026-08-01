@@ -280,6 +280,75 @@ def test_cli_contract(engine: Path, res: Results) -> None:
     res.check("Chest compatibility flags accepted", code == 0, f"exit={code}")
 
 
+def test_illegal_positions_rejected(engine: Path, res: Results) -> None:
+    """Positions that are not legal chess must be refused, not searched.
+
+    A prover whose output is a proof has to refuse questions that are not well
+    posed. Before these checks existed, "8/8/8/8/8/8/8/KKKKKKKK w - -" -- eight
+    white kings and no black king -- was accepted and reported "dm 1", a mate
+    claim in a position with no king to mate.
+    """
+    print("\n[input] illegal positions are refused")
+
+    illegal = [
+        ("no kings", "8/8/8/8/8/8/8/8 w - -"),
+        ("no black king", "8/8/8/8/8/8/8/KKKKKKKK w - -"),
+        ("two white kings", "k7/8/8/8/8/8/8/K5K1 w - -"),
+        ("bad side to move", "k7/8/8/8/8/8/8/K7 x - -"),
+        ("bad en passant", "K7/8/8/8/8/8/8/k7 w - zz"),
+        ("en passant off rank", "K7/8/8/8/8/8/8/k7 w - e4"),
+        ("adjacent kings", "kK6/8/8/8/8/8/8/8 w - -"),
+        ("pawn on first rank", "P7/8/8/8/8/8/8/K6k w - -"),
+        ("side not to move in check", "4r2k/8/8/8/8/8/8/4K3 b - -"),
+        ("too few ranks", "8/8/8/8/8/8/8 w - -"),
+        ("too many ranks", "8/8/8/8/8/8/8/8/8 w - -"),
+        ("bad piece letter", "zzzz/8/8/8/8/8/8/8 w - -"),
+    ]
+    for name, fen in illegal:
+        out = run(engine, [*BASE_ARGS, "-M", "64", "-z", "2", "-"], fen + "\n")
+        res.check(f"refuses {name}", "error input" in out,
+                  f"accepted: {out.strip()[:80]!r}")
+
+    # Legal positions must still be accepted.
+    for name, fen in [("startpos", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"),
+                      ("bare kings", "k7/8/8/8/8/8/8/7K w - -"),
+                      ("real en passant", "4k3/8/8/3pP3/8/8/8/4K3 w - d6")]:
+        out = run(engine, [*BASE_ARGS, "-M", "64", "-z", "1", "-"], fen + "\n")
+        res.check(f"accepts {name}", "error input" not in out,
+                  f"rejected: {out.strip()[:80]!r}")
+
+
+def test_castling_needs_its_rook(engine: Path, res: Results) -> None:
+    """Castling must require the rook to be present.
+
+    A FEN can claim a castling right whose rook is absent. make_move writes the
+    rook onto f1/d1 unconditionally, so generating that castling would
+    materialise a piece from nothing. Every standard perft position has
+    consistent rights, so perft alone never exercised this.
+    """
+    print("\n[movegen] castling requires the rook to be there")
+
+    def legal_set(fen: str) -> set[str]:
+        out = run(engine, ["--list-legal"], fen + "\n")
+        match = re.search(r"; legal ([^;]*);", out)
+        return set(match.group(1).split()) if match and match.group(1).strip() else set()
+
+    phantom = "4k3/8/8/8/8/8/8/4K3 w K -"
+    res.check("no castling without a rook", "e1g1" not in legal_set(phantom),
+              "generated e1g1 with an empty h1")
+
+    real = "4k3/8/8/8/8/8/8/4K2R w K -"
+    res.check("castling still generated when the rook is there",
+              "e1g1" in legal_set(real))
+
+    if HAVE_CHESS:
+        for fen in (phantom, real):
+            mine = legal_set(fen)
+            theirs = {m.uci() for m in chess.Board(fen + " 0 1").legal_moves}
+            res.check(f"matches python-chess on {fen[:24]}", mine == theirs,
+                      f"engine-only {sorted(mine - theirs)}, missing {sorted(theirs - mine)}")
+
+
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.
 
@@ -481,6 +550,8 @@ def main() -> int:
     test_no_mate(args.engine, res)
     test_invariance(args.engine, res)
     test_time_limit(args.engine, res)
+    test_illegal_positions_rejected(args.engine, res)
+    test_castling_needs_its_rook(args.engine, res)
     test_cli_contract(args.engine, res)
     test_help_documents_every_option(args.engine, res)
     test_shipped_verifier(args.engine, res)

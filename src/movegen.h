@@ -78,22 +78,33 @@ void gen_pseudo(const Board& b, MoveSink& moves) {
                 int to = targets.sq[i];
                 if (!is_piece_color(b.sq[to], us) && !is_king_piece(b.sq[to])) add_move(moves, from, to);
             }
+            // The castling rook must actually be on its corner.
+            //
+            // A FEN can claim a right whose rook is absent, and nothing else
+            // here would notice: make_move writes a rook onto f1/d1
+            // unconditionally, so castling under a phantom right would
+            // materialise a piece from nothing. Standard perft positions all
+            // have consistent rights, which is why this survived those gates.
             if (us == WHITE && from == square_of(4, 0) && !in_check(b, WHITE)) {
-                if ((b.castling & 1) && b.sq[square_of(5, 0)] == '.' && b.sq[square_of(6, 0)] == '.' &&
+                if ((b.castling & 1) && b.sq[square_of(7, 0)] == 'R' &&
+                    b.sq[square_of(5, 0)] == '.' && b.sq[square_of(6, 0)] == '.' &&
                     !is_attacked(b, square_of(5, 0), BLACK) && !is_attacked(b, square_of(6, 0), BLACK)) {
                     add_move(moves, from, square_of(6, 0), 0, true);
                 }
-                if ((b.castling & 2) && b.sq[square_of(3, 0)] == '.' && b.sq[square_of(2, 0)] == '.' && b.sq[square_of(1, 0)] == '.' &&
+                if ((b.castling & 2) && b.sq[square_of(0, 0)] == 'R' &&
+                    b.sq[square_of(3, 0)] == '.' && b.sq[square_of(2, 0)] == '.' && b.sq[square_of(1, 0)] == '.' &&
                     !is_attacked(b, square_of(3, 0), BLACK) && !is_attacked(b, square_of(2, 0), BLACK)) {
                     add_move(moves, from, square_of(2, 0), 0, true);
                 }
             }
             if (us == BLACK && from == square_of(4, 7) && !in_check(b, BLACK)) {
-                if ((b.castling & 4) && b.sq[square_of(5, 7)] == '.' && b.sq[square_of(6, 7)] == '.' &&
+                if ((b.castling & 4) && b.sq[square_of(7, 7)] == 'r' &&
+                    b.sq[square_of(5, 7)] == '.' && b.sq[square_of(6, 7)] == '.' &&
                     !is_attacked(b, square_of(5, 7), WHITE) && !is_attacked(b, square_of(6, 7), WHITE)) {
                     add_move(moves, from, square_of(6, 7), 0, true);
                 }
-                if ((b.castling & 8) && b.sq[square_of(3, 7)] == '.' && b.sq[square_of(2, 7)] == '.' && b.sq[square_of(1, 7)] == '.' &&
+                if ((b.castling & 8) && b.sq[square_of(0, 7)] == 'r' &&
+                    b.sq[square_of(3, 7)] == '.' && b.sq[square_of(2, 7)] == '.' && b.sq[square_of(1, 7)] == '.' &&
                     !is_attacked(b, square_of(3, 7), WHITE) && !is_attacked(b, square_of(2, 7), WHITE)) {
                     add_move(moves, from, square_of(2, 7), 0, true);
                 }
