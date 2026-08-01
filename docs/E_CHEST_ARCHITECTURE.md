@@ -876,6 +876,71 @@ mates are reachable at all; an alternative *search order* over the same move set
 cannot, so it has no marginal value no matter how it is scheduled. Only lanes
 that change the problem are worth parallelising over.
 
+### 8f. The Restriction Portfolio, Derived Rather Than Hand-Picked (promoted)
+
+The portfolio's eight restrictions were chosen early by judgement and their
+weights tuned once -- on the same 24 positions used to evaluate them. With lane
+membership now the only axis that still scales, that table was the highest-value
+thing left to get right, and it had never been measured properly.
+
+Method. Twenty candidate restrictions (the five `ChecksOnly` bits and useful
+combinations, `KingSquares` 2-5, `MaxMoves` 2-6, `ThreatDepth` +-1/+-2) were
+each run standalone over 60 matetrack mate-in-8 positions drawn from the 996
+that no suite here had previously used, then the lane set was chosen by greedy
+set cover. A second, disjoint 60 positions were held back and used only once,
+to decide promotion.
+
+Standalone coverage on the training half (5s, 2 threads):
+
+| lane | solved | | lane | solved |
+|---|---|---|---|---|
+| K2 | 26/60 | | X6 | 13/60 |
+| K3 | 26/60 | | X3, X4 | 11/60 |
+| unrestricted | 22/60 | | X2 | 10/60 |
+| K4 | 21/60 | | R2 | 8/60 |
+| K5 | 18/60 | | C8, C16 | 7/60 |
+| C2 | 17/60 | | C1, C3 | 1/60 |
+
+Two results stand out. `KingSquares` restrictions **beat the unrestricted search
+outright** -- K2 and K3 each solve 26 where it solves 22 -- so the strongest
+lanes are restricted ones, not the general one. And `C1`/`C3` (serial-check
+mate) solve 1/60: near-useless as a lane despite being the most famous of the
+WinChest restrictions.
+
+Greedy cover, with the unrestricted lane forced in first as the only complete
+one:
+
+| pick | adds | cumulative |
+|---|---|---|
+| unrestricted | -- | 22 |
+| K2 | +11 | 33 |
+| R2 | +5 | 38 |
+| R1 | +2 | 40 |
+| C4, K3, X2, Rq2 | +1 each | 44 |
+
+The hand-picked table reached 39/60. The derived one reaches **44/60, which is
+exactly the union of all twenty candidates** -- eight lanes already capture
+everything this candidate pool can reach, so no further restriction of these
+kinds can add anything. `R2` had never been in the table at all despite being
+the second-best pick; `C2`, previously joint-second by weight, was dropped along
+with `C1` and `X4`.
+
+Held out, at the real operating point (32 threads, 15s, parallel portfolio):
+
+| table | solved | certificates |
+|---|---|---|
+| hand-picked | 47/60 | -- |
+| derived | **49/60** | 49 verified, 0 failed |
+
+Two gained, none lost, on positions neither table was derived from. Promoted.
+
+The lesson worth keeping is that the table had been *plausible* and was
+measurably wrong in both directions at once: it spent its second-largest weight
+on a lane worth dropping while omitting the second-best lane entirely. Judgement
+picked the famous restrictions; measurement picked the ones that cover disjoint
+problems. The gap between 39 and 44 was free, and had been sitting there since
+the portfolio was introduced.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

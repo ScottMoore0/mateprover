@@ -1440,9 +1440,18 @@ struct PortfolioEntry {
     double weight;      // share of the budget
 };
 
-// Ordered by measured marginal value on matetrack mate-in-8: the unrestricted
-// search is the most general and gets the largest slice, then the restrictions
-// that solved the most problems the others could not.
+// Derived by greedy set cover over a 20-candidate restriction sweep, measured
+// on 60 matetrack mate-in-8 positions held disjoint from every suite the engine
+// was previously tuned on (benchmarks/reports/portfolio_sweep_train_20260801.json).
+// The hand-picked predecessor reached 39/60; these lanes reach 44/60, which is
+// the union of all 20 candidates -- eight lanes capture everything the candidate
+// pool can reach, so adding more of these restrictions cannot help.
+//
+// Entry order is the greedy pick order, so lane 0 is the unrestricted search and
+// each later lane is the one adding most over those before it. Weights allocate
+// threads and budget: the unrestricted lane is held at a deliberate 0.30 floor
+// because it is the only complete lane, and the rest are proportional to their
+// measured standalone coverage.
 //
 // This is sound, not a heuristic gamble. A restriction only removes attacker
 // options, so any mate it finds is a real forced mate, verifiable by the same
@@ -1450,14 +1459,15 @@ struct PortfolioEntry {
 // runs too rather than being replaced.
 const std::vector<PortfolioEntry>& restriction_portfolio() {
     static const std::vector<PortfolioEntry> entries = {
-        {"unrestricted", 0, 0, 0, 0, 0.34},
-        {"K3",           0, 3, 0, 0, 0.16},
-        {"C2",           2, 0, 0, 0, 0.16},
-        {"K2",           0, 2, 0, 0, 0.10},
-        {"X4",           0, 0, 4, 0, 0.09},
-        {"R1",           0, 0, 0, 1, 0.06},
-        {"C1",           1, 0, 0, 0, 0.05},
-        {"X2",           0, 0, 2, 0, 0.04},
+        //  name          checks  king  maxdef  threat  weight
+        {"unrestricted",       0,    0,      0,      0,  0.300},
+        {"K2",                 0,    2,      0,      0,  0.212},
+        {"K3",                 0,    3,      0,      0,  0.212},
+        {"X2",                 0,    0,      2,      0,  0.081},
+        {"R2",                 0,    0,      0,      2,  0.065},
+        {"C4",                 4,    0,      0,      0,  0.049},
+        {"R1",                 0,    0,      0,      1,  0.041},
+        {"Rq2",                0,    0,      0,     -2,  0.041},
     };
     return entries;
 }
