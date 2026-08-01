@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Independently verify echest proof certificates.
+
+echest's central claim is that a reported mate is a *proof*, not a search
+result. This checker is what makes that claim testable by someone who does not
+trust the engine: it re-derives every legal move itself, using python-chess,
+and accepts a certificate only if every step holds.
+
+A certificate is valid only when, at every node:
+
+  * the attacker's move is legal in the position reached so far;
+  * a leaf marked `mate` really is checkmate;
+  * a defender node lists **exactly** the legal replies — no more, no fewer,
+    so a proof cannot quietly omit a defence that refutes it;
+  * every listed reply leads to a valid sub-proof.
+
+It also checks the reported principal variation independently: the PV must
+replay legally, end in checkmate, and have the length the reported mate depth
+implies.
+
+Usage:
+
+    echest --emit-proof -z 5 - < positions.epd | python verify_proof.py
+    python verify_proof.py engine_output.txt
+
+Exit status is 0 only if every certificate and PV in the input verified.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+
+try:
+    import chess
+except ImportError:
+    sys.stderr.write(
+        "verify_proof.py needs python-chess:\n    pip install chess\n"
+        "It is a deliberate dependency: verification must not reuse the\n"
+        "engine's own move generator, or it would prove nothing.\n")
+    raise SystemExit(2)
+
+DM_RE = re.compile(r"\bdm\s+(\d+)\b")
+PV_RE = re.compile(r"\bpv\s+([^;]+);")
+PROOF_RE = re.compile(r"\bproof\s+(\{.*\})\s*;", re.DOTALL)
+
+
+class Failure(Exception):
+    pass
+
+
+def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
+    """Verify one attacker node. Returns the depth in attacker moves."""
+    where = " ".join(path) if path else "<root>"
+
+    move_uci = node.get("a")
+    if not isinstance(move_uci, str):
+        raise Failure(f"after {where}: attacker node has no move")
+    try:
+        move = chess.Move.from_uci(move_uci)
+    except ValueError:
+        raise Failure(f"after {where}: unparseable move {move_uci!r}")
+    if move not in board.legal_moves:
+        raise Failure(f"after {where}: illegal attacker move {move_uci}")
+
+    board.push(move)
+    try:
+        if node.get("mate"):
+            if not board.is_checkmate():
+                raise Failure(f"after {where} {move_uci}: leaf is not checkmate")
+            return 1
+
+        branches = node.get("d")
+        if branches is None:
+            raise Failure(f"after {where} {move_uci}: non-leaf node has no replies")
+
+        listed = sorted(b.get("r", "") for b in branches)
+        legal = sorted(m.uci() for m in board.legal_moves)
+        if listed != legal:
+            missing = sorted(set(legal) - set(listed))
+            extra = sorted(set(listed) - set(legal))
+            detail = []
+            if missing:
+                detail.append(f"missing defences {missing}")
+            if extra:
+                detail.append(f"claims illegal defences {extra}")
+            raise Failure(f"after {where} {move_uci}: " + "; ".join(detail))
+
+        worst = 0
+        for branch in branches:
+            reply = branch["r"]
+            board.push(chess.Move.from_uci(reply))
+            try:
+                worst = max(worst, verify_node(board, branch["p"],
+                                               path + [move_uci, reply]))
+            finally:
+                board.pop()
+        return worst + 1
+    finally:
+        board.pop()
+
+
+def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int) -> None:
+    replay = board.copy()
+    for token in pv:
+        try:
+            move = chess.Move.from_uci(token)
+        except ValueError:
+            raise Failure(f"unparseable pv move {token!r}")
+        if move not in replay.legal_moves:
+            raise Failure(f"illegal pv move {token}")
+        replay.push(move)
+    if not replay.is_checkmate():
+        raise Failure("pv does not end in checkmate")
+    expected = 2 * claimed_depth - 1
+    if len(pv) != expected:
+        raise Failure(f"pv has {len(pv)} plies, expected {expected} for mate in "
+                      f"{claimed_depth}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("input", nargs="?", default="-",
+                    help="engine output file, or - for stdin (default)")
+    ap.add_argument("--quiet", action="store_true",
+                    help="print only the summary and any failures")
+    ap.add_argument("--require-proof", action="store_true",
+                    help="fail if a solved position carries no certificate "
+                         "(the engine emits them only under --emit-proof)")
+    args = ap.parse_args()
+
+    stream = sys.stdin if args.input == "-" else open(args.input, encoding="utf-8")
+
+    checked = pv_only = skipped = 0
+    failures: list[str] = []
+
+    for raw in stream:
+        line = raw.strip()
+        if not line or line.startswith("%"):
+            continue
+        fen = line.split(";", 1)[0].strip()
+        depth_match = DM_RE.search(line)
+        if not depth_match:
+            skipped += 1          # no mate reported: nothing to verify
+            continue
+
+        depth = int(depth_match.group(1))
+        try:
+            board = chess.Board(fen + " 0 1")
+        except ValueError as exc:
+            failures.append(f"{fen[:40]}: unusable FEN ({exc})")
+            continue
+
+        try:
+            pv_match = PV_RE.search(line)
+            if not pv_match:
+                raise Failure("solved position has no pv")
+            verify_pv(board, pv_match.group(1).split(), depth)
+
+            proof_match = PROOF_RE.search(line)
+            if proof_match:
+                node = json.loads(proof_match.group(1))
+                proved = verify_node(board.copy(), node, [])
+                if proved != depth:
+                    raise Failure(f"certificate proves mate in {proved}, "
+                                  f"reported {depth}")
+                checked += 1
+                if not args.quiet:
+                    print(f"  ok   mate in {depth}  {fen[:44]}")
+            elif args.require_proof:
+                raise Failure("no certificate (run the engine with --emit-proof)")
+            else:
+                pv_only += 1
+                if not args.quiet:
+                    print(f"  pv   mate in {depth}  {fen[:44]}  (no certificate)")
+        except (Failure, json.JSONDecodeError, KeyError) as exc:
+            failures.append(f"{fen[:44]}: {exc}")
+            print(f"  FAIL mate in {depth}  {fen[:44]}: {exc}")
+
+    print(f"\n{checked} certificate(s) verified, {pv_only} pv-only, "
+          f"{len(failures)} failed, {skipped} line(s) with no mate reported")
+    for failure in failures:
+        print(f"  FAILED: {failure}")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

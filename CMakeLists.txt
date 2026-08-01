@@ -58,3 +58,4 @@ else()
 endif()
 
 install(TARGETS echest RUNTIME DESTINATION bin)
+install(PROGRAMS tools/verify_proof.py DESTINATION bin)

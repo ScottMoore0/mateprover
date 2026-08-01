@@ -280,6 +280,88 @@ def test_cli_contract(engine: Path, res: Results) -> None:
     res.check("Chest compatibility flags accepted", code == 0, f"exit={code}")
 
 
+def test_shipped_verifier(engine: Path, res: Results) -> None:
+    """The shipped certificate verifier must accept real proofs and reject fakes.
+
+    echest's headline claim is that a mate is a proof rather than a search
+    result, so `tools/verify_proof.py` is the tool that makes the claim
+    checkable by someone who does not trust the engine. A verifier that accepts
+    everything would make the claim worthless, so it is tested adversarially
+    against deliberately forged certificates.
+    """
+    print("\n[verifier] tools/verify_proof.py accepts proofs and rejects forgeries")
+
+    tool = HERE.parent / "tools" / "verify_proof.py"
+    if not tool.exists():
+        res.skip("shipped verifier", "tools/verify_proof.py not present")
+        return
+    if not HAVE_CHESS:
+        res.skip("shipped verifier", "python-chess not installed")
+        return
+
+    cases = load_epd(HERE / "mates.epd")[:6]
+    output = "\n".join(solve(engine, cases, ["-M", "64", "--emit-proof"])) + "\n"
+
+    def run_verifier(text: str) -> tuple[int, str]:
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "-"],
+                              input=text.encode(), capture_output=True, timeout=120)
+        return proc.returncode, proc.stdout.decode() + proc.stderr.decode()
+
+    code, out = run_verifier(output)
+    res.check("verifier accepts genuine certificates", code == 0,
+              f"exit={code} {out.strip()[:120]!r}")
+
+    # Forge each certificate in a distinct way; every one must be rejected.
+    first = output.splitlines()[0]
+    fen = first.split(";", 1)[0].strip()
+    proof = PROOF_RE.search(first)
+    if not proof:
+        res.check("engine emitted a certificate to forge", False, "no proof token")
+        return
+    node = json.loads(proof.group(1))
+
+    def replaced(new_node) -> str:
+        return first.replace(proof.group(1), json.dumps(new_node)) + "\n"
+
+    # 1. omit a legal defence
+    dropped = json.loads(json.dumps(node))
+    if dropped.get("d"):
+        dropped["d"].pop()
+        code, _ = run_verifier(replaced(dropped))
+        res.check("verifier rejects an omitted defence", code != 0)
+
+    # 2. claim a non-mating leaf is mate
+    forged = json.loads(json.dumps(node))
+    board = chess.Board(fen + " 0 1")
+    board.push(chess.Move.from_uci(forged["a"]))
+    branch = forged["d"][0]
+    board.push(chess.Move.from_uci(branch["r"]))
+    real = branch["p"].get("a")
+    alt = None
+    for mv in board.legal_moves:
+        board.push(mv)
+        mates = board.is_checkmate()
+        board.pop()
+        if not mates and mv.uci() != real:
+            alt = mv.uci()
+            break
+    if alt and branch["p"].get("mate"):
+        branch["p"]["a"] = alt
+        code, _ = run_verifier(replaced(forged))
+        res.check("verifier rejects a forged mate leaf", code != 0)
+
+    # 3. corrupt the principal variation
+    code, _ = run_verifier(re.sub(r"pv [^;]+;", "pv a1a2;", first) + "\n")
+    res.check("verifier rejects a corrupted pv", code != 0)
+
+    # 4. overstate the mate depth
+    dm = DM_RE.search(first)
+    if dm:
+        wrong = first.replace(f"dm {dm.group(1)};", f"dm {int(dm.group(1)) + 1};")
+        code, _ = run_verifier(wrong + "\n")
+        res.check("verifier rejects an overstated depth", code != 0)
+
+
 def test_help_documents_every_option(engine: Path, res: Results) -> None:
     """Every option the parser accepts must appear in --help.
 
@@ -401,6 +483,7 @@ def main() -> int:
     test_time_limit(args.engine, res)
     test_cli_contract(args.engine, res)
     test_help_documents_every_option(args.engine, res)
+    test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
