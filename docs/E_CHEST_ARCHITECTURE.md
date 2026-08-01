@@ -941,6 +941,49 @@ picked the famous restrictions; measurement picked the ones that cover disjoint
 problems. The gap between 39 and 44 was free, and had been sitting there since
 the portfolio was introduced.
 
+### 8g. Compound Restrictions (measured, not promoted)
+
+8f left the portfolio at a hard ceiling: eight lanes already covered the union
+of all twenty single restrictions, so nothing of that kind could add more. The
+obvious way past it is compounds -- `KingSquares 2` *and* `ThreatDepth 2`
+together. A compound cannot reach a mate its components cannot, since it only
+removes more attacker options; but it searches a smaller space, so within a
+fixed budget it can finish where the looser lane times out. Coverage under a
+time limit is not monotone in permissiveness, which is what makes this worth
+testing at all.
+
+Twenty-five compounds were swept on the same training half. The effect is real
+but small: the singles' 44/60 rises to **46/60**, from exactly two positions,
+both won by a `KingSquares + ThreatDepth 2` lane. Greedy cover over the combined
+pool needs nine lanes to bank both.
+
+At the operating point it vanishes entirely. On a **third** disjoint holdout of
+60 positions -- the 8f holdout had already been spent on one promotion decision,
+and reusing it would have quietly converted it into a tuning set -- at 32
+threads and 15s:
+
+| table | solved |
+|---|---|
+| promoted 8-lane | 51/60 |
+| compound 9-lane | 51/60 |
+
+Not two gained and one lost, or any trade: the same 51 positions, identically.
+Rejected.
+
+The reason is the point worth keeping. A compound's whole advantage is finishing
+inside a budget that defeats its looser parent. Give every lane 15s and 32
+threads instead of 5s and 2, and the parent finishes too -- so the compound
+contributes nothing it did not contribute *only because the parent was starved*.
+The 46/60 was never a capability gain; it was a measurement of the training
+budget.
+
+That generalises into a standing caution about the 8f method: **set cover run at
+a cheap training budget can manufacture lanes whose entire value is the cheapness
+of the budget.** The derivation in 8f survives it because promotion there was
+decided at the operating point on held-out data, not on the training sweep --
+and the discipline of deciding at the operating point is exactly what caught
+this. Training-budget coverage selects candidates; it must never promote them.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
