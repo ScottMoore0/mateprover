@@ -984,6 +984,42 @@ decided at the operating point on held-out data, not on the training sweep --
 and the discipline of deciding at the operating point is exactly what caught
 this. Training-budget coverage selects candidates; it must never promote them.
 
+### 8h. Mate-8 Is Budget-Limited, Not Capability-Limited (diagnostic)
+
+8e and 8g closed two directions by measurement, which left an unexamined
+assumption underneath both: that the positions the portfolio misses are missed
+because the engine *cannot* do them. Section 8d had measured exactly that at
+mate-in-10 -- threads 8->32 flat, memory 64MB->unbounded flat, time 5s->60s flat
+at 3/10 -- and concluded the engine was incapable rather than slow. It was easy
+to carry that conclusion to mate-8 without checking.
+
+It does not hold. Escalating the budget on the 60-position holdout, 32 threads,
+parallel portfolio:
+
+| budget | solved |
+|---|---|
+| 15s | 51/60 |
+| 60s | 56/60 |
+| 300s | **60/60** |
+
+Every position falls. Not one is structurally out of reach; the nine misses at
+15s are nine positions that needed more time. Mate-8 and mate-10 are in
+qualitatively different regimes, and the mate-10 result does not describe mate-8.
+
+This reprioritises the backlog. At mate-10, faster nodes buy nothing -- 8d
+measured that directly. At mate-8 the solve curve is still climbing steeply at
+the operating point, so **efficiency work is capability work here**: any
+constant-factor speedup converts directly into coverage at a fixed budget. The
+efficiency items that looked like polish next to a capability wall -- bitboards,
+memory and locality, cheaper node costs -- are the items with a measurable
+target, and the target is quantified: 4x buys +5/60, and roughly 20x would buy
+the remaining 9 at 15s.
+
+The general error worth recording is that 8d's conclusion was correct *at the
+depth it was measured* and quietly wrong one depth down. A saturation result is
+a statement about an operating point, not about the engine, and it expires the
+moment either moves.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
