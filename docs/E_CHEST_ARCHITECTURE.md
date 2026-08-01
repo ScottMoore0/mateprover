@@ -200,7 +200,7 @@ depth-keyed table threw away. The shared proof/disproof table provides them
 directly, so the second table had nothing left to contribute.
 
 It was not merely dead: measured after the shared table landed, `--bound-tt`
-produced an **identical node count** (245,083 — it changed nothing) while
+produced an **identical node count** (245,083 â€” it changed nothing) while
 costing **25% more time**, because it still allocated a table and performed its
 own probes and stores. A flag that can only make the engine slower is a trap,
 not an option.
@@ -431,9 +431,9 @@ Flat across a **12x** increase in time. The three solved problems resolve inside
 
 Together with the other axes the picture is complete: threads 8 to 32, memory 64 MB to unbounded, and time 5 s to 60 s all leave mate-in-10 unchanged. **No resource axis extends reach.**
 
-This bounds the value of the performance work in this document. The 1.44x sequential gain and the parallel speedup are real and verified, and they move problems across a budget boundary at mate-in-8 — but at mate-in-10 a further 12x would solve nothing, because 12x more time is equivalent to a 12x faster engine at a fixed budget. The unsolved problems are likely orders of magnitude away, which is what exhaustive AND/OR search at depth 10 with branching near 39 implies.
+This bounds the value of the performance work in this document. The 1.44x sequential gain and the parallel speedup are real and verified, and they move problems across a budget boundary at mate-in-8 â€” but at mate-in-10 a further 12x would solve nothing, because 12x more time is equivalent to a 12x faster engine at a fixed budget. The unsolved problems are likely orders of magnitude away, which is what exhaustive AND/OR search at depth 10 with branching near 39 implies.
 
-Every avenue that redistributes or accelerates the same search is therefore closed: more cores, more memory, more time, faster nodes, DFPN, and root scheduling have each been measured and each changed nothing at this depth. What remains is **reducing the size of the tree** — proof-safe pruning, meaning exact tests that discharge subtrees without traversing them.
+Every avenue that redistributes or accelerates the same search is therefore closed: more cores, more memory, more time, faster nodes, DFPN, and root scheduling have each been measured and each changed nothing at this depth. What remains is **reducing the size of the tree** â€” proof-safe pruning, meaning exact tests that discharge subtrees without traversing them.
 
 ### 8e. Resource Scaling Is Exhausted
 

@@ -86,7 +86,7 @@ and a small fraction of mate-in-10. It addresses the shallow end of a standard
 benchmark.
 
 **Waiting longer does not help.** On sampled mate-in-10 problems the solve rate
-is identical at 5 s, 20 s and 60 s � a 12x increase in budget solves nothing
+is identical at 5 s, 20 s and 60 s — a 12x increase in budget solves nothing
 extra. The same is true across 8 to 32 threads and from 64 MB to unbounded
 memory. Problems echest does not solve quickly are not a little out of reach,
 they are far out of reach, and the limitation is the search rather than the
@@ -119,7 +119,7 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-97 checks covering:
+116 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -132,6 +132,10 @@ python tests/run_tests.py --engine build/echest
 - **time-limit soundness** — a budgeted search must stop on time and must never
   claim a mate it did not prove;
 - CLI contract — bad input is rejected, not silently ignored;
+- **illegal positions refused** — wrong king counts, a side-to-move that is
+  not `w`/`b`, malformed en passant, pawns on the back ranks, and positions
+  where the side not to move is in check;
+- **castling requires its rook**, checked against python-chess;
 - PV replay and recursive certificate verification, enabled automatically when
   `python-chess` is installed and skipped cleanly when it is not;
 - the shipped verifier itself, tested adversarially: it must accept genuine
