@@ -172,6 +172,12 @@ Board make_move(Board b, const Move& m) {
     return b;
 }
 
+// Is this move legal -- that is, does it leave the mover's own king unattacked?
+//
+// Defined below, once the occupancy planes it needs are in scope. Declared here
+// because the legality loops come first in the file.
+inline bool move_is_legal(const Board& b, const Move& m);
+
 std::vector<Move> legal_moves_vector(const Board& b, bool move_reserve, std::size_t move_reserve_capacity) {
     std::vector<Move> pseudo;
     if (move_reserve) {
@@ -181,8 +187,7 @@ std::vector<Move> legal_moves_vector(const Board& b, bool move_reserve, std::siz
     std::vector<Move> legal;
     legal.reserve(pseudo.size());
     for (const Move& m : pseudo) {
-        Board nb = make_move(b, m);
-        if (!in_check(nb, other(nb.stm))) {
+        if (move_is_legal(b, m)) {
             legal.push_back(m);
         }
     }
@@ -197,8 +202,7 @@ std::vector<Move> legal_moves(const Board& b, bool move_reserve = false, std::si
             std::vector<Move> legal;
             legal.reserve(pseudo.size());
             for (const Move& m : pseudo) {
-                Board nb = make_move(b, m);
-                if (!in_check(nb, other(nb.stm))) {
+                if (move_is_legal(b, m)) {
                     legal.push_back(m);
                 }
             }
@@ -215,8 +219,7 @@ bool has_legal_move_vector(const Board& b, bool move_reserve, std::size_t move_r
     }
     gen_pseudo(b, pseudo);
     for (const Move& m : pseudo) {
-        Board nb = make_move(b, m);
-        if (!in_check(nb, other(nb.stm))) {
+        if (move_is_legal(b, m)) {
             return true;
         }
     }
@@ -229,8 +232,7 @@ bool has_legal_move(const Board& b, bool move_reserve = false, std::size_t move_
         gen_pseudo(b, pseudo);
         if (!pseudo.overflow) {
             for (const Move& m : pseudo) {
-                Board nb = make_move(b, m);
-                if (!in_check(nb, other(nb.stm))) {
+                if (move_is_legal(b, m)) {
                     return true;
                 }
             }
@@ -309,6 +311,25 @@ Planes planes_after_move(const Board& b, const Move& m, int& mover_king_sq) {
 
     mover_king_sq = (pt == PT_KING) ? m.to : b.king_sq[us];
     return pl;
+}
+
+// Legality without building a child Board.
+//
+// The predicate is only "is the mover's king attacked afterwards", and the
+// occupancy planes answer that, so the square array, castling rights, en-passant
+// state and side-to-move of a child position were all being computed and thrown
+// away. This is the same test the fused ordering path already used; the plain
+// generation paths were still copying a whole Board per pseudo-legal move.
+//
+// A missing king counts as illegal, matching in_check, which the make_move
+// version delegated to. parse_fen4 rejects positions without exactly one king
+// per side, so this arm is unreachable in practice and exists to keep the two
+// paths answering identically rather than merely equivalently.
+inline bool move_is_legal(const Board& b, const Move& m) {
+    int mover_king_sq = -1;
+    const Planes pl = planes_after_move(b, m, mover_king_sq);
+    return mover_king_sq >= 0 &&
+           !attacked_on_planes(pl.occ, pl.by_color, pl.by_type, mover_king_sq, other(b.stm));
 }
 
 

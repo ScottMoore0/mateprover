@@ -1020,6 +1020,56 @@ depth it was measured* and quietly wrong one depth down. A saturation result is
 a statement about an operating point, not about the engine, and it expires the
 moment either moves.
 
+### 8i. Legality Without A Child Board, And What It Says About Bitboards (promoted)
+
+8h established that constant-factor speed converts into coverage at mate-8, which
+made "bitboard the board" the obvious next item. It is the wrong item, and
+measuring rather than assuming is what showed it.
+
+gprof is unusable here -- the sampling timer yields no data on this mingw
+toolchain, with or without inlining -- so cost was attributed by counting
+operations in an instrumented build and pricing them against perft, which
+performs generation and `make_move` with no search overhead.
+
+Baseline, one hard holdout position, single-threaded, 25s: 11.0M search nodes,
+14.0M `gen_pseudo`, **124.7M `make_move`** (11.3 per node) and 62.2M
+`is_attacked`. The cause was that `legal_moves`, `legal_moves_vector` and both
+`has_legal_move` paths decided legality by building an entire child `Board` --
+64 squares, nine occupancy planes, castling rights, en-passant state -- and
+asking `in_check`, then discarding all of it. The only question being asked is
+whether the mover's king is attacked, and `planes_after_move` plus
+`attacked_on_planes` already answered exactly that: the fused ordering path had
+used them for some time, while the plain generation paths had not.
+
+Rewiring the four loops to the plane path:
+
+| measure | before | after |
+|---|---|---|
+| perft(5) node count | 10,819,001 | 10,819,001 (identical) |
+| perft(5) rate | 17.7 M/s | **28.7 M/s (1.62x)** |
+| search rate, 1 thread | 448 k/s | 467 k/s (1.04x) |
+| `make_move` calls | 124.7M | 53.9M |
+| holdout @15s | 51/60 | 52/60 |
+
+Promoted: strictly faster, semantically identical, and it deletes a second way
+of asking a question the codebase already had one way to ask -- the same class
+of duplication that once hid the castling-rights bug.
+
+The result that matters is the discrepancy. Movegen-bound work got 1.62x; the
+search got 1.04x. Removing 57% of all `make_move` calls and the entire per-move
+`Board` copy bought four percent, so **the search is not movegen-bound**, and
+bitboarding the board -- a much larger and riskier change aimed at the same
+work -- cannot pay off either. The remaining cost is elsewhere: transposition
+table traffic, move ordering and scoring, certificate and PV construction, and
+allocation. That is where the next efficiency increment has to look.
+
+Two cautions on the numbers. The `is_attacked` collapse from 62.2M to 0.22M is
+mostly re-routing -- the attack test now runs inside `attacked_on_planes`, which
+is not instrumented -- not work eliminated. And the +1 position at the operating
+point is a single position on a wall-clock-limited parallel search, which is
+inside the noise; the trustworthy claims here are the perft speedup and the
+identical node counts, not the coverage delta.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
