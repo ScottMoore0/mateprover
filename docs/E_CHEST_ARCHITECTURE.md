@@ -535,6 +535,16 @@ Current E checkpoint:
 
 ### 11. Verification Harness
 
+A certificate format is only worth having if someone other than the engine can check it. `chest-e/tools/verify_proof.py` ships with the prover for that reason: it reads engine output, re-derives every legal move with python-chess, and never consults the engine.
+
+It accepts a certificate only when the attacker move is legal at each node, a leaf marked `mate` really is checkmate, a defender node lists **exactly** the legal replies, and every listed reply has a valid sub-proof. It independently replays the reported PV and checks its length against the reported depth.
+
+The verifier is tested adversarially, because one that accepts everything would make the engine's headline claim worthless. The suite forges four distinct attacks on a genuine certificate -- an omitted defence, a non-mating leaf marked as mate, a corrupted PV, and an overstated depth -- and requires each to be rejected.
+
+Writing those tests caught a flaw in the *test*, not the tool: the first forged-leaf attempt mutated a leaf that already read `{"a": ..., "mate": true}`, so it changed nothing and passed vacuously. A forgery test that does not actually forge anything is worse than no test, since it reports confidence it has not earned.
+
+
+
 Every E success is checked by:
 
 - legal PV replay;

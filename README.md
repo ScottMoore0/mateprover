@@ -24,8 +24,19 @@ proof {"a":"h5a5","d":[{"r":"d8d7","p":{"a":"e3f5","mate":true}}, ...]}
 
 Every attacker node carries one proof move. Every defender node enumerates
 **exactly** the legal replies — no sampling, no representative line — and each
-leaf ends in real checkmate. `tests/run_tests.py` verifies these certificates
-against python-chess without trusting the engine at all.
+leaf ends in real checkmate.
+
+The checker ships with the engine, so the claim is yours to verify rather than
+mine to assert:
+
+```
+echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
+```
+
+It re-derives every legal move itself with python-chess and never consults the
+engine, so it catches a certificate that omits an inconvenient defence, marks a
+non-mating leaf as mate, or overstates the depth. The test suite exercises
+exactly those forgeries against it.
 
 That property drives the design: an optimisation is acceptable only if the
 proof still verifies, and several plausible optimisations in this engine's
@@ -108,7 +119,7 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-92 checks covering:
+97 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -122,7 +133,10 @@ python tests/run_tests.py --engine build/echest
   claim a mate it did not prove;
 - CLI contract — bad input is rejected, not silently ignored;
 - PV replay and recursive certificate verification, enabled automatically when
-  `python-chess` is installed and skipped cleanly when it is not.
+  `python-chess` is installed and skipped cleanly when it is not;
+- the shipped verifier itself, tested adversarially: it must accept genuine
+  certificates and reject an omitted defence, a forged mate leaf, a corrupted
+  PV and an overstated depth.
 
 The core tests have no third-party dependency.
 
