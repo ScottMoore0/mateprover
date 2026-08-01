@@ -1365,6 +1365,10 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"defender_move_lists\":" << st.defender_move_lists
               << ",\"defender_moves\":" << st.defender_moves
               << ",\"defender_replies_tried\":" << st.defender_replies_tried
+              << ",\"defender_refutations\":" << st.defender_refutations
+              << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
+              << ",\"refutation_hint_hits\":" << st.refutation_hint_hits
+              << ",\"refutation_hint_stores\":" << st.refutation_hint_stores
               << ",\"defender_pseudo_moves\":" << st.defender_pseudo_moves
               << ",\"defender_lazy_skipped\":" << st.defender_lazy_skipped
               << ",\"dfpn_nodes\":" << st.dfpn_nodes

@@ -1220,6 +1220,64 @@ The README's standing claim that resources do not buy reach was also corrected.
 It was true as measured -- at mate-in-10 -- and 8h had already shown it fails one
 depth down. It now says which depth it describes.
 
+### 8m. The Defender Side Is Already Tight, And Refutation Hints Cost More Than They Save
+
+With speed (8i-8k) and transpositions (8l) closed, the remaining candidate for
+node-count reduction was the defender side: `prove_defender` must enumerate
+*exactly* the legal replies for the certificate, so any avoidable work there is
+paid at every AND node.
+
+Four counters needed for this -- `defender_refutations` and the three
+`refutation_hint_*` -- were being collected and never emitted. `--profile` now
+reports them.
+
+Measured on the hard holdout position, single-threaded, 20s:
+
+| quantity | value |
+|---|---|
+| defender nodes | 4.89M |
+| legal replies generated | 69.9M (14.3 per node) |
+| replies actually tried | 4.47M (0.9 per node) |
+| nodes refuted | 78% |
+| replies tried per refutation | **1.18** |
+
+The ordering is already about as good as it can get: where a refutation exists,
+the first reply examined is nearly always it. There is no headroom in *which*
+reply is tried first.
+
+There is apparent headroom in the other number -- 14.3 replies generated against
+0.9 tried, so 93% of defender generation is discarded. `--lazy-defender` exists
+for exactly that and is not in the promoted arguments. Enabling it cuts defender
+move work from 59.6M to 3.9M, a 93% reduction, and changes the node rate by
+**0.5%**. It also leaves refutation quality untouched at 1.19 tries per
+refutation -- which is its own result: the eager path scores and orders every
+defender reply, the lazy path orders nothing, and the first move refutes just as
+often either way. **Defender move ordering buys nothing measurable.**
+
+That is the fourth time work-reduction has failed to become time-reduction (8i
+4%, 8j nothing, 8k capped, and now 93% of defender generation for 0.5%). The
+consistent explanation is the one 8k measured directly: no single stage of a node
+dominates, so removing any one of them moves the total very little.
+
+Refutation hints were then measured for the first time and are **net harmful**:
+
+| configuration | node rate | tries per refutation | hint hit rate |
+|---|---|---|---|
+| baseline | 466 k/s | 1.177 | -- (inactive) |
+| `--refutation-hints` | 423 k/s | 1.180 | 4% |
+| `--lazy-defender --refutation-hints` | 435 k/s | 1.178 | 5% |
+
+A 4-5% hit rate, no improvement in tries per refutation, and a 9% throughput
+cost. The feature cannot help for a structural reason: it exists to move a known
+refutation to the front, and the front is already right 1.18 times out of 1.18.
+It is correctly defaulted off, and stays off -- but it was off by inheritance
+rather than by evidence, and is now off on measurement. Rejected.
+
+The defender side is therefore closed as a lever, and with it the last item on
+the node-count list that did not require changing the problem being searched.
+Every remaining avenue for capability at this depth runs back through the
+restriction portfolio.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
