@@ -65,7 +65,9 @@ void print_usage() {
 "  echest [options] < file       read a single position from stdin\n"
 "\n"
 "Problem:\n"
-"  -z N                          requested mate depth (else inferred from #N)\n"
+"  -z N                          requested mate depth. Without it the depth is\n"
+"                                read from a #N or 'dm N' token on the input\n"
+"                                line; lines beginning with # are comments\n"
 "  --route NAME                  depth-first (default) | shallow-fast | dfpn\n"
 "  --direct-depth                prove \"a mate within N\" by searching at N\n"
 "                                directly; better solve rate at a fixed\n"
@@ -508,6 +510,15 @@ int main(int argc, char** argv) {
     if (read_stdin) {
         std::string line;
         while (std::getline(std::cin, line)) {
+            // Skip comment lines. EPD corpora are routinely commented -- this
+            // repository's own tests/mates.epd opens with two such lines -- and
+            // reporting "error input" for each made piping a corpus in produce
+            // an error for content that is not input at all. A FEN never begins
+            // with '#', so this cannot mask a real position.
+            const std::size_t first = line.find_first_not_of(" \t\r");
+            if (first != std::string::npos && line[first] == '#') {
+                continue;
+            }
             if (perft_depth > 0) {
                 if (perft_divide) perft_divide_line(line, perft_depth); else perft_line(line, perft_depth);
             } else if (list_legal) {

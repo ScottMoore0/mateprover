@@ -722,6 +722,34 @@ def test_pv_and_certificates(engine: Path, res: Results) -> None:
         res.check(f"certificate #{dm} {fen[:24]}", ok, why)
 
 
+def test_corpus_ergonomics(engine: Path, res: Results) -> None:
+    """The shipped corpus must work when simply piped in.
+
+    Both halves of this were broken. The engine inferred a depth only from the
+    matetrack `#N` spelling, not the `dm N` spelling its own corpora and its own
+    output use, and it reported "error input" for the corpus's comment lines.
+    Together that meant `echest - < tests/mates.epd` searched nothing and
+    printed an error for every comment.
+    """
+    print("\n[corpus] the shipped corpus pipes in cleanly")
+
+    raw = (HERE / "mates.epd").read_text(encoding="utf-8")
+    out = run(engine, ["-5", "--time-limit", "10", "-"], raw)
+
+    res.check("no error lines when piping the shipped corpus",
+              "error input" not in out)
+    res.check("comment lines produce no output",
+              not any(l.lstrip().startswith("#") for l in out.splitlines()))
+    res.check("depth inferred from 'dm N' without -z",
+              len(DM_RE.findall(out)) >= 4)
+
+    # The engine prints `dm N`, so a run's output can be fed straight back in.
+    once = run(engine, ["-5", "-z", "2", "--time-limit", "10", "-"],
+               "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -\n")
+    twice = run(engine, ["-5", "--time-limit", "10", "-"], once)
+    res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -755,6 +783,7 @@ def main() -> int:
     test_restriction_portfolio(args.engine, res)
     test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
+    test_corpus_ergonomics(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
     for failure in res.failed:

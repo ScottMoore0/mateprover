@@ -1313,16 +1313,48 @@ void perft_line(const std::string& raw, int depth) {
     }
 }
 
+// Read a mate depth out of an annotated input line.
+//
+// Two spellings are accepted. `#N` is the matetrack/EPD convention. `dm N` is
+// the convention this repository's own corpora use (tests/mates.epd is written
+// `<fen4> ; dm <depth>`) and is also the form echest itself prints, so a run's
+// output can be fed straight back in. Only `#N` was recognised before, which
+// meant piping the shipped corpus into the engine silently searched nothing.
 int infer_mate_depth(const std::string& line) {
-    auto pos = line.find('#');
-    if (pos == std::string::npos) {
-        return 0;
+    auto read_digits = [&line](std::size_t pos) {
+        int value = 0;
+        bool any = false;
+        for (; pos < line.size() && std::isdigit(static_cast<unsigned char>(line[pos])); ++pos) {
+            value = value * 10 + (line[pos] - '0');
+            any = true;
+        }
+        return any ? value : 0;
+    };
+
+    if (auto pos = line.find('#'); pos != std::string::npos) {
+        return read_digits(pos + 1);
     }
-    int value = 0;
-    for (++pos; pos < line.size() && std::isdigit(static_cast<unsigned char>(line[pos])); ++pos) {
-        value = value * 10 + (line[pos] - '0');
+
+    // `dm` must stand as its own token, so that a FEN or a move never matches.
+    for (std::size_t pos = line.find("dm"); pos != std::string::npos;
+         pos = line.find("dm", pos + 1)) {
+        const bool left_ok = pos == 0 || line[pos - 1] == ' ' || line[pos - 1] == ';' ||
+                             line[pos - 1] == '	';
+        std::size_t after = pos + 2;
+        if (!left_ok || after >= line.size()) {
+            continue;
+        }
+        if (line[after] != ' ' && line[after] != '	') {
+            continue;
+        }
+        while (after < line.size() && (line[after] == ' ' || line[after] == '	')) {
+            ++after;
+        }
+        if (const int value = read_digits(after); value > 0) {
+            return value;
+        }
     }
-    return value;
+    return 0;
 }
 
 std::string pv_uci(const std::vector<Move>& pv) {

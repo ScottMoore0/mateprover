@@ -1325,6 +1325,44 @@ the mate-in-10 saturation result across all depths. That is the second such
 correction after 8l, from the same root cause -- a result true at one operating
 point written down as though it described the engine.
 
+### 8o. The Corpus Did Not Round-Trip, And The Registry Measured A Dead Configuration
+
+8n moved the tuned settings into the defaults, which left the benchmark registry
+pinning `-M 64` and `--threads 8` -- both now *worse* than what ships -- and no
+portfolio. Every benchmark was therefore characterising a configuration the
+engine no longer has. The promoted entry now runs the shipped defaults
+(`-5 -z {mate} -`), and the previous invocation is preserved verbatim as
+`chest_E_legacy_args` so reports dated before 2026-08-01 stay reproducible
+rather than merely being contradicted.
+
+Smoke-testing that entry turned up two input-handling defects that no gate could
+have caught, because every gate fed the engine input the engine had generated:
+
+**Depth was inferred only from `#N`.** That is the matetrack spelling. This
+repository's own corpora use `dm N` -- `tests/mates.epd` is literally documented
+as `<fen4> ; dm <depth>` -- and so does echest's own output. Piping the shipped
+corpus in searched nothing at all, silently, because a missing depth is not an
+error. Both spellings are now accepted, which also makes a run's output valid
+input to another run.
+
+**Comment lines were reported as errors.** `tests/mates.epd` opens with two `#`
+comment lines and each produced `error input`. Lines whose first non-blank
+character is `#` are now skipped; a FEN cannot begin with `#`, so this cannot
+mask a real position.
+
+Together these meant the single most natural invocation a new user would try --
+`echest - < tests/mates.epd` -- printed two errors and solved nothing. Both are
+now pinned by `test_corpus_ergonomics`, including the round-trip property, and
+the suite is at 140 checks.
+
+The pattern is worth naming, because it is the third instance. 8n found the
+defaults untested because every gate passed explicit flags. This finds input
+handling untested because every gate constructed its own input. A test suite
+that builds its own inputs and its own configuration validates the engine
+against itself, and is blind in exactly the direction a first-time user
+approaches from. The fix in both cases was to make a gate consume the shipped
+artefact as shipped.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
