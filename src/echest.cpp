@@ -179,6 +179,7 @@ struct Stats {
     std::uint64_t root_sequential_hits = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
+    std::uint64_t deadline_checks = 0;
     std::uint64_t order_calls = 0;
     std::uint64_t order_moves = 0;
     std::uint64_t immediate_mate_tests = 0;
@@ -234,6 +235,7 @@ struct Stats {
         root_sequential_hits += o.root_sequential_hits;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
+        deadline_checks += o.deadline_checks;
         order_calls += o.order_calls;
         order_moves += o.order_moves;
         immediate_mate_tests += o.immediate_mate_tests;
@@ -255,7 +257,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 50 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 51 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
@@ -528,6 +530,8 @@ struct SearchConfig {
     // working instead of bouncing straight back. Expressed in 1/64ths.
     int dfpn_epsilon_64 = 0;
     bool dfpn_sort = false;
+    // Wall-clock budget in seconds. 0 means unlimited.
+    double time_limit = 0.0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -563,6 +567,15 @@ struct Search : SearchConfig {
     // abort, not a verdict, so nothing false is recorded.
     std::uint64_t node_budget = 0;
 
+    // Wall-clock deadline. Expiry is an abort, which by the abort invariant
+    // records no verdict, so a timed-out search reports "not proved" rather
+    // than anything false. Shared by value with every parallel worker, so all
+    // of them stop at the same instant.
+    bool has_deadline = false;
+    std::chrono::steady_clock::time_point deadline{};
+    bool timed_out = false;
+    std::uint32_t deadline_countdown = 0;
+
     // When non-null, exact proof entries live in a table shared with the other
     // workers of this search instead of in the private `tt` map above.
     SharedProofTable* shared_table = nullptr;
@@ -587,6 +600,22 @@ inline bool search_cancelled(Search& s) {
     if (s.node_budget != 0 && s.stats.nodes >= s.node_budget) {
         s.aborted = true;
         return true;
+    }
+    // Reading the clock on every node would cost more than the search it
+    // guards, so the deadline is polled on a countdown. The granularity only
+    // affects how promptly the limit is honoured, never correctness.
+    if (s.has_deadline) {
+        if (s.deadline_countdown == 0) {
+            s.deadline_countdown = 2048;
+            ++s.stats.deadline_checks;
+            if (std::chrono::steady_clock::now() >= s.deadline) {
+                s.timed_out = true;
+                s.aborted = true;
+                return true;
+            }
+        } else {
+            --s.deadline_countdown;
+        }
     }
     if (s.cancel != nullptr && s.cancel->load(std::memory_order_relaxed)) {
         s.aborted = true;
@@ -2242,6 +2271,9 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
         s.stats += workers[static_cast<std::size_t>(w)]->stats;
         workers[static_cast<std::size_t>(w)]->stats = Stats{};
         workers[static_cast<std::size_t>(w)]->aborted = false;
+        if (workers[static_cast<std::size_t>(w)]->timed_out) {
+            s.timed_out = true;
+        }
     }
 
     const int best = best_index.load(std::memory_order_acquire);
@@ -2546,6 +2578,8 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             slots.emplace_back(new WorkerSlot());
             auto ws = std::unique_ptr<Search>(new Search());
             static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
+            ws->has_deadline = s.has_deadline;
+            ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
@@ -2559,6 +2593,9 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
     };
 
     for (int depth = start_depth; depth <= max_depth; ++depth) {
+        if (s.timed_out) {
+            break;
+        }
         // Advance the aging generation so entries that go untouched during this
         // pass become the first candidates for eviction if the table is full.
         ++s.tt.generation;
@@ -2624,6 +2661,9 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
             break;
+        }
+        if (s.timed_out) {
+            break; // the depth was abandoned, so its failure is not a verdict
         }
     }
     return result;
@@ -2988,6 +3028,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"root_sequential_hits\":" << st.root_sequential_hits
               << ",\"dfpn_movegen\":" << st.dfpn_movegen
               << ",\"dfpn_mate_tests\":" << st.dfpn_mate_tests
+              << ",\"timed_out\":" << (s.timed_out ? "true" : "false")
               << ",\"lazy_defender\":" << (s.lazy_defender ? "true" : "false")
               << ",\"order_calls\":" << st.order_calls
               << ",\"order_moves\":" << st.order_moves
@@ -3064,6 +3105,12 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     static_cast<SearchConfig&>(s) = config;
     s.attacker = b.stm;
     s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+    if (s.time_limit > 0.0) {
+        s.has_deadline = true;
+        s.deadline = std::chrono::steady_clock::now() +
+                     std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                         std::chrono::duration<double>(s.time_limit));
+    }
     s.tt.capacity = entry_capacity_for_mb(s.memory_mb);
     if (s.tt_reserve > 0) {
         s.tt.map.reserve(s.tt_reserve);
@@ -3089,6 +3136,11 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         if (s.emit_proof && !proof.cert.empty()) {
             std::cout << "; proof " << proof.cert;
         }
+    }
+    if (!accepted && s.timed_out) {
+        // Distinguish "gave up" from "proved there is no mate". Without this a
+        // released tool would report the same thing for both.
+        std::cout << "; timeout";
     }
     std::cout << ";\n";
     if (s.profile) {
@@ -3360,6 +3412,13 @@ int main(int argc, char** argv) {
             config.root_sequential_first = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
+        } else if (arg == "--time-limit") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--time-limit' requires seconds");
+            char* end = nullptr;
+            const double value = std::strtod(v, &end);
+            if (end == v || value < 0.0) return usage_error("option '--time-limit' expects a non-negative number of seconds");
+            config.time_limit = value;
         } else if (arg == "--dfpn-epsilon-64") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-epsilon-64' requires a value");

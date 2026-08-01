@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -193,6 +194,48 @@ def test_invariance(engine: Path, res: Results) -> None:
                   f"{len(diffs)} rows differ (first at index {diffs[0]})" if diffs else "")
 
 
+def test_time_limit(engine: Path, res: Results) -> None:
+    """A budgeted search must stop on time, and must never claim a false mate.
+
+    Expiry is an abort, and by the abort invariant an aborted search records no
+    verdict. So a timed-out run reports "not proved" -- never a mate, and never
+    a disproof it did not establish.
+    """
+    print("\n[time] the search honours a wall-clock budget")
+
+    # A mate-in-8 that does not resolve quickly, so the budget actually binds.
+    hard = "5k2/q2ppP1p/4P2P/p1P1PbN1/P1pR2N1/2K4B/6P1/8 w - -"
+
+    for limit in (0.5, 2.0):
+        started = time.monotonic()
+        out = run(engine, [*BASE_ARGS, "-M", "64", "--single-thread",
+                           "--time-limit", str(limit), "-z", "8", "-"],
+                  hard + "\n", timeout=limit + 30.0)
+        elapsed = time.monotonic() - started
+        res.check(f"budget {limit}s is honoured",
+                  elapsed < limit + 5.0, f"took {elapsed:.1f}s")
+        res.check(f"budget {limit}s reports timeout, not a mate",
+                  "timeout" in out and DM_RE.search(out) is None,
+                  f"output {out.strip()[:80]!r}")
+
+    # A generous budget must not disturb positions that solve quickly.
+    cases = load_epd(HERE / "mates.epd")
+    baseline = solve(engine, cases, ["-M", "64", "--single-thread"])
+    budgeted = solve(engine, cases, ["-M", "64", "--single-thread", "--time-limit", "120"])
+    same = all(
+        (BM_RE.search(a) is None) == (BM_RE.search(b) is None)
+        and (BM_RE.search(a) is None or BM_RE.search(a).group(1) == BM_RE.search(b).group(1))
+        for a, b in zip(baseline, budgeted)
+    )
+    res.check("a generous budget changes no answer", same)
+
+    # Under a budget too small to prove anything, no mate may be claimed.
+    nomate = load_epd(HERE / "nomate.epd")
+    tight = solve(engine, nomate, ["-M", "64", "--time-limit", "0.02", "--threads", "4", "--shared-tt"])
+    res.check("no false mate under a tight budget",
+              all(DM_RE.search(l) is None for l in tight))
+
+
 def test_cli_contract(engine: Path, res: Results) -> None:
     """The CLI must diagnose bad input rather than quietly doing something else.
 
@@ -322,6 +365,7 @@ def main() -> int:
     test_known_mates(args.engine, res)
     test_no_mate(args.engine, res)
     test_invariance(args.engine, res)
+    test_time_limit(args.engine, res)
     test_cli_contract(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
