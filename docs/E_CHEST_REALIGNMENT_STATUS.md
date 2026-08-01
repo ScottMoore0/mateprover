@@ -45,9 +45,15 @@ Missing target architecture pieces:
 Profiling, not intuition, now sets the search-performance order. Removing 7.4x
 of defender child-board construction (`--lazy-defender`) bought only 3-5%
 sequentially and nothing in parallel. Board copying is therefore not the
-dominant cost; the attack scan is. Copy-avoidance work is deprioritised and the
-bitboard/incremental-attack board is prioritised, because cheap attack queries
-are what E is short of.
+dominant cost; the attack scan is.
+
+Bitboard attack detection was then implemented on that basis and returned only
+1.018x geometric mean, because it *added* a representation rather than
+replacing one: `Board` grew ~64%, so cheaper attack queries partly paid for
+more expensive copies. The refined conclusion is that neither cost can be
+removed alone. The next board increment must do both at once -- make/unmake in
+place plus a single representation -- rather than layering another encoding on
+top of `sq[]` and `packed[]`.
 
 ## Revised Impact Order
 

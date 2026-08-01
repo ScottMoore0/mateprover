@@ -34,7 +34,26 @@ Current E checkpoint:
 
 The final target is bitboards, compact undo, incremental attacks, pins/check state, and branch-light legal move generation.
 
-The first E checkpoint uses a simpler array board to establish correctness. It should be replaced or supplemented by a bitboard board once the verifier suite is stable.
+The first E checkpoint uses a simpler array board to establish correctness. Bitboard occupancy planes have now been added beside it; the array board remains the source of truth for piece-at-square queries.
+
+#### Bitboard Attack Detection
+
+Prompted by the measured finding that attack scanning, not board copying, dominates. `is_attacked` previously walked pawn, knight and king square lists and stepped along slider rays one square at a time.
+
+Current checkpoint:
+
+- `Board` maintains `occ`, `by_color[2]` and `by_type[6]` incrementally in `set_square`, which was already the single mutation choke point for FEN parsing, ordinary moves, en passant, promotion and castling;
+- leaper attacks are single mask-and-test operations; slider attacks intersect a precomputed ray mask with occupancy and take the nearest blocker by bit scan, replacing a square-by-square walk;
+- bitboard tables are derived from the existing square-list tables at startup, so the two representations cannot disagree;
+- ray direction sign is derived from the table rather than assumed, so the nearest blocker is correctly the lowest or highest set bit per direction;
+- `lsb_index`/`msb_index` are portable across GCC, Clang and MSVC with a generic fallback, since the CI matrix builds all three;
+- `is_attacked` is a pure predicate, so the search is unchanged: identical node counts and PVs on all four suites, all six perft positions still exact, and 294/294 movegen parity against python-chess with zero mismatches.
+
+**The gain was much smaller than the bottleneck finding predicted.** Five interleaved trials at 8 threads: hard holdout `-3.8%`, negative controls `-6.5%`, regression controls `+1.2%` and smoke `+2.4%` (both inside one standard deviation), geometric mean **1.018x**.
+
+The reason is that this slice *added* a representation rather than replacing one. `Board` grew from roughly 112 to 184 bytes, so every `make_move` copy became about 64% more expensive, and `set_square` now maintains the packed TT words *and* three bitboard planes on every write. Cheaper attack queries are paying for more expensive copies and mutations.
+
+Promoted anyway, because it is positive on the suites that matter and it is the prerequisite for collecting the rest: the remaining win needs the redundancy removed -- make/unmake in place instead of copy-on-move, and a single representation rather than `sq[]` plus `packed[]` plus planes. That is the next board increment, and it is now a concrete target rather than a generic aspiration.
 
 Current board checkpoint:
 

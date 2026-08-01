@@ -24,9 +24,43 @@
 #include <utility>
 #include <vector>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 namespace {
 
 enum Color { WHITE = 0, BLACK = 1 };
+
+// Index of the least/most significant set bit. Portable across the compilers
+// the CI matrix builds with; the generic fallbacks keep this correct anywhere.
+inline int lsb_index(std::uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ctzll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return static_cast<int>(i);
+#else
+    int n = 0;
+    while ((x & 1ull) == 0ull) { x >>= 1; ++n; }
+    return n;
+#endif
+}
+
+inline int msb_index(std::uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return 63 - __builtin_clzll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    unsigned long i;
+    _BitScanReverse64(&i, x);
+    return static_cast<int>(i);
+#else
+    int n = 63;
+    while ((x & (1ull << 63)) == 0ull) { x <<= 1; --n; }
+    return n;
+#endif
+}
 
 enum class RouteKind {
     DepthFirst,
@@ -79,9 +113,29 @@ struct RouteResult {
     int proved_depth = 0;
 };
 
+// Piece-type indices for the bitboard planes.
+enum PieceType { PT_PAWN = 0, PT_KNIGHT, PT_BISHOP, PT_ROOK, PT_QUEEN, PT_KING, PT_NONE };
+
+inline PieceType type_of(char p) {
+    switch (std::tolower(static_cast<unsigned char>(p))) {
+        case 'p': return PT_PAWN;
+        case 'n': return PT_KNIGHT;
+        case 'b': return PT_BISHOP;
+        case 'r': return PT_ROOK;
+        case 'q': return PT_QUEEN;
+        case 'k': return PT_KING;
+        default: return PT_NONE;
+    }
+}
+
 struct Board {
     std::array<char, 64> sq{};
     std::array<std::uint64_t, 4> packed{};
+    // Occupancy planes maintained incrementally by set_square. Attack queries
+    // read these instead of walking squares one at a time.
+    std::uint64_t occ = 0;
+    std::array<std::uint64_t, 2> by_color{};
+    std::array<std::uint64_t, 6> by_type{};
     std::array<int, 2> king_sq{{-1, -1}};
     Color stm = WHITE;
     unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
@@ -542,6 +596,18 @@ std::uint8_t piece_code(char p) {
 }
 
 void set_square(Board& b, int sq, char p) {
+    const std::uint64_t bit = 1ull << sq;
+    const char old = b.sq[sq];
+    if (type_of(old) != PT_NONE) {
+        b.occ &= ~bit;
+        b.by_color[is_white_piece(old) ? WHITE : BLACK] &= ~bit;
+        b.by_type[type_of(old)] &= ~bit;
+    }
+    if (type_of(p) != PT_NONE) {
+        b.occ |= bit;
+        b.by_color[is_white_piece(p) ? WHITE : BLACK] |= bit;
+        b.by_type[type_of(p)] |= bit;
+    }
     b.sq[sq] = p;
     int word = sq / 16;
     int shift = (sq % 16) * 4;
@@ -853,53 +919,84 @@ bool slider_attacker_matches(char p, bool diagonal) {
     return diagonal ? (lp == 'b' || lp == 'q') : (lp == 'r' || lp == 'q');
 }
 
-bool attacked_by_slider(const Board& b, int target, Color by, int first_dir, int last_dir, bool diagonal) {
-    const auto& rays = ray_table();
-    for (int dir = first_dir; dir < last_dir; ++dir) {
-        const SquareList& ray = rays[dir][target];
-        for (int i = 0; i < ray.count; ++i) {
-            char p = b.sq[ray.sq[i]];
-            if (p != '.') {
-                if (is_piece_color(p, by)) {
-                    if (slider_attacker_matches(p, diagonal)) {
-                        return true;
-                    }
-                }
-                break;
+
+// Bitboard forms of the leaper and ray tables, derived from the same square
+// lists so the two representations cannot disagree.
+struct AttackBitboards {
+    std::array<std::uint64_t, 64> knight{};
+    std::array<std::uint64_t, 64> king{};
+    std::array<std::array<std::uint64_t, 64>, 2> pawn{}; // squares a pawn of [color] attacks target from
+    std::array<std::array<std::uint64_t, 64>, 8> ray{};
+    std::array<bool, 8> ray_ascending{};
+};
+
+const AttackBitboards& attack_bb() {
+    static const AttackBitboards table = [] {
+        AttackBitboards out{};
+        auto pack = [](const SquareList& list) {
+            std::uint64_t bb = 0;
+            for (int i = 0; i < list.count; ++i) {
+                bb |= 1ull << list.sq[i];
+            }
+            return bb;
+        };
+        for (int sq = 0; sq < 64; ++sq) {
+            out.knight[sq] = pack(knight_table()[sq]);
+            out.king[sq] = pack(king_table()[sq]);
+            out.pawn[WHITE][sq] = pack(pawn_attacker_table()[WHITE][sq]);
+            out.pawn[BLACK][sq] = pack(pawn_attacker_table()[BLACK][sq]);
+            for (int dir = 0; dir < 8; ++dir) {
+                out.ray[dir][sq] = pack(ray_table()[dir][sq]);
             }
         }
-    }
-    return false;
+        // Whether a ray's squares ascend in index, which decides whether the
+        // nearest blocker is the lowest or highest set bit. Derived from the
+        // table rather than assumed from a direction convention.
+        for (int dir = 0; dir < 8; ++dir) {
+            for (int sq = 0; sq < 64; ++sq) {
+                const SquareList& ray = ray_table()[dir][sq];
+                if (ray.count > 0) {
+                    out.ray_ascending[dir] = ray.sq[0] > sq;
+                    break;
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
 }
 
 bool is_attacked(const Board& b, int target, Color by) {
-    const SquareList& pawns = pawn_attacker_table()[by][target];
-    for (int i = 0; i < pawns.count; ++i) {
-        char p = b.sq[pawns.sq[i]];
-        if (p == (by == WHITE ? 'P' : 'p')) {
-            return true;
-        }
-    }
+    const AttackBitboards& tb = attack_bb();
+    const std::uint64_t them = b.by_color[by];
 
-    const SquareList& knights = knight_table()[target];
-    for (int i = 0; i < knights.count; ++i) {
-        char p = b.sq[knights.sq[i]];
-        if (p == (by == WHITE ? 'N' : 'n')) {
-            return true;
-        }
-    }
-
-    if (attacked_by_slider(b, target, by, 4, 8, true)) {
+    if (tb.knight[target] & b.by_type[PT_KNIGHT] & them) {
         return true;
     }
-    if (attacked_by_slider(b, target, by, 0, 4, false)) {
+    if (tb.king[target] & b.by_type[PT_KING] & them) {
+        return true;
+    }
+    if (tb.pawn[by][target] & b.by_type[PT_PAWN] & them) {
         return true;
     }
 
-    const SquareList& kings = king_table()[target];
-    for (int i = 0; i < kings.count; ++i) {
-        char p = b.sq[kings.sq[i]];
-        if (p == (by == WHITE ? 'K' : 'k')) {
+    const std::uint64_t queens = b.by_type[PT_QUEEN] & them;
+    const std::uint64_t diagonal = (b.by_type[PT_BISHOP] & them) | queens;
+    const std::uint64_t straight = (b.by_type[PT_ROOK] & them) | queens;
+
+    // Directions 0-3 are orthogonal and 4-7 diagonal, matching ray_table.
+    for (int dir = 0; dir < 8; ++dir) {
+        const std::uint64_t sliders = dir < 4 ? straight : diagonal;
+        if (!sliders) {
+            continue;
+        }
+        const std::uint64_t blockers = tb.ray[dir][target] & b.occ;
+        if (!blockers) {
+            continue;
+        }
+        // Only the nearest piece along the ray can attack the target.
+        const int first = tb.ray_ascending[dir] ? lsb_index(blockers) : msb_index(blockers);
+        if ((1ull << first) & sliders) {
             return true;
         }
     }
