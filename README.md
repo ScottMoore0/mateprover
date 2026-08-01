@@ -71,7 +71,9 @@ Supported now:
 - `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
 - `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
 - `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
-- `--threads N`: unpromoted root-split parallel search across `N` worker threads;
+- `--threads N`: root-split parallel search across `N` worker threads; the benchmark registry promotes `8`;
+- `--parallel-min-nodes N`: cost gate; a depth runs sequentially until it exceeds `N` nodes, then escalates to a split. Default `500`;
+- `--no-parallel-gate`: always split, never probe sequentially first;
 - `--shared-tt`: promoted table mode for the parallel path; workers share one sharded exact proof table;
 - `--private-tt`: rollback path giving each worker its own exact table;
 - `--shared-tt-shards N`: shard count for the shared table, default 256;

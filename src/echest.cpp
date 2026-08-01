@@ -274,6 +274,14 @@ public:
         shard.map[key] = std::move(entry);
     }
 
+    // Adopt entries computed before the table existed, so the sequential
+    // prelude of the cost gate is carried forward rather than redone.
+    void import_from(const std::unordered_map<TTKey, TTEntry, TTKeyHash>& src) {
+        for (const auto& kv : src) {
+            store(kv.first, kv.second);
+        }
+    }
+
     void clear() {
         for (auto& shard : shards_) {
             std::lock_guard<std::mutex> lock(shard->mutex);
@@ -342,6 +350,7 @@ struct SearchConfig {
     int threads = 1;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
+    std::uint64_t parallel_min_nodes = 500;
 };
 
 // Per-search mutable state. Inheriting the config keeps every existing
@@ -362,6 +371,11 @@ struct Search : SearchConfig {
     const std::atomic<bool>* cancel = nullptr;
     bool aborted = false;
 
+    // Absolute node ceiling for this search. Zero means unbounded. Used by the
+    // sequential prelude of the parallel cost gate: exceeding the ceiling is an
+    // abort, not a verdict, so nothing false is recorded.
+    std::uint64_t node_budget = 0;
+
     // When non-null, exact proof entries live in a table shared with the other
     // workers of this search instead of in the private `tt` map above.
     SharedProofTable* shared_table = nullptr;
@@ -376,6 +390,10 @@ struct Search : SearchConfig {
 // result as a disproof.
 inline bool search_cancelled(Search& s) {
     if (s.aborted) {
+        return true;
+    }
+    if (s.node_budget != 0 && s.stats.nodes >= s.node_budget) {
+        s.aborted = true;
         return true;
     }
     if (s.cancel != nullptr && s.cancel->load(std::memory_order_relaxed)) {
@@ -1766,6 +1784,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
     std::vector<std::unique_ptr<Search>> workers;
     std::vector<std::unique_ptr<WorkerSlot>> slots;
     std::unique_ptr<SharedProofTable> shared_table;
+    bool prelude_imported = false;
     const int thread_count = std::max(1, s.threads);
     auto ensure_workers = [&]() {
         if (!workers.empty()) {
@@ -1801,13 +1820,49 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
         }
         // Depth 1 is a flat scan for immediate mates; the split would cost more
         // in thread setup than it saves.
-        if (thread_count > 1 && depth > 1) {
+        const bool splittable = thread_count > 1 && depth > 1;
+
+        // Parallel cost gate.
+        //
+        // Thread setup is pure overhead on work that was going to finish in
+        // microseconds, but cost is not knowable in advance, and a gate that
+        // only looks at completed depths is useless here: search cost grows
+        // exponentially with depth, so by the time a shallow depth proves the
+        // position expensive, the expensive depth is the one already running.
+        //
+        // So probe instead of predict. Run the depth sequentially under a node
+        // ceiling; if it blows the ceiling the position is expensive by
+        // definition, and the depth is re-run split. The probe is not wasted
+        // work: exceeding the ceiling is an abort, which by the abort
+        // invariant records no verdict but leaves every genuinely completed
+        // subtree in the table, and that table is handed to the workers.
+        bool escalate = false;
+        if (splittable && s.parallel_min_nodes > 0 && s.stats.nodes < s.parallel_min_nodes) {
+            s.node_budget = s.parallel_min_nodes;
+            s.aborted = false;
+            Proof probe = prove_attacker(s, b, depth);
+            s.node_budget = 0;
+            if (s.aborted) {
+                s.aborted = false;
+                escalate = true;
+            } else {
+                result.proof = std::move(probe);
+            }
+        } else {
+            escalate = splittable;
+        }
+
+        if (escalate) {
             ensure_workers();
+            if (shared_table && !prelude_imported) {
+                shared_table->import_from(s.tt);
+                prelude_imported = true;
+            }
             Proof proof;
             if (run_root_split_depth(s, workers, slots, b, depth, proof)) {
                 result.proof = std::move(proof);
             }
-        } else {
+        } else if (!splittable) {
             result.proof = prove_attacker(s, b, depth);
         }
         if (result.proof.ok) {
@@ -2292,6 +2347,13 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--single-thread") {
             config.threads = 1;
+        } else if (arg == "--parallel-min-nodes" && i + 1 < argc) {
+            std::size_t value = 0;
+            if (parse_size(argv[++i], value)) {
+                config.parallel_min_nodes = static_cast<std::uint64_t>(value);
+            }
+        } else if (arg == "--no-parallel-gate") {
+            config.parallel_min_nodes = 0;
         } else if (arg == "--shared-tt") {
             config.shared_tt = true;
         } else if (arg == "--private-tt") {
