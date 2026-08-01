@@ -374,6 +374,25 @@ Current E checkpoint:
 - key move, mate depth and solvedness are identical to sequential E on every validated row; only node counts differ, because workers explore concurrently;
 - `--threads 8` beat 16, 24 and `auto` (32 here) once the cost gate was in place, geometric mean 2.35x versus 2.22x/2.19x/2.16x. With cheap depths no longer split, these suites' root branching does not keep more than about eight workers usefully busy, and extra threads only add contention and duplicated search. This is a suite- and machine-specific tuning that should be re-swept on a larger corpus and on smaller machines;
 
+### 8d. Parallelism Saturates At About 16 Threads
+
+Solve rate at a 5 s budget with `--direct-depth` on a 32-core host:
+
+| problems | 8 | 16 | 24 | 32 |
+|---|---:|---:|---:|---:|
+| matetrack mate-in-8 | 13/24 | **14/24** | 14/24 | 14/24 |
+| matetrack mate-in-10 | 3/20 | 3/20 | 3/20 | 3/20 |
+
+Capability is flat from 16 threads upward, and completely flat at mate-in-10. Four times the CPU buys one extra mate-in-8 problem and nothing deeper.
+
+This is the same effect the deep corpus showed as 2.2x node inflation at 8 threads and 2.9x at 16: extra workers contribute **duplicated nodes, not new search**. It is a property of the root-split decomposition rather than of this host.
+
+Consequently `--threads auto` no longer resolves to the detected core count, which on a large machine burned cores for no capability. It resolves to `min(cores, 16)`. An explicit `--threads N` is never capped.
+
+Honest limits: measured on one host at one budget. A much longer budget might differentiate higher thread counts; short budgets are the practical regime for a mate solver and are what was measured. The cap is where the curve flattens here, a defensible default rather than a universal constant.
+
+What would help is not more cores but less duplication: in-progress markers in the shared table so a worker beginning a node warns siblings off it, or work stealing below the root. Both are larger than anything promoted this session, and both must be judged on solve rate rather than wall time.
+
 ### 8c. Root Young-Brothers-Wait (measured, not promoted)
 
 The deep corpus showed 2.2x node inflation at 8 threads and 2.9x at 16. That follows from the acceptance rule rather than being incidental overhead: the accepted answer is the lowest-index successful root move, so every node spent on a higher index is discarded the moment a lower one succeeds. With median root branching of 39, and ordering good enough that the first move is often the proof, an immediate full split puts most workers on results that can never be used.

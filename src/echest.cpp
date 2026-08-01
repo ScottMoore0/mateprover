@@ -44,6 +44,10 @@
 using namespace echest;
 
 
+// Ceiling applied to `--threads auto`. See the comment at its use site: root
+// split saturates, so detected-core-count parallelism wastes cores above this.
+constexpr int AUTO_THREAD_CAP = 16;
+
 #ifndef ECHEST_VERSION
 #define ECHEST_VERSION "0.1.0-dev"
 #endif
@@ -72,7 +76,10 @@ void print_usage() {
 "  -M N                          table budget in MB, honoured as an entry\n"
 "                                ceiling; 0 means unbounded (default 64)\n"
 "  --threads N | auto            root-split worker threads (default 1;\n"
-"                                the benchmark registry promotes 8)\n"
+"                                registry promotes 8). auto = min(cores,16):\n"
+"                                the split saturates above that, so extra\n"
+"                                cores add no capability. Explicit N is not\n"
+"                                capped.\n"
 "  --single-thread               force sequential search\n"
 "  --parallel-min-nodes N        run a depth sequentially until it exceeds\n"
 "                                N nodes, then split (default 500)\n"
@@ -298,8 +305,17 @@ int main(int argc, char** argv) {
             if (!tv) return usage_error("option '--threads' requires a count or 'auto'");
             std::string value = tv;
             if (value == "auto") {
-                unsigned hw = std::thread::hardware_concurrency();
-                config.threads = hw > 0 ? static_cast<int>(hw) : 1;
+                // Root-split parallelism saturates. Measured solve rate at a
+                // 5 s budget was flat from 16 threads upward -- mate-in-8 sat
+                // at 14/24 for 16, 24 and 32 threads, and mate-in-10 at 3/20
+                // across all of them -- because additional workers contribute
+                // duplicated nodes rather than new search. Uncapped `auto` on a
+                // large machine therefore burns cores for no capability.
+                //
+                // An explicit --threads N is never capped; only `auto` is.
+                const unsigned hw = std::thread::hardware_concurrency();
+                const int detected = hw > 0 ? static_cast<int>(hw) : 1;
+                config.threads = std::min(detected, AUTO_THREAD_CAP);
             } else {
                 std::size_t parsed = 0;
                 if (!parse_size(value.c_str(), parsed) || parsed == 0) {

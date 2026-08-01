@@ -146,7 +146,7 @@ appears when the search hit its budget, so "gave up" is distinguishable from
 |---|---|
 | `-z N` | requested mate depth |
 | `-M N` | table budget in MB, honoured as an entry ceiling; `0` unbounded |
-| `--threads N` \| `auto` | root-split parallel search |
+| `--threads N` \| `auto` | root-split parallel search; `auto` = min(cores, 16) because the split saturates there |
 | `--time-limit S` | wall-clock budget; expiry reports `timeout`, never a mate |
 | `--direct-depth` | prove "a mate within N" rather than the shortest mate; materially better solve rate at a fixed budget |
 | `--emit-proof` | append the recursive JSON proof certificate |
