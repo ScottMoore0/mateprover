@@ -21,18 +21,21 @@ struct SearchConfig {
     bool score_checks = true;
     bool fast_check_score = false;
     bool refutation_hints = false;
-    bool proof_hints = false;
+    bool proof_hints = true;
     std::size_t tt_reserve = 0;
-    bool move_reserve = false;
-    std::size_t move_reserve_capacity = 64;
-    bool inplace_order = false;
+    bool move_reserve = true;
+    std::size_t move_reserve_capacity = 96;
+    bool inplace_order = true;
     bool static_pseudo = false;
     bool profile = false;
     std::size_t order_min_size = 2;
     bool bucket_order = false;
-    bool keep_iter_tt = false;
-    bool ordered_check_shortcut = false;
-    int threads = 1;
+    bool keep_iter_tt = true;
+    bool ordered_check_shortcut = true;
+    // -1 means the user did not choose: main() resolves it to the same value
+    // `--threads auto` computes. An explicit --threads N, including 1, is
+    // honoured exactly.
+    int threads = -1;
     bool fused_order = true;
     bool lazy_defender = false;
     // DFPN preconditioner. Disproofs it establishes are exact verdicts and are
@@ -78,13 +81,13 @@ struct SearchConfig {
     // Try a sequence of restricted searches within the time budget, falling
     // back to the unrestricted one. Sound because a restriction only removes
     // attacker options: a mate found under one is a real forced mate.
-    bool portfolio = false;
+    bool portfolio = true;
     // Run the portfolio entries concurrently instead of in sequence, so each
     // gets the whole budget rather than a slice. Sound for the same reason the
     // sequential portfolio is, and it uses cores that root splitting cannot:
     // the entries solve different restricted problems, so unlike root-split
     // workers they do not duplicate each other's search.
-    bool portfolio_parallel = false;
+    bool portfolio_parallel = true;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

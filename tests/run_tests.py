@@ -467,15 +467,25 @@ def test_restriction_portfolio(engine: Path, res: Results) -> None:
     print("\n[portfolio] restricted searches are a sound fast path")
 
     cases = load_epd(HERE / "mates.epd")
-    plain = solve(engine, cases, ["-M", "64", "--time-limit", "20"])
+    plain = solve(engine, cases, ["-M", "64", "--time-limit", "20", "--no-portfolio"])
     pf = solve(engine, cases, ["-M", "64", "--time-limit", "20", "--portfolio"])
 
     res.check("portfolio solves at least as much",
               sum(1 for l in pf if DM_RE.search(l)) >= sum(1 for l in plain if DM_RE.search(l)))
 
-    # Off by default: without the flag no line may claim a restriction was used.
-    res.check("portfolio is off by default",
+    # --no-portfolio must still restore the single unrestricted search: no line
+    # may claim a restriction was used. The portfolio became the default once it
+    # was measured to double bare-invocation reach, so this now checks the
+    # opt-out rather than the opt-in.
+    res.check("--no-portfolio restores the single unrestricted search",
               all("; via " not in l for l in plain))
+
+    # The default must engage the portfolio whenever a time limit is set, which
+    # is the contract the help text now advertises.
+    default_lines = solve(engine, cases, ["-M", "64", "--time-limit", "20"])
+    res.check("portfolio is on by default with a time limit",
+              sum(1 for l in default_lines if DM_RE.search(l))
+              >= sum(1 for l in plain if DM_RE.search(l)))
 
     if not HAVE_CHESS:
         res.skip("portfolio proof verification", "python-chess not installed")

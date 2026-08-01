@@ -78,13 +78,14 @@ void print_usage() {
 "  --portfolio-parallel          run the portfolio entries concurrently, each\n"
 "                                with the full budget; uses cores that root\n"
 "                                splitting saturates on\n"
-"  --no-portfolio                default; single unrestricted search\n"
+"  --no-portfolio                single unrestricted search. The portfolio\n"
+"                                is the default whenever --time-limit is set\n"
 "\n"
 "Resources:\n"
 "  -M N                          table budget in MB, honoured as an entry\n"
 "                                ceiling; 0 means unbounded (default 256)\n"
-"  --threads N | auto            root-split worker threads (default 1;\n"
-"                                registry promotes 8). auto = min(cores,16):\n"
+"  --threads N | auto            root-split worker threads (default: auto).\n"
+"                                auto = min(cores,16):\n"
 "                                the split saturates above that, so extra\n"
 "                                cores add no capability. Explicit N is not\n"
 "                                capped.\n"
@@ -493,6 +494,15 @@ int main(int argc, char** argv) {
         } else {
             return usage_error("unknown option " + arg);
         }
+    }
+
+    // Resolve the unspecified-threads sentinel to the same value `--threads
+    // auto` computes. The default was 1, which meant the shipped configuration
+    // used a single core on any machine unless the user knew to ask otherwise.
+    if (config.threads < 0) {
+        const unsigned hw = std::thread::hardware_concurrency();
+        const int detected = hw > 0 ? static_cast<int>(hw) : 1;
+        config.threads = std::min(detected, AUTO_THREAD_CAP);
     }
 
     if (read_stdin) {

@@ -81,16 +81,20 @@ Ranges reflect run-to-run variation for problems sitting near the budget
 boundary.
 
 **Read this honestly:** echest solves mate-in-5 and below essentially always,
-mate-in-6/7 reliably in seconds, roughly half of mate-in-8 within 5 seconds,
-and a small fraction of mate-in-10. It addresses the shallow end of a standard
-benchmark.
+mate-in-6/7 reliably in seconds, and a small fraction of mate-in-10. It
+addresses the shallow end of a standard benchmark.
 
-**Waiting longer does not help.** On sampled mate-in-10 problems the solve rate
-is identical at 5 s, 20 s and 60 s — a 12x increase in budget solves nothing
-extra. The same is true across 8 to 32 threads and from 64 MB to unbounded
-memory. Problems echest does not solve quickly are not a little out of reach,
-they are far out of reach, and the limitation is the search rather than the
-resources given to it.
+At mate-in-8 the default configuration solves **52 of 60** held-out matetrack
+positions in 15 seconds, 56 in 60 seconds and **all 60** in 300 seconds. There,
+waiting longer does help: nothing at that depth is out of reach, it is a matter
+of budget.
+
+**At mate-in-10 waiting longer does not help.** The solve rate is identical at
+5 s, 20 s and 60 s, a 12x increase in budget that solves nothing extra, and the
+same is true across 8 to 32 threads and from 64 MB to unbounded memory. That
+result is specific to that depth and does not describe mate-in-8. Where it
+applies, problems echest does not solve quickly are far out of reach, and the
+limitation is the search rather than the resources given to it.
 
 ## Build
 
@@ -154,6 +158,14 @@ echest --help                 full option list
 
 Input is a FEN (the first four fields are enough). The mate depth comes from
 `-z N`, or is inferred from a `#N` token in an EPD line.
+
+**The defaults are the tuned configuration.** Every setting measured as a win is
+on by default: all cores up to 16, the search tunings, and, whenever
+`--time-limit` is given, the restriction portfolio. Supplying a time limit is
+therefore the single highest-value thing a caller can do, since it roughly
+doubles reach at mate-in-8. Each default has an opt-out (`--single-thread`,
+`--no-portfolio`, and the pairs listed under `--help`) for reproducing a
+specific configuration.
 
 Output is one line per position:
 

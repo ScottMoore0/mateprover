@@ -1278,6 +1278,53 @@ the node-count list that did not require changing the problem being searched.
 Every remaining avenue for capability at this depth runs back through the
 restriction portfolio.
 
+### 8n. The Shipped Defaults Were The Untuned Ones (promoted)
+
+Every measured win in this document was reachable only through an explicit flag.
+The defaults were the configuration each of those measurements had been run
+*against*: `proof_hints`, `move_reserve`, `inplace_order`, `keep_iter_tt` and
+`ordered_check_shortcut` all off, `threads` 1, and the restriction portfolio --
+the single largest source of capability in the engine -- off.
+
+The benchmark registry carried a fourteen-token invocation, so no benchmark had
+ever exercised what a user actually gets. Measured on the held-out 60, 15
+seconds:
+
+| invocation | solved |
+|---|---|
+| `echest -z 8 --time-limit 15 -` | 26/60 |
+| the promoted incantation | 52/60 |
+
+**Exactly half.** A reader following the Usage section got half the engine, and
+no gate would ever have caught it, because every gate ran the incantation.
+
+The defaults are now the measured-best configuration: the five tuning flags on,
+`--threads` resolved to the `auto` value (`min(cores, 16)`) via a sentinel so an
+explicit `--threads 1` is still honoured exactly, and the portfolio on. The same
+bare invocation now solves **52/60**.
+
+Two soundness points, since defaults are load-bearing in a way flags are not.
+The portfolio is safe as a default because a restriction only removes attacker
+options, so a mate it finds is real, and under iterative deepening it cannot
+report a non-minimal depth either: no lane can prove a mate at a depth where none
+exists, so the first depth at which *any* lane succeeds is still the true
+minimum. And `--direct-depth` was deliberately **not** made default despite
+appearing in every benchmark here -- it proves "a mate within N" instead of "the
+shortest mate is N", and weakening the advertised guarantee is not a default's
+decision to make. The new default reaches 52/60 without it.
+
+The in-repo test suite caught the change, which is the system working: a check
+asserting "portfolio is off by default" failed. It now asserts the opt-out
+(`--no-portfolio` restores the single unrestricted search) and the new contract
+(the portfolio engages by default with a time limit), so the behaviour stays
+pinned in both directions rather than merely being re-pointed at whatever the
+code does.
+
+Also corrected: the README stated that waiting longer never helps, generalising
+the mate-in-10 saturation result across all depths. That is the second such
+correction after 8l, from the same root cause -- a result true at one operating
+point written down as though it described the engine.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
