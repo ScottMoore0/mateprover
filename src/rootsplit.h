@@ -41,6 +41,19 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
         moves_scored = true;
     }
     restrict_attacker_moves(s, b, moves);
+    if (moves.empty()) {
+        // A restriction can remove every attacker move, which the empty check
+        // above cannot see because it runs before the restriction is applied.
+        // Without this, n is 0, worker_count is 0, and the thread-pool reserve
+        // below computes worker_count - 1 as an unsigned -1: a reserve of
+        // SIZE_MAX, throwing std::length_error out of a portfolio lane and
+        // terminating the process mid-batch.
+        //
+        // No permitted attacker move means no mate under this restriction. That
+        // is a legitimate "no proof here", not a disproof of the unrestricted
+        // problem -- restricted lanes never settle disproofs.
+        return false;
+    }
     if (s.proof_hints) {
         TTKey hint_key = move_hint_key(b, 'A', s.attacker);
         if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
@@ -191,9 +204,26 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     };
 
     std::vector<std::thread> pool;
-    pool.reserve(static_cast<std::size_t>(worker_count - 1));
+    // max(): a zero worker count would make this reserve SIZE_MAX and throw.
+    pool.reserve(static_cast<std::size_t>(std::max(0, worker_count - 1)));
     for (int w = 1; w < worker_count; ++w) {
-        pool.emplace_back(worker_body, w);
+        // The OS can refuse a thread, and does under churn: always-split plus a
+        // short time limit spawns and joins a full set per depth per position,
+        // and Windows starts failing. An escaping std::system_error would
+        // destroy the already-started threads unjoined, which calls
+        // std::terminate -- the observed crash was "terminate called
+        // recursively", mid-batch, losing every remaining position.
+        //
+        // Running with fewer workers is sound, not merely convenient: root
+        // moves are claimed from a shared atomic counter rather than statically
+        // partitioned, so any surviving worker still covers every index and
+        // worker 0 alone would cover all of them. Coverage cannot be lost, only
+        // speed, so this can never turn into a false disproof.
+        try {
+            pool.emplace_back(worker_body, w);
+        } catch (const std::system_error&) {
+            break;
+        }
     }
     worker_body(0);
     for (std::thread& t : pool) {

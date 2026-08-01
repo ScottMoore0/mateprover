@@ -176,9 +176,17 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         };
 
         std::vector<std::thread> pool;
-        pool.reserve(static_cast<std::size_t>(lanes - 1));
+        pool.reserve(static_cast<std::size_t>(std::max(0, lanes - 1)));
         for (int i = 1; i < lanes; ++i) {
-            pool.emplace_back(lane, i);
+            // As in the root split: a refused thread must not escape and
+            // terminate the process. Dropping a restricted lane is sound
+            // because every lane is independent and the unrestricted lane --
+            // the only one that can settle a disproof -- runs inline below.
+            try {
+                pool.emplace_back(lane, i);
+            } catch (const std::system_error&) {
+                break;
+            }
         }
         lane(0);
         for (std::thread& th : pool) {

@@ -1612,6 +1612,52 @@ Verified by flipping `proof_hints` to false in the source and confirming the
 suite fails with `proof_hints=False, help claims True`, then restoring it. 192
 checks.
 
+### 8t. Stress-Testing The Abort Invariant Found A Crash
+
+The abort invariant -- an abandoned search records no verdict, so it can never be
+read back as a disproof -- is what makes cancellation, time limits and eviction
+safe. It is asserted in comments across the codebase and had never been attacked.
+
+Its observable consequence, now that 8r makes disproof and timeout distinct, is
+sharp: on a *known mate*, a truncated search must say `timeout` and must never
+produce the silent no-mate form. Running the mate and no-mate corpora
+interleaved, under tiny budgets, heavy eviction, forced splitting and many
+threads, tests exactly that -- a poisoned entry surfaces either as a false mate
+on a no-mate line or as a false disproof on a mate line.
+
+The invariant held: 255 runs, no false mates, no false disproofs, no wrong
+depths. What the stress found instead was a **crash**.
+
+`--threads 16 --parallel-min-nodes 1 --time-limit 0.005` terminated the process
+mid-batch, emitting 11 lines of 29 and losing every remaining position. The
+mechanism: `restrict_attacker_moves` can remove *every* attacker move at the
+root, but the empty-move-list guard runs **before** the restriction is applied.
+With no moves left, the worker count is zero, and the thread pool computed
+`reserve(static_cast<std::size_t>(worker_count - 1))` -- an unsigned `-1`, so a
+reserve of `SIZE_MAX`. The resulting `std::length_error` escaped a portfolio lane
+and called `std::terminate`.
+
+Reachable with the default thread count plus one documented flag, and only
+through a restricted lane, which is why nothing had hit it: restrictions became
+default-on only in 8n, and no gate ran the portfolio under stress.
+
+Two diagnostic missteps are worth recording. The first hypothesis was thread
+creation failing under churn; making both spawn sites exception-safe changed
+nothing, because the exception came from `reserve`, not from `std::thread`. The
+instrumentation that identified it caught nothing either -- the throw was outside
+the worker body. Only bisecting to a single position and a single flag located
+it. The exception-safety around spawning was kept anyway: it is correct on its
+own terms, and sound because root moves are claimed from a shared atomic counter
+rather than statically partitioned, so running with fewer workers loses speed,
+never coverage.
+
+Fixed by re-checking for an empty move list after the restriction, where "no
+permitted attacker move" is simply "no mate under this restriction". Both
+reserve sites now clamp with `max(0, n - 1)` so a recurrence degrades to a
+missing reservation rather than a crash. The stress matrix is now a permanent
+gate across five configurations, and it fails against the pre-fix binary with
+the original `std::length_error`. 202 checks.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

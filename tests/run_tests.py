@@ -1010,6 +1010,65 @@ def test_documented_defaults_are_real(engine: Path, res: Results) -> None:
     res.check("iterative depth remains the default", config.get("direct_depth") is False)
 
 
+def test_abort_invariant_under_stress(engine: Path, res: Results) -> None:
+    """An abandoned search must never produce a verdict, under any settings.
+
+    The invariant underpins cancellation, time limits and eviction: an aborted
+    subtree records nothing, so it can never be read back as a disproof. It was
+    asserted in comments throughout and never exercised adversarially.
+
+    Doing so found a crash rather than an unsoundness. A restriction can remove
+    every attacker move at the root, and the empty-move-list guard ran BEFORE
+    the restriction was applied, so the worker count reached zero and the thread
+    pool reserved (size_t)(0 - 1). std::length_error escaped a portfolio lane
+    and terminated the process mid-batch, losing every remaining position --
+    reachable with default threads plus one documented flag.
+    """
+    print("\n[soundness] abandoned searches never claim a verdict")
+
+    mates = load_epd(HERE / "mates.epd")
+    nomates = load_epd(HERE / "nomate.epd")
+    mixed = []
+    for i in range(max(len(mates), len(nomates))):
+        if i < len(mates):
+            mixed.append((mates[i][0], mates[i][1], True))
+        if i < len(nomates):
+            mixed.append((nomates[i][0], nomates[i][1], False))
+    stdin = "".join(f"{fen} bm #{dm};" + chr(10) for fen, dm, _ in mixed)
+
+    configs = [
+        ["--threads", "16", "--parallel-min-nodes", "1", "--time-limit", "0.005"],
+        ["--threads", "16", "--parallel-min-nodes", "1", "--time-limit", "0.05", "--shared-tt"],
+        ["-M", "1", "--threads", "16", "--parallel-min-nodes", "1", "--time-limit", "0.01"],
+        ["--threads", "8", "--time-limit", "0.5"],
+        ["--single-thread", "--time-limit", "0.01"],
+    ]
+    for config in configs:
+        label = " ".join(config)
+        out = run(engine, ["-5", *config, "-"], stdin)
+        lines = [l for l in out.splitlines() if l.strip()]
+        res.check(f"one line per position [{label}]", len(lines) == len(mixed),
+                  f"got {len(lines)} of {len(mixed)}")
+        if len(lines) != len(mixed):
+            continue
+        for (fen, dm, is_mate), line in zip(mixed, lines):
+            claimed = DM_RE.search(line)
+            if claimed and not is_mate:
+                res.check(f"no false mate {fen[:22]} [{label}]", False, line.strip())
+                break
+            if is_mate and claimed and int(claimed.group(1)) != dm:
+                res.check(f"depth correct {fen[:22]} [{label}]", False, line.strip())
+                break
+            # The invariant made visible: a truncated search must say so rather
+            # than fall through to the silent "no mate" form.
+            if is_mate and not claimed and "timeout" not in line:
+                res.check(f"abandoned search is not a disproof {fen[:22]} [{label}]",
+                          False, line.strip())
+                break
+        else:
+            res.check(f"no false verdicts [{label}]", True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1032,6 +1091,7 @@ def main() -> int:
     test_perft(args.engine, res)
     test_known_mates(args.engine, res)
     test_no_mate(args.engine, res)
+    test_abort_invariant_under_stress(args.engine, res)
     test_invariance(args.engine, res)
     test_time_limit(args.engine, res)
     test_illegal_positions_rejected(args.engine, res)
