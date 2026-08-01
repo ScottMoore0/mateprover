@@ -159,6 +159,20 @@ def test_no_mate(engine: Path, res: Results) -> None:
             f"false mate claimed: {line.strip()}",
         )
 
+    # These positions are disproved exhaustively in a handful of nodes, so the
+    # engine must report a completed search, not a timeout. Checking only for
+    # the absence of a mate is not enough: when the portfolio became the default
+    # it began marking every one of these as a timeout, because a lane failing
+    # to prove a mate was being read as the search running out of time. A caller
+    # cannot tell "there is no mate" from "I gave up" if both look the same.
+    generous = solve(engine, cases, ["--time-limit", "30"])
+    for (fen, _), line in zip(cases, generous):
+        res.check(
+            f"exhaustive disproof is not reported as a timeout {fen[:24]}",
+            "timeout" not in line,
+            f"completed disproof marked timeout: {line.strip()}",
+        )
+
 
 def test_invariance(engine: Path, res: Results) -> None:
     """Answers must not depend on thread count or memory budget.
@@ -862,6 +876,52 @@ def test_verifier_rejects_stalemate_as_mate(engine: Path, res: Results) -> None:
         res.check("verifier rejects a stalemate claimed as mate", True)
 
 
+def test_output_format_conformance(engine: Path, res: Results) -> None:
+    """The four documented outcomes must be distinguishable and well formed.
+
+    docs/OUTPUT_FORMAT.md is the contract consumers parse. The distinction that
+    matters most is disproof (line ends after acs) versus timeout (explicit
+    marker): confusing them turns "I do not know" into "there is no mate".
+    """
+    print("\n[format] output lines conform to OUTPUT_FORMAT.md")
+
+    hard = "3R4/pk6/p1pp4/B1pqPp2/3P3n/1N4N1/KR1P1p2/5r2 w - -"
+
+    # 1. proved
+    proved = run(engine, ["-5", "-z", "2", "--time-limit", "20", "--emit-proof", "-"],
+                 "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" + chr(10)).strip()
+    res.check("proved line carries bm, dm and pv",
+              all(f"; {tok} " in proved for tok in ("bm", "dm", "pv")), proved[:100])
+    order = [proved.index(f"; {tok} ") for tok in ("bm", "dm", "pv", "proof")]
+    res.check("proved line field order is bm, dm, pv, proof", order == sorted(order))
+    res.check("proved line ends with a semicolon", proved.endswith(";"))
+
+    # 2. disproved: nothing after acs
+    disproved = run(engine, ["-5", "-z", "1", "--time-limit", "30", "-"],
+                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -" + chr(10)).strip()
+    res.check("disproved line ends after acs",
+              re.fullmatch(r"[^;]+; acn \d+; acs [\d.e+-]+;", disproved) is not None,
+              disproved[:100])
+    res.check("disproved line is not marked timeout", "timeout" not in disproved)
+
+    # 3. gave up
+    gave_up = run(engine, ["-5", "-z", "8", "--time-limit", "0.2", "-"],
+                  hard + chr(10)).strip()
+    res.check("exhausted budget is marked timeout", gave_up.endswith("timeout;"), gave_up[:100])
+    res.check("timeout line claims no mate", DM_RE.search(gave_up) is None)
+
+    # 4. bad input, echoed unchanged
+    junk = "not a position at all"
+    bad = run(engine, ["-5", "-"], junk + chr(10)).strip()
+    res.check("bad input echoes the original line", bad.startswith(junk), bad[:100])
+    res.check("bad input is marked error input", bad.endswith("error input;"), bad[:100])
+
+    # An illegal-but-parseable position is rejected the same way: adjacent kings.
+    illegal = run(engine, ["-5", "-"], "8/8/8/8/8/8/6k1/6KQ w - -" + chr(10)).strip()
+    res.check("illegal position is rejected as bad input",
+              illegal.endswith("error input;"), illegal[:100])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -897,6 +957,7 @@ def main() -> int:
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
+    test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")

@@ -33,6 +33,11 @@ mine to assert:
 echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
+The output line format is specified in
+[docs/OUTPUT_FORMAT.md](docs/OUTPUT_FORMAT.md). Note especially that a completed
+search finding no mate ends after `acs` with no marker, while a search that ran
+out of budget says `timeout`; the two must not be conflated.
+
 The certificate format is specified in [docs/PROOF_FORMAT.md](docs/PROOF_FORMAT.md),
 precisely enough to write an independent verifier without reading the engine.
 That is the point of it: the claim should not rest on trusting the prover.

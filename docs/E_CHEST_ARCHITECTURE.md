@@ -1532,6 +1532,49 @@ which it previously did because it compared sorted lists but diagnosed with sets
 specification, only behaviour; writing the specification is what turns "what it
 does" into "what it must do", and the gap between those two was a soundness bug.
 
+### 8r. Specifying The Output Line Found A Regression I Had Introduced
+
+8q's lesson -- that a format with one implementation has only behaviour, not a
+specification -- applies equally to the output line, which the benchmark
+harness, the verifier and the test suite all parse without any of them agreeing
+on a written definition. `docs/OUTPUT_FORMAT.md` now defines it.
+
+The contract has exactly four outcomes, and one of them is encoded by silence:
+
+| outcome | line |
+|---|---|
+| proved | `...; bm M; dm D; pv ...[; proof J][; via NAME];` |
+| disproved | `...; acs S;` -- **nothing follows** |
+| gave up | `...; timeout;` |
+| bad input | `<original>; acn 0; acs 0; error input;` |
+
+Writing that table exposed a regression I had introduced in 8n. Making the
+portfolio the default meant that *every genuine disproof was being reported as a
+timeout*: the parallel portfolio set `timed_out` whenever no lane proved a mate,
+and the sequential one OR-ed the flag across all lanes. The starting position,
+disproved exhaustively at mate-in-1 in eight nodes, came back marked `timeout`.
+
+The distinction destroyed is the one the emitting code's own comment calls out --
+"distinguish gave up from proved there is no mate. Without this a released tool
+would report the same thing for both". It survived because the negative-control
+gate only asserted that no `dm` token appears, which is true of both readings.
+
+The fix follows from soundness rather than from taste. Restricted lanes are
+sound but **incomplete**: a mate found under a restriction is real, but failing
+to find one under a restriction proves nothing, so a restricted lane's timeout
+carries no information about whether a mate exists. Only the unrestricted lane
+can settle a disproof, so only its completion decides the outcome. Both
+portfolio paths now ask exactly that.
+
+The negative-control gate now checks both directions -- no false mate *and* no
+false timeout -- and a conformance test pins all four outcomes, their field
+order, and that an illegal-but-parseable position is rejected as bad input
+rather than answered. 170 checks.
+
+Twice now, writing down a contract has found a defect in it: 8q a stalemate
+accepted as a mate, 8r a disproof reported as a timeout. Both were invisible to
+gates that tested the thing rather than the claim about the thing.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

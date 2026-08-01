@@ -202,7 +202,21 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             report.stats += searches[static_cast<std::size_t>(i)]->stats;
         }
         if (pick < 0) {
-            report.timed_out = true;
+            // No lane proved a mate. Whether that is "no mate exists" or "we ran
+            // out of time" is decided by the UNRESTRICTED lane alone: the
+            // restricted lanes are sound but incomplete, so their failure --
+            // and their timing out -- proves nothing either way. Reporting a
+            // timeout whenever any lane failed would have marked every genuine
+            // disproof as a timeout, which is exactly what happened once the
+            // portfolio became the default.
+            bool complete = false;
+            for (int i = 0; i < lanes; ++i) {
+                if (std::string(entries[static_cast<std::size_t>(i)].name) == "unrestricted") {
+                    complete = !searches[static_cast<std::size_t>(i)]->timed_out;
+                    break;
+                }
+            }
+            report.timed_out = !complete;
             return {};
         }
         winning_entry_name = entries[static_cast<std::size_t>(pick)].name;
@@ -223,6 +237,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         winning_entry = winning_entry_name;
     } else if (use_portfolio) {
         const auto& entries = restriction_portfolio();
+        bool unrestricted_complete = false;
         const auto deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                           std::chrono::duration<double>(config.time_limit));
         for (const PortfolioEntry& entry : entries) {
@@ -242,7 +257,14 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                 break;
             }
             s.stats += attempt_search.stats;
-            s.timed_out = s.timed_out || attempt_search.timed_out;
+            if (std::string(entry.name) == "unrestricted") {
+                // Only the complete lane can settle "no mate exists"; see the
+                // parallel path for why the restricted lanes cannot.
+                unrestricted_complete = !attempt_search.timed_out;
+            }
+        }
+        if (!route_result_is_acceptable(route_result, max_depth)) {
+            s.timed_out = !unrestricted_complete;
         }
     } else {
         route_result = attempt(nullptr, config.time_limit, s);
