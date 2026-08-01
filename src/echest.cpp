@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
@@ -173,14 +174,13 @@ struct BoundEntry {
     int fail_depth = 0;
 };
 
-struct Search {
+// All tunable search options. This is the single value passed from the CLI to
+// the search, and is also what each worker copies when a search is split
+// across threads, so worker construction never has to re-parse or re-plumb
+// individual flags.
+struct SearchConfig {
     Color attacker = WHITE;
     RouteKind route = RouteKind::DepthFirst;
-    Stats stats;
-    std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
-    std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
-    std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
-    std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
     bool debug = false;
     bool emit_proof = false;
     bool score_mates = false;
@@ -201,6 +201,43 @@ struct Search {
     bool bound_tt_failures = false;
     bool ordered_check_shortcut = false;
 };
+
+// Per-search mutable state. Inheriting the config keeps every existing
+// `s.<option>` access valid while making the option set independently
+// copyable.
+struct Search : SearchConfig {
+    Stats stats;
+    std::unordered_map<TTKey, TTEntry, TTKeyHash> tt;
+    std::unordered_map<TTKey, BoundEntry, TTKeyHash> bound_tt;
+    std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
+    std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
+
+    // Cooperative cancellation. `cancel` is null for an ordinary
+    // single-threaded search, so the per-node check costs one null test and
+    // the abort path is unreachable. When a search is abandoned, `aborted`
+    // records that its result means "gave up", not "disproved" -- an aborted
+    // result must never be stored in a proof table or read as a refutation.
+    const std::atomic<bool>* cancel = nullptr;
+    bool aborted = false;
+
+    void reset_for_new_search() {
+        aborted = false;
+    }
+};
+
+// Returns true if this search must unwind. Sets `aborted` so that every
+// enclosing frame skips its table stores and refuses to interpret the empty
+// result as a disproof.
+inline bool search_cancelled(Search& s) {
+    if (s.aborted) {
+        return true;
+    }
+    if (s.cancel != nullptr && s.cancel->load(std::memory_order_relaxed)) {
+        s.aborted = true;
+        return true;
+    }
+    return false;
+}
 
 bool is_white_piece(char p) {
     return p >= 'A' && p <= 'Z';
@@ -1089,6 +1126,11 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
 }
 
 void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
+    // An aborted subtree produced no verdict. Storing its empty result would
+    // cache a false disproof, so nothing is written once the search unwinds.
+    if (s.aborted) {
+        return;
+    }
     ++s.stats.tt_stores;
     if (proof.ok) {
         ++s.stats.exact_tt_proof_stores;
@@ -1128,6 +1170,10 @@ void store_bound_tt(Search& s, const TTKey& key, int depth, const Proof& proof) 
     if (!s.bound_tt_enabled) {
         return;
     }
+    // Same invariant as the exact table: an abandoned search has no verdict.
+    if (s.aborted) {
+        return;
+    }
     if (!proof.ok && !s.bound_tt_failures) {
         return;
     }
@@ -1149,6 +1195,9 @@ void store_bound_tt(Search& s, const TTKey& key, int depth, const Proof& proof) 
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
 Proof prove_defender(Search& s, const Board& b, int depth) {
+    if (search_cancelled(s)) {
+        return {};
+    }
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
     TTKey key = tt_key(b, depth, 'D', s.attacker);
@@ -1206,6 +1255,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         ++s.stats.defender_replies_tried;
         Board nb = make_move(b, dmove);
         Proof child = prove_attacker(s, nb, depth);
+        if (s.aborted) {
+            return {};
+        }
         if (!child.ok) {
             ++s.stats.defender_refutations;
             if (s.debug) {
@@ -1251,6 +1303,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
 }
 
 Proof prove_attacker(Search& s, const Board& b, int depth) {
+    if (search_cancelled(s)) {
+        return {};
+    }
     ++s.stats.nodes;
     ++s.stats.attacker_nodes;
     if (depth <= 0 || b.stm != s.attacker) {
@@ -1360,6 +1415,9 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         }
         if (depth > 1) {
             Proof all_replies = prove_defender(s, nb, depth - 1);
+            if (s.aborted) {
+                return {};
+            }
             if (all_replies.ok) {
                 std::vector<Move> pv{amove};
                 pv.insert(pv.end(), all_replies.pv.begin(), all_replies.pv.end());
@@ -1710,7 +1768,7 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
-void solve_line(const std::string& raw, int requested_depth, RouteKind route, bool debug, bool emit_proof, bool profile, bool score_mates, bool score_checks, bool fast_check_score, bool refutation_hints, bool proof_hints, std::size_t tt_reserve, bool move_reserve, std::size_t move_reserve_capacity, bool inplace_order, bool static_pseudo, std::size_t order_min_size, bool bucket_order, bool keep_iter_tt, bool bound_tt_enabled, bool bound_tt_failures, bool ordered_check_shortcut) {
+void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
@@ -1727,27 +1785,9 @@ void solve_line(const std::string& raw, int requested_depth, RouteKind route, bo
     }
 
     Search s;
+    static_cast<SearchConfig&>(s) = config;
     s.attacker = b.stm;
-    s.route = route;
-    s.debug = debug;
-    s.emit_proof = emit_proof;
-    s.profile = profile;
-    s.score_mates = score_mates;
-    s.score_checks = score_checks;
-    s.fast_check_score = fast_check_score;
-    s.refutation_hints = refutation_hints;
-    s.proof_hints = proof_hints;
-    s.tt_reserve = tt_reserve;
-    s.move_reserve = move_reserve;
-    s.move_reserve_capacity = move_reserve_capacity;
-    s.inplace_order = inplace_order;
-    s.static_pseudo = static_pseudo;
-    s.order_min_size = std::max<std::size_t>(2, order_min_size);
-    s.bucket_order = bucket_order;
-    s.keep_iter_tt = keep_iter_tt;
-    s.bound_tt_enabled = bound_tt_enabled;
-    s.bound_tt_failures = bound_tt_failures;
-    s.ordered_check_shortcut = ordered_check_shortcut;
+    s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
     if (s.tt_reserve > 0) {
         s.tt.reserve(s.tt_reserve);
     }
@@ -1769,7 +1809,7 @@ void solve_line(const std::string& raw, int requested_depth, RouteKind route, bo
         std::cout << "; bm " << move_uci(proof.pv.front())
                   << "; dm " << proved_depth
                   << "; pv " << pv_uci(proof.pv);
-        if (emit_proof && !proof.cert.empty()) {
+        if (s.emit_proof && !proof.cert.empty()) {
             std::cout << "; proof " << proof.cert;
         }
     }
@@ -1782,29 +1822,21 @@ void solve_line(const std::string& raw, int requested_depth, RouteKind route, bo
 } // namespace
 
 int main(int argc, char** argv) {
+    SearchConfig config;
     int requested_depth = 0;
-    RouteKind route = RouteKind::DepthFirst;
     bool read_stdin = false;
-    bool debug = false;
     bool list_legal = false;
-    bool emit_proof = false;
-    bool profile = false;
-    bool score_mates = false;
-    bool score_checks = true;
-    bool fast_check_score = false;
-    bool refutation_hints = false;
-    bool proof_hints = false;
-    std::size_t tt_reserve = 0;
-    bool move_reserve = false;
-    std::size_t move_reserve_capacity = 64;
-    bool inplace_order = false;
-    bool static_pseudo = false;
-    std::size_t order_min_size = 2;
-    bool bucket_order = false;
-    bool keep_iter_tt = false;
-    bool bound_tt_enabled = false;
-    bool bound_tt_failures = false;
-    bool ordered_check_shortcut = false;
+
+    auto parse_size = [&](const char* text, std::size_t& out) {
+        char* end = nullptr;
+        unsigned long value = std::strtoul(text, &end, 10);
+        if (end != text) {
+            out = static_cast<std::size_t>(value);
+            return true;
+        }
+        return false;
+    };
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-z" && i + 1 < argc) {
@@ -1812,96 +1844,90 @@ int main(int argc, char** argv) {
         } else if (arg == "--route" && i + 1 < argc) {
             std::string route_arg = argv[++i];
             if (auto parsed = parse_route_kind(route_arg)) {
-                route = *parsed;
+                config.route = *parsed;
             } else {
-                std::cerr << "unsupported route '" << route_arg << "', using " << route_name(route) << "\n";
+                std::cerr << "unsupported route '" << route_arg << "', using " << route_name(config.route) << "\n";
             }
         } else if (arg == "-") {
             read_stdin = true;
         } else if (arg == "--debug") {
-            debug = true;
+            config.debug = true;
         } else if (arg == "--list-legal") {
             list_legal = true;
         } else if (arg == "--emit-proof") {
-            emit_proof = true;
+            config.emit_proof = true;
         } else if (arg == "--profile") {
-            profile = true;
+            config.profile = true;
         } else if (arg == "--no-profile") {
-            profile = false;
+            config.profile = false;
         } else if (arg == "--score-mates") {
-            score_mates = true;
+            config.score_mates = true;
         } else if (arg == "--no-mate-score") {
-            score_mates = false;
+            config.score_mates = false;
         } else if (arg == "--score-checks") {
-            score_checks = true;
+            config.score_checks = true;
         } else if (arg == "--no-check-score") {
-            score_checks = false;
+            config.score_checks = false;
         } else if (arg == "--fast-check-score") {
-            fast_check_score = true;
+            config.fast_check_score = true;
         } else if (arg == "--exact-check-score") {
-            fast_check_score = false;
+            config.fast_check_score = false;
         } else if (arg == "--refutation-hints") {
-            refutation_hints = true;
+            config.refutation_hints = true;
         } else if (arg == "--no-refutation-hints") {
-            refutation_hints = false;
+            config.refutation_hints = false;
         } else if (arg == "--proof-hints") {
-            proof_hints = true;
+            config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
-            proof_hints = false;
+            config.proof_hints = false;
         } else if (arg == "--tt-reserve" && i + 1 < argc) {
-            char* end = nullptr;
-            unsigned long value = std::strtoul(argv[++i], &end, 10);
-            if (end != argv[i]) {
-                tt_reserve = static_cast<std::size_t>(value);
-            }
+            parse_size(argv[++i], config.tt_reserve);
         } else if (arg == "--move-reserve") {
-            move_reserve = true;
+            config.move_reserve = true;
         } else if (arg == "--no-move-reserve") {
-            move_reserve = false;
+            config.move_reserve = false;
         } else if (arg == "--move-reserve-cap" && i + 1 < argc) {
-            char* end = nullptr;
-            unsigned long value = std::strtoul(argv[++i], &end, 10);
-            if (end != argv[i] && value > 0) {
-                move_reserve = true;
-                move_reserve_capacity = static_cast<std::size_t>(value);
+            std::size_t value = 0;
+            if (parse_size(argv[++i], value) && value > 0) {
+                config.move_reserve = true;
+                config.move_reserve_capacity = value;
             }
         } else if (arg == "--inplace-order") {
-            inplace_order = true;
+            config.inplace_order = true;
         } else if (arg == "--scored-vector-order") {
-            inplace_order = false;
+            config.inplace_order = false;
         } else if (arg == "--bucket-order") {
-            bucket_order = true;
-            inplace_order = true;
+            config.bucket_order = true;
+            config.inplace_order = true;
         } else if (arg == "--stable-sort-order") {
-            bucket_order = false;
+            config.bucket_order = false;
         } else if (arg == "--keep-iter-tt") {
-            keep_iter_tt = true;
+            config.keep_iter_tt = true;
         } else if (arg == "--clear-iter-tt") {
-            keep_iter_tt = false;
+            config.keep_iter_tt = false;
         } else if (arg == "--bound-tt") {
-            bound_tt_enabled = true;
+            config.bound_tt_enabled = true;
         } else if (arg == "--exact-tt-only") {
-            bound_tt_enabled = false;
+            config.bound_tt_enabled = false;
         } else if (arg == "--bound-tt-failures") {
-            bound_tt_failures = true;
+            config.bound_tt_failures = true;
         } else if (arg == "--bound-tt-ok-only") {
-            bound_tt_failures = false;
+            config.bound_tt_failures = false;
         } else if (arg == "--ordered-check-shortcut") {
-            ordered_check_shortcut = true;
+            config.ordered_check_shortcut = true;
         } else if (arg == "--no-ordered-check-shortcut") {
-            ordered_check_shortcut = false;
+            config.ordered_check_shortcut = false;
         } else if (arg == "--static-pseudo") {
-            static_pseudo = true;
+            config.static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
-            static_pseudo = false;
+            config.static_pseudo = false;
         } else if (arg == "--order-min-size" && i + 1 < argc) {
-            char* end = nullptr;
-            unsigned long value = std::strtoul(argv[++i], &end, 10);
-            if (end != argv[i]) {
-                order_min_size = std::max<std::size_t>(2, static_cast<std::size_t>(value));
+            std::size_t value = 0;
+            if (parse_size(argv[++i], value)) {
+                config.order_min_size = std::max<std::size_t>(2, value);
             }
         } else if (arg == "--order-all") {
-            order_min_size = 2;
+            config.order_min_size = 2;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
             ++i; // accepted for CLI compatibility in the initial E checkpoint
         }
@@ -1913,7 +1939,7 @@ int main(int argc, char** argv) {
             if (list_legal) {
                 list_legal_line(line);
             } else {
-                solve_line(line, requested_depth, route, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
+                solve_line(line, requested_depth, config);
             }
         }
     } else {
@@ -1922,7 +1948,7 @@ int main(int argc, char** argv) {
         if (list_legal) {
             list_legal_line(buffer.str());
         } else {
-            solve_line(buffer.str(), requested_depth, route, debug, emit_proof, profile, score_mates, score_checks, fast_check_score, refutation_hints, proof_hints, tt_reserve, move_reserve, move_reserve_capacity, inplace_order, static_pseudo, order_min_size, bucket_order, keep_iter_tt, bound_tt_enabled, bound_tt_failures, ordered_check_shortcut);
+            solve_line(buffer.str(), requested_depth, config);
         }
     }
     return 0;
