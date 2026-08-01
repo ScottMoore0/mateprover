@@ -56,23 +56,24 @@ def main():
     scale = 3 if args.quick else 1
     checks = [
         ("mate-in-8, default configuration, 15s",
-         load("matetrack_d8_holdout60.jsonl"), [], 15 // scale, "52/60"),
+         load("matetrack_d8_eval200.jsonl"), [], 15 // scale, "159/200 = 79.5%"),
         ("mate-in-10, 32 threads, --direct-depth, 30s",
-         load("matetrack_d10_holdout24.jsonl"),
-         ["-M", "2048", "--threads", "32", "--direct-depth"], 30 // scale, "18/24"),
+         load("matetrack_d10_eval60.jsonl"),
+         ["-M", "2048", "--threads", "32", "--direct-depth"], 30 // scale, "44/60 = 73.3%"),
         ("mate-in-10, no portfolio (the comparison)",
-         load("matetrack_d10_holdout24.jsonl"),
-         ["-M", "2048", "--threads", "32", "--direct-depth", "--no-portfolio"], 30 // scale, "13/24"),
+         load("matetrack_d10_eval60.jsonl"),
+         ["-M", "2048", "--threads", "32", "--direct-depth", "--no-portfolio"], 30 // scale,
+         "29/60 = 48.3%"),
     ]
 
     if args.quick:
         print("QUICK MODE: reduced positions and budget. Indicative only.\n")
-    print(f"{'measurement':<46} {'measured':>10}   {'documented':>10}")
+    print(f"{'measurement':<46} {'measured':>10}   {'documented':>16}")
     for label, positions, extra, budget, documented in checks:
         got = measure(args.engine, positions, extra, max(budget, 1))
-        print(f"{label:<46} {f'{got}/{len(positions)}':>10}   {documented:>10}", flush=True)
+        print(f"{label:<46} {f'{got}/{len(positions)}':>10}   {documented:>16}", flush=True)
 
-    print("\nHeld-out positions: no tuning used them. See benchmarks/README.md.")
+    print("\nEvaluation positions: used once, never consulted during development. See benchmarks/README.md.")
     return 0
 
 

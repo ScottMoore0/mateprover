@@ -26,16 +26,37 @@ rather than by argument.
 | making the tuned settings the defaults (8n) | bare invocation 26/60 → 52/60 |
 | portfolio at mate-in-10 (8x) | 13/24 → 18/24 |
 
-Current measured reach, all on positions no tuning had seen:
+Current measured reach. These figures come from evaluation sets used **once**,
+for this measurement, and never consulted during development (14):
 
-- **mate-in-8**, default configuration, 15 s: **52/60** (8n).
-- **mate-in-8 under escalating budgets** -- a separate measurement, at 32 threads
-  with `--direct-depth`, so not directly comparable to the line above: 51/60 at
-  15 s, 56/60 at 60 s, **60/60 at 300 s**. Nothing at this depth is out of reach;
-  it is purely a matter of budget (8h).
-- **mate-in-10**, 30 s, 32 threads, `--direct-depth`: **18/24**, all eighteen
-  certificates independently verified. Four times the time or memory buys
-  nothing; the portfolio buys five positions (8x).
+| measurement | result | 95% CI |
+|---|---|---|
+| mate-in-8, default configuration, 15 s (200 positions) | **159/200 = 79.5%** | 73.4-84.5 |
+| mate-in-10 with the portfolio, 30 s, 32 threads, `--direct-depth` (60 positions) | **44/60 = 73.3%** | 61.0-82.9 |
+| mate-in-10, same but `--no-portfolio` | 29/60 = 48.3% | 36.2-60.7 |
+
+The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
+none** -- twenty-five points of solve rate from the one idea this engine has that
+is not a conventional search technique.
+
+Separately, and on the older development set, mate-in-8 under escalating budgets
+at 32 threads with `--direct-depth`: 51/60 at 15 s, 56/60 at 60 s, **60/60 at
+300 s**. Nothing at that depth is out of reach; it is purely a matter of budget
+(8h). At mate-in-10, by contrast, four times the time or memory buys nothing
+(8x).
+
+### A caution about the older figures
+
+Earlier versions of this document quoted **52/60 = 86.7%** for mate-in-8. That
+came from a 60-position set which, over the course of development, informed about
+ten promote-or-reject decisions. Re-measured on 200 positions that had informed
+none, the same configuration scores 79.5%, and the old figure sits *outside* the
+new interval. Nothing was tuned against that set directly; consulting it
+repeatedly was enough (14).
+
+The mate-in-10 figures did not move: a set consulted two or three times gave
+75%, and a fresh one gives 73.3%. The size of the effect tracks how often a set
+was used.
 
 ### Checking these numbers yourself
 

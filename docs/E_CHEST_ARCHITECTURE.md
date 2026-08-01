@@ -1916,6 +1916,53 @@ time, which is not what was measured. They are now separate lines, each with its
 configuration -- the fourth instance in this document of a number that meant less
 than it appeared to until its configuration was attached to it.
 
+### 14. Held-Out Sets Decay Into Development Sets
+
+Every reach figure in this project rested on two position sets totalling 84
+positions. Both were held out from *tuning* in the strict sense -- no parameter
+was fitted to them -- and both were nonetheless consulted repeatedly: the
+mate-in-8 set informed roughly ten promote-or-reject decisions across 8g, 8i, 8j,
+8n, 8s and 8y. Each of those decisions kept the engine on one branch rather than
+another **because of how that set responded**. That is fitting, conducted by hand
+and one bit at a time.
+
+Two fresh sets were minted from positions no suite had ever contained -- 200 at
+mate-in-8, 60 at mate-in-10 -- and measured once:
+
+| measurement | development set | evaluation set | 95% CI |
+|---|---|---|---|
+| mate-in-8, default, 15 s | 52/60 = 86.7% | **159/200 = 79.5%** | 73.4-84.5 |
+| mate-in-10, portfolio, 30 s | 18/24 = 75.0% | **44/60 = 73.3%** | 61.0-82.9 |
+| mate-in-10, no portfolio | 13/24 = 54.2% | 29/60 = 48.3% | 36.2-60.7 |
+
+The mate-in-8 figure fell by seven points, and the old value lies *outside* the
+new interval. The mate-in-10 figures barely moved. The difference between them is
+how often each set was consulted: about ten times against two or three. The size
+of the optimism tracks the number of decisions taken while looking.
+
+Nothing here was cheating, which is what makes it worth recording. No parameter
+was fitted to those 60 positions. They were simply the yardstick every close call
+was measured against, and a yardstick consulted often enough stops being
+independent of the thing it measures.
+
+Three consequences, all applied:
+
+- The published figures are now the evaluation numbers, with confidence
+  intervals, and `benchmarks/` ships both kinds of set clearly labelled: the
+  evaluation sets marked *used once, do not tune against them*, the development
+  sets marked as no longer evidence of absolute reach though still fine for
+  comparing two builds, which is what they were used for.
+- The portfolio's value is now stated far more precisely than before: **+15
+  positions of 60 at mate-in-10, losing none**, twenty-five points of solve rate.
+  A larger sample sharpened the one claim that matters rather than softening it.
+- Quoting a bare fraction like 52/60 without an interval implied a precision the
+  sample never supported. Every reach figure now carries one.
+
+The general form of this, and the reason it sits alongside the stale-measurement
+corrections in 8h, 8l and 8x: a number is only evidence about the engine if
+nothing about the engine was chosen by looking at that number. Freshness is
+consumed by use, and it is consumed silently.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

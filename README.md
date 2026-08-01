@@ -98,30 +98,23 @@ Ranges reflect run-to-run variation for problems sitting near the budget
 boundary.
 
 **Read this honestly:** echest solves mate-in-5 and below essentially always and
-mate-in-6/7 reliably in seconds. Deeper problems are where the interesting
-numbers are, and they depend on which axis you spend.
+mate-in-6/7 reliably in seconds. Deeper, the numbers come from evaluation sets
+used once and never consulted during development:
 
-At **mate-in-8**, the default configuration solves 52 of 60 held-out matetrack
-positions in 15 seconds, 56 in 60 seconds and all 60 in 300 seconds. There,
-waiting longer works: nothing at that depth is out of reach, it is a matter of
-budget.
+| measurement | solved | 95% CI |
+|---|---|---|
+| mate-in-8, default configuration, 15 s (200 positions) | **79.5%** | 73.4-84.5 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **73.3%** | 61.0-82.9 |
+| mate-in-10, same but `--no-portfolio` | 48.3% | 36.2-60.7 |
 
-At **mate-in-10** (24 fresh positions, 30 s, 32 threads, `--direct-depth`, which
-proves "a mate within N" rather than "the shortest mate is N"):
+The last two lines are the point: at mate-in-10 the restriction portfolio is
+worth **+15 positions of 60, losing none**. Four times the time buys nothing
+there, and four times the memory buys nothing; only the portfolio buys reach.
+At mate-in-8 the opposite holds -- the engine is budget-limited, and 60/60 of a
+development set fall given 300 seconds.
 
-| configuration | solved |
-|---|---|
-| unrestricted search alone | 13/24 |
-| with the restriction portfolio | **18/24** |
-| portfolio, 120 s instead of 30 s | 18/24 |
-| portfolio, 8 threads instead of 32 | 17/24 |
-| portfolio, 256 MB instead of 2 GB | 18/24 |
-
-All 18 certificates verify independently. The shape of that table is the point:
-**at this depth only the portfolio buys reach.** Four times the time buys
-nothing, four times the memory buys nothing, and four times the threads buys one
-position. Problems the portfolio does not reach are not a little out of reach,
-and no amount of hardware will change that -- the limit is what the search can
+`--direct-depth` proves "a mate within N" rather than "the shortest mate is N";
+it is not the default.
 express, not what it is given.
 
 ## Build
