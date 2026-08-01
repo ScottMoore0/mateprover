@@ -119,7 +119,7 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-133 checks covering:
+135 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -175,6 +175,7 @@ appears when the search hit its budget, so "gave up" is distinguishable from
 | `--time-limit S` | wall-clock budget; expiry reports `timeout`, never a mate |
 | `--direct-depth` | prove "a mate within N" rather than the shortest mate; materially better solve rate at a fixed budget |
 | `--portfolio` | spend the time budget across restricted searches as well as the unrestricted one; sound, since a restriction only removes attacker options |
+| `--portfolio-parallel` | run those searches concurrently, each with the full budget; uses cores that root splitting saturates on |
 | `--emit-proof` | append the recursive JSON proof certificate |
 | `--perft N` / `--perft-divide N` | move-generation self-check |
 | `--profile` | per-position counters on stderr |

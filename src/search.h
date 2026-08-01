@@ -1473,6 +1473,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
 
     const auto start = std::chrono::steady_clock::now();
     const bool use_portfolio = config.portfolio && config.time_limit > 0.0;
+    const char* winning_entry_name = nullptr;
 
     // Each attempt gets a fresh Search: tables from a restricted run answer a
     // different question and must not leak into the next attempt.
@@ -1501,6 +1502,105 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         return run_route(out, b, max_depth);
     };
 
+    // Run every portfolio entry concurrently, each with the full budget.
+    //
+    // The first entry to prove a mate wins and the rest are cancelled. Which
+    // one that is can vary between runs, so the *proof* returned is not
+    // deterministic -- but every proof returned is valid and verifiable, and
+    // the entry used is reported. Determinism was traded deliberately: making
+    // it deterministic would mean waiting for lower-index entries that may
+    // never finish, which is the whole cost this mode exists to avoid.
+    auto run_parallel_portfolio = [&](Search& report) -> RouteResult {
+        const auto& entries = restriction_portfolio();
+        const int lanes = static_cast<int>(entries.size());
+        const int per_lane = std::max(1, std::max(1, config.threads) / lanes);
+
+        std::vector<std::unique_ptr<Search>> searches;
+        std::vector<std::unique_ptr<std::atomic<bool>>> cancels;
+        std::vector<RouteResult> results(static_cast<std::size_t>(lanes));
+        std::vector<char> proved(static_cast<std::size_t>(lanes), 0);
+        searches.reserve(static_cast<std::size_t>(lanes));
+        cancels.reserve(static_cast<std::size_t>(lanes));
+
+        std::atomic<bool> stop{false};
+        std::mutex done_mutex;
+        int winner = -1;
+
+        for (int i = 0; i < lanes; ++i) {
+            cancels.emplace_back(new std::atomic<bool>(false));
+            searches.emplace_back(new Search());
+            Search& t = *searches.back();
+            static_cast<SearchConfig&>(t) = config;
+            t.attacker = b.stm;
+            t.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+            t.root_depth = max_depth;
+            t.portfolio = false;
+            t.portfolio_parallel = false;
+            t.threads = per_lane;
+            t.checks_mask = entries[static_cast<std::size_t>(i)].checks_mask;
+            t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;
+            t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
+            t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
+            t.cancel = cancels.back().get();
+            t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
+            if (config.time_limit > 0.0) {
+                t.has_deadline = true;
+                t.deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                         std::chrono::duration<double>(config.time_limit));
+            }
+        }
+
+        auto lane = [&](int i) {
+            Search& t = *searches[static_cast<std::size_t>(i)];
+            const RouteResult r = run_route(t, b, max_depth);
+            if (route_result_is_acceptable(r, max_depth)) {
+                std::lock_guard<std::mutex> lock(done_mutex);
+                results[static_cast<std::size_t>(i)] = r;
+                proved[static_cast<std::size_t>(i)] = 1;
+                if (winner < 0) {
+                    winner = i;
+                    stop.store(true, std::memory_order_release);
+                    for (auto& c : cancels) {
+                        c->store(true, std::memory_order_release);
+                    }
+                }
+            }
+        };
+
+        std::vector<std::thread> pool;
+        pool.reserve(static_cast<std::size_t>(lanes - 1));
+        for (int i = 1; i < lanes; ++i) {
+            pool.emplace_back(lane, i);
+        }
+        lane(0);
+        for (std::thread& th : pool) {
+            th.join();
+        }
+
+        // Prefer the unrestricted lane when it also proved: it is the most
+        // general answer and the one whose depth is the shortest found.
+        int pick = -1;
+        if (proved[0]) {
+            pick = 0;
+        } else {
+            for (int i = 0; i < lanes; ++i) {
+                if (proved[static_cast<std::size_t>(i)]) {
+                    pick = i;
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < lanes; ++i) {
+            report.stats += searches[static_cast<std::size_t>(i)]->stats;
+        }
+        if (pick < 0) {
+            report.timed_out = true;
+            return {};
+        }
+        winning_entry_name = entries[static_cast<std::size_t>(pick)].name;
+        return results[static_cast<std::size_t>(pick)];
+    };
+
     Search s;
     // The reporting Search carries the caller's config from the start. It was
     // previously assigned only on the failure path, so a portfolio run that
@@ -1510,7 +1610,10 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     RouteResult route_result;
     const char* winning_entry = nullptr;
 
-    if (use_portfolio) {
+    if (use_portfolio && config.portfolio_parallel) {
+        route_result = run_parallel_portfolio(s);
+        winning_entry = winning_entry_name;
+    } else if (use_portfolio) {
         const auto& entries = restriction_portfolio();
         const auto deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                           std::chrono::duration<double>(config.time_limit));

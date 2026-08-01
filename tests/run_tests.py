@@ -504,6 +504,36 @@ def test_restriction_portfolio(engine: Path, res: Results) -> None:
             bad += 1
     res.check(f"all {checked} portfolio proofs replay to mate", bad == 0, f"{bad} bad")
 
+    # The parallel portfolio must be sound too. Which lane wins can vary, so
+    # this checks the property every result must have rather than a fixed
+    # answer: solved positions replay to a real mate at the stated depth.
+    par = solve(engine, cases, ["-M", "64", "--time-limit", "20", "--threads", "8",
+                                "--portfolio-parallel"])
+    bad_par = 0
+    checked_par = 0
+    for (fen, _), line in zip(cases, par):
+        pv = PV_RE.search(line)
+        dm = DM_RE.search(line)
+        if not pv or not dm:
+            continue
+        checked_par += 1
+        board = chess.Board(fen + " 0 1")
+        ok = True
+        for token in pv.group(1).split():
+            move = chess.Move.from_uci(token)
+            if move not in board.legal_moves:
+                ok = False
+                break
+            board.push(move)
+        if not (ok and board.is_checkmate() and
+                len(pv.group(1).split()) == 2 * int(dm.group(1)) - 1):
+            bad_par += 1
+    res.check(f"all {checked_par} parallel-portfolio proofs replay to mate",
+              bad_par == 0, f"{bad_par} bad")
+    res.check("parallel portfolio solves at least as much as none",
+              sum(1 for l in par if DM_RE.search(l)) >=
+              sum(1 for l in plain if DM_RE.search(l)))
+
 
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.

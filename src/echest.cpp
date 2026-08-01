@@ -75,6 +75,9 @@ void print_usage() {
 "                                budget before giving up; a restriction only\n"
 "                                removes attacker options, so any mate found\n"
 "                                is real. Needs --time-limit\n"
+"  --portfolio-parallel          run the portfolio entries concurrently, each\n"
+"                                with the full budget; uses cores that root\n"
+"                                splitting saturates on\n"
 "  --no-portfolio                default; single unrestricted search\n"
 "\n"
 "Resources:\n"
@@ -359,6 +362,9 @@ int main(int argc, char** argv) {
             config.root_sequential_first = 0;
         } else if (arg == "--portfolio") {
             config.portfolio = true;
+        } else if (arg == "--portfolio-parallel") {
+            config.portfolio = true;
+            config.portfolio_parallel = true;
         } else if (arg == "--no-portfolio") {
             config.portfolio = false;
         } else if (arg == "--direct-depth") {

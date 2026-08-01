@@ -79,6 +79,12 @@ struct SearchConfig {
     // back to the unrestricted one. Sound because a restriction only removes
     // attacker options: a mate found under one is a real forced mate.
     bool portfolio = false;
+    // Run the portfolio entries concurrently instead of in sequence, so each
+    // gets the whole budget rather than a slice. Sound for the same reason the
+    // sequential portfolio is, and it uses cores that root splitting cannot:
+    // the entries solve different restricted problems, so unlike root-split
+    // workers they do not duplicate each other's search.
+    bool portfolio_parallel = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

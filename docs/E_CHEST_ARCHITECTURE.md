@@ -434,6 +434,28 @@ Implementation and validation:
 
 The manual also records that under restriction "it can not be guaranteed that there will be found any solution at all, or that a given solution is the best (i.e. shortest) one" -- which matches how E behaves: a restricted search may legitimately report nothing.
 
+### 7h. Portfolio Parallelism
+
+The sequential portfolio gives each entry a *slice* of the budget. `--portfolio-parallel` runs every entry concurrently instead, so each gets the **whole** budget.
+
+This works for a reason the root split cannot exploit. Root-split parallelism saturates around 16 threads because extra workers contribute duplicated nodes -- 2.2x the sequential node count at 8 threads, 2.9x at 16. Portfolio entries do **not** duplicate each other: they are searching genuinely different restricted problems. So the lanes scale where the root split does not, and they use cores the root split cannot.
+
+matetrack mate-in-8, 24 positions, **equal 15-second wall clock**:
+
+| configuration | solved | proved by |
+|---|---:|---|
+| unrestricted, 8 threads | 15/24 | unrestricted 15 |
+| portfolio sequential, 8 threads | 15/24 | unrestricted 13, K2 1, R1 1 |
+| **portfolio parallel, 32 threads** | **17/24** | unrestricted 13, K3 3, R1 1 |
+
+The parallel portfolio reaches at 15 seconds what the sequential one needed 45 seconds for -- a threefold budget reduction for the same capability.
+
+The trade is visible in the breakdown: the unrestricted lane gets only 32/8 = 4 threads instead of 8 and solves 13 rather than 15, but the restricted lanes add 4. Giving the unrestricted lane a larger share is an obvious tuning knob and is not yet done.
+
+**Determinism is traded deliberately.** Which lane wins first can vary between runs, so the *proof* returned is not deterministic. Every proof returned is still valid and verifiable, the lane used is reported, and the unrestricted lane is preferred whenever it also succeeds. Making the choice deterministic would mean waiting for lower-index lanes that may never finish, which is the cost this mode exists to avoid. The suite therefore tests the property every result must have -- solved positions replay to a real mate at the stated depth -- rather than a fixed expected answer.
+
+All 17 certificates from a parallel-portfolio run verify with the shipped checker, including the four found under restriction.
+
 ### 7g. The Restriction Portfolio
 
 Implementing the restrictions turned out to buy something the unrestricted engine could not get on its own.
