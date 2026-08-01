@@ -1693,6 +1693,56 @@ and the shipped certificate verifier independently rejects the resulting proofs
 with `missing defences ['f8c5']`. Two unrelated mechanisms catch the same
 injected unsoundness, which is the arrangement worth having. 228 checks.
 
+### 8v. Order Independence Gated; The Lowest-Index Rule Is Unobservable
+
+Two invariance claims, one gated successfully and one that turned out not to be
+testable at all.
+
+**Order and batching.** State could in principle leak between positions in a run:
+the iterative table is kept across depths and a shared table exists. It does not
+-- `solve_line` builds a fresh `Search` per position and the only `static` is the
+immutable portfolio table -- and answers are now checked identical across
+forward, reversed and shuffled order, and against one-position-per-process.
+
+That gate discriminates, verified by injecting a counter that shortens every
+second position's depth: the shuffled and solo arms both catch it. **The reversed
+arm does not**, because reversing an even-length list preserves parity, so a
+parity-based leak survives it. Reversal is the weakest of the three and is kept
+only for the cheap cases the others might miss.
+
+**Scheduling.** The root split accepts the *lowest-index* successful root move
+specifically so the key move does not depend on which worker finishes first.
+Answers are identical at 1, 2, 4, 8, 16 and 32 threads -- but that check could
+not be shown to discriminate. Injecting the opposite rule, accepting whichever
+root move finishes first, changes nothing observable:
+
+| corpus | result |
+|---|---|
+| shallow mates, 16 threads | identical |
+| shallow mates, forced splitting, 32 threads, no gate | identical |
+| hard mate-in-8 holdout positions | identical |
+| a constructed dual (`c1c8` and `d1d8` both mate) | identical |
+
+The reason is structural. The rule only matters when **two root moves mate and
+workers genuinely race**, and in practice the ordered-first move resolves before
+any race can occur -- on a dual mate-in-1 the whole search finishes before a
+second worker reports. So the lowest-index rule is currently doing no work: it is
+insurance against a case the search never reaches, not an active mechanism.
+
+That is worth stating plainly rather than leaving the thread-count check to imply
+more than it establishes. It is a consistency check that would catch gross
+breakage; it is **not** evidence for the lowest-index property, which rests on
+being correct by construction. A gate that cannot fail proves nothing, and this
+is the second time that trap has appeared -- 8s hit it with defaults, where the
+fix was to make the engine report its own configuration. There is no analogous
+escape here: the property has no observable consequence to report.
+
+**Corpus hygiene.** `mates.epd` held 17 lines but only 11 distinct positions, six
+being exact duplicates, so every coverage count it produced overstated the
+corpus by half. Deduplicated. `nomate.epd` also repeats FENs, but those are *not*
+duplicates -- the same position at depth 1 and depth 2 are different claims -- and
+the file now says so, since deduplicating it would silently delete test cases.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

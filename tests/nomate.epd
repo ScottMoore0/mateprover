@@ -1,4 +1,7 @@
 # Negative controls: no directmate exists at the stated depth.
+# A FEN may appear more than once at different depths on purpose: "no mate
+# in 1" and "no mate in 2" are different claims about the same position, and
+# both are worth checking. Do not deduplicate by position.
 # The prover must emit no dm token for any of these.
 rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - ; dm 1
 8/8/8/8/8/8/5k2/7K w - - ; dm 1

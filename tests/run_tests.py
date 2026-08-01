@@ -17,6 +17,7 @@ import argparse
 import importlib.util
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -1153,6 +1154,72 @@ def test_restriction_soundness_and_nesting(engine: Path, res: Results) -> None:
                   (proc.stdout + proc.stderr).decode().strip()[:120])
 
 
+def test_order_and_scheduling_independence(engine: Path, res: Results) -> None:
+    """An answer must not depend on batching, input order, or thread scheduling.
+
+    Two separate claims. Batch independence matters because state could in
+    principle leak between positions in one run -- the iterative table is kept
+    across depths, and a shared table exists -- so a position's answer could
+    depend on what preceded it. Scheduling independence is a documented design
+    property: the root split accepts the LOWEST-index successful move precisely
+    so the key move does not depend on which worker happens to finish first.
+
+    Both were asserted and neither was gated.
+    """
+    print("\n[invariance] answers ignore order, batching and scheduling")
+
+    cases = load_epd(HERE / "mates.epd") + load_epd(HERE / "nomate.epd")
+
+    def answers(order, extra):
+        lines = solve(engine, order, extra)
+        out = {}
+        for (fen, dm), line in zip(order, lines):
+            normalised = re.sub(r"acs [\d.e+-]+", "acs X",
+                                re.sub(r"acn \d+", "acn N", line)).strip()
+            out[(fen, dm)] = normalised
+        return out
+
+    deterministic = ["--no-portfolio", "--single-thread"]
+    forward = answers(cases, deterministic)
+    res.check("batch run produces an answer per case", len(forward) == len(cases))
+
+    reverse = answers(list(reversed(cases)), deterministic)
+    res.check("answers are identical in reverse order",
+              reverse == forward,
+              next((str(k) for k in forward if forward[k] != reverse.get(k)), ""))
+
+    shuffled = cases[:]
+    random.Random(20260801).shuffle(shuffled)
+    res.check("answers are identical in shuffled order",
+              answers(shuffled, deterministic) == forward, "")
+
+    # One position per process: no shared state of any kind can survive.
+    solo = {}
+    for case in cases:
+        solo.update(answers([case], deterministic))
+    res.check("answers are identical one position per process",
+              solo == forward,
+              next((str(k) for k in forward if forward[k] != solo.get(k)), ""))
+
+    # Scheduling: the key move must be the same at every thread count.
+    #
+    # Honest limitation: this arm has NOT been shown to discriminate. Injecting
+    # the opposite rule -- accept whichever root move finishes first instead of
+    # the lowest index -- changes nothing observable, on shallow mates, on hard
+    # mate-in-8 positions, with forced splitting, or on a constructed dual where
+    # two root moves both mate. The rule only bites when two root moves mate AND
+    # workers race, and the ordered-first move always resolves first. Treat this
+    # as a consistency check against gross breakage, not as evidence for the
+    # lowest-index property. See architecture 8v.
+    baseline = answers(cases, ["--no-portfolio", "--single-thread"])
+    for threads in ("2", "4", "8", "16", "32"):
+        got = answers(cases, ["--no-portfolio", "--threads", threads])
+        differing = [k for k in baseline if baseline[k] != got.get(k)]
+        res.check(f"answers at {threads} threads match the sequential answer",
+                  not differing,
+                  f"{differing[0][0][:30] if differing else ''}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1177,6 +1244,7 @@ def main() -> int:
     test_no_mate(args.engine, res)
     test_abort_invariant_under_stress(args.engine, res)
     test_invariance(args.engine, res)
+    test_order_and_scheduling_independence(args.engine, res)
     test_time_limit(args.engine, res)
     test_illegal_positions_rejected(args.engine, res)
     test_castling_needs_its_rook(args.engine, res)
