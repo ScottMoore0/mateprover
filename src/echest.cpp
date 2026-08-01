@@ -177,6 +177,8 @@ struct Stats {
     std::uint64_t dfpn_abandoned = 0;
     std::uint64_t root_sequential_tried = 0;
     std::uint64_t root_sequential_hits = 0;
+    std::uint64_t dfpn_movegen = 0;
+    std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t order_calls = 0;
     std::uint64_t order_moves = 0;
     std::uint64_t immediate_mate_tests = 0;
@@ -230,6 +232,8 @@ struct Stats {
         dfpn_abandoned += o.dfpn_abandoned;
         root_sequential_tried += o.root_sequential_tried;
         root_sequential_hits += o.root_sequential_hits;
+        dfpn_movegen += o.dfpn_movegen;
+        dfpn_mate_tests += o.dfpn_mate_tests;
         order_calls += o.order_calls;
         order_moves += o.order_moves;
         immediate_mate_tests += o.immediate_mate_tests;
@@ -251,7 +255,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 48 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 50 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
@@ -520,6 +524,10 @@ struct SearchConfig {
     std::uint64_t dfpn_node_limit = 0; // 0 = unlimited
     // Root moves searched sequentially before the split. 0 splits everything.
     int root_sequential_first = 0;
+    // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
+    // working instead of bouncing straight back. Expressed in 1/64ths.
+    int dfpn_epsilon_64 = 0;
+    bool dfpn_sort = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -2280,6 +2288,29 @@ inline std::uint32_t sat_add(std::uint32_t a, std::uint32_t b) {
 
 PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std::uint32_t thdn);
 
+// Move generation for DFPN nodes.
+//
+// df-pn selects the child to expand by proof/disproof number, not by move
+// score: every child starts at pn=dn=1, so ordering influences nothing except
+// which of several equal minima is picked first. A DFPN node is re-entered many
+// times -- that repeated descent is the algorithm -- and paying for a stable
+// sort on every entry buys nothing.
+//
+// Scores are still computed, because the fused generator produces the check bit
+// while it is already building the child planes for the legality test, and the
+// attacker's mate scan uses it to skip moves that cannot possibly be mate.
+std::vector<Move> dfpn_moves(Search& s, const Board& b, bool& scored) {
+    ++s.stats.dfpn_movegen;
+    if (s.dfpn_sort) {
+        return generate_ordered_moves(s, b, scored);
+    }
+    if (!s.static_pseudo && s.fused_order) {
+        return legal_moves_fused(b, s, scored);
+    }
+    scored = false;
+    return legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+}
+
 bool dfpn_budget_exhausted(Search& s) {
     return s.dfpn_node_limit != 0 && s.stats.dfpn_nodes >= s.dfpn_node_limit;
 }
@@ -2318,7 +2349,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     const TTKey key = tt_key(b, depth, 'D', s.attacker);
 
     bool scored = false;
-    std::vector<Move> replies = generate_ordered_moves(s, b, scored);
+    std::vector<Move> replies = dfpn_moves(s, b, scored);
     if (replies.empty()) {
         // No legal reply means stalemate here: the attacker's previous move was
         // tested for mate before recursing, so this is not a proof.
@@ -2369,8 +2400,14 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         const std::uint32_t child_thpn =
             thpn >= here.pn ? std::min<std::uint32_t>(DFPN_INF, thpn - here.pn + dfpn_lookup(s, child_keys[best]).pn)
                             : 0;
-        const std::uint32_t child_thdn =
+        std::uint32_t child_thdn =
             std::min<std::uint32_t>(thdn, second_dn == DFPN_INF ? DFPN_INF : second_dn + 1);
+        if (s.dfpn_epsilon_64 > 0 && child_thdn < DFPN_INF) {
+            const std::uint64_t widened =
+                static_cast<std::uint64_t>(child_thdn) * (64 + s.dfpn_epsilon_64) / 64;
+            child_thdn = std::min<std::uint32_t>(thdn, static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(widened, DFPN_INF)));
+        }
         dfpn_attacker(s, child_boards[best], depth, child_thpn, child_thdn);
     }
 }
@@ -2390,7 +2427,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     }
 
     bool scored = false;
-    std::vector<Move> moves = generate_ordered_moves(s, b, scored);
+    std::vector<Move> moves = dfpn_moves(s, b, scored);
     if (moves.empty()) {
         const PnDn v{DFPN_INF, 0};
         dfpn_store(s, key, v);
@@ -2405,9 +2442,17 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     for (const Move& m : moves) {
         child_boards.push_back(make_move(b, m));
     }
+    // A move that does not give check cannot be mate, and the fused generator
+    // already computed that bit, so most children never need the full
+    // checkmate test.
+    const bool mate_shortcut = scored && s.score_checks && !s.score_mates;
     for (std::size_t i = 0; i < moves.size(); ++i) {
         const Board& nb = child_boards[i];
         const Move& m = moves[i];
+        if (mate_shortcut && m.score < 50000) {
+            continue;
+        }
+        ++s.stats.dfpn_mate_tests;
         if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
             const PnDn v{0, DFPN_INF};
             dfpn_store(s, key, v);
@@ -2459,8 +2504,14 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             }
             return here;
         }
-        const std::uint32_t child_thpn =
+        std::uint32_t child_thpn =
             std::min<std::uint32_t>(thpn, second_pn == DFPN_INF ? DFPN_INF : second_pn + 1);
+        if (s.dfpn_epsilon_64 > 0 && child_thpn < DFPN_INF) {
+            const std::uint64_t widened =
+                static_cast<std::uint64_t>(child_thpn) * (64 + s.dfpn_epsilon_64) / 64;
+            child_thpn = std::min<std::uint32_t>(thpn, static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(widened, DFPN_INF)));
+        }
         const std::uint32_t child_thdn =
             thdn >= here.dn ? std::min<std::uint32_t>(DFPN_INF, thdn - here.dn + dfpn_lookup(s, child_keys[best]).dn)
                             : 0;
@@ -2935,6 +2986,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"dfpn_table_size\":" << st.dfpn_table_size
               << ",\"root_sequential_tried\":" << st.root_sequential_tried
               << ",\"root_sequential_hits\":" << st.root_sequential_hits
+              << ",\"dfpn_movegen\":" << st.dfpn_movegen
+              << ",\"dfpn_mate_tests\":" << st.dfpn_mate_tests
               << ",\"lazy_defender\":" << (s.lazy_defender ? "true" : "false")
               << ",\"order_calls\":" << st.order_calls
               << ",\"order_moves\":" << st.order_moves
@@ -3307,6 +3360,16 @@ int main(int argc, char** argv) {
             config.root_sequential_first = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
+        } else if (arg == "--dfpn-epsilon-64") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--dfpn-epsilon-64' requires a value");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--dfpn-epsilon-64' expects a number");
+            config.dfpn_epsilon_64 = static_cast<int>(value);
+        } else if (arg == "--dfpn-sort") {
+            config.dfpn_sort = true;
+        } else if (arg == "--dfpn-no-sort") {
+            config.dfpn_sort = false;
         } else if (arg == "--dfpn-hints-only") {
             config.dfpn_share_disproofs = false;
         } else if (arg == "--dfpn-share-disproofs") {
