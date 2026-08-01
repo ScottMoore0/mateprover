@@ -256,7 +256,7 @@ def test_cli_contract(engine: Path, res: Results) -> None:
         ("missing value rejected", ["-M"], 2, "requires a size"),
         ("missing depth rejected", ["-z"], 2, "requires a mate depth"),
         ("bad thread count rejected", ["--threads", "zero", "-"], 2, "positive number"),
-        ("unimplemented restriction rejected", ["-R", "2", "-"], 2, "special-mate"),
+        ("unimplemented restriction rejected", ["-I", "2", "-"], 2, "special-mate"),
     ]
     for name, args, want_code, want_text in checks:
         code, out = run_raw(args)

@@ -303,60 +303,7 @@ std::vector<Move> pseudo_defender_moves(Search& s, const Board& b) {
 // unsound for an ordinary directmate. It is only correct because `-C 1` asks a
 // different question -- "is there a mate in which every attacker move gives
 // check" -- and under that question the removed moves are not candidates.
-void restrict_attacker_moves(const Search& s, const Board& b, std::vector<Move>& moves) {
-    const bool needs_child = s.king_squares > 0 || s.piece_limit > 0 || s.max_defender_moves > 0;
-    if (!s.checks_only && !needs_child) {
-        return;
-    }
-    const Color them = other(b.stm);
-    moves.erase(std::remove_if(moves.begin(), moves.end(), [&](const Move& m) {
-        // ChecksOnly is answered without building the child position.
-        if (s.checks_only && !move_gives_check_fast(b, m)) {
-            return true;
-        }
-        if (!needs_child) {
-            return false;
-        }
-        // The remaining three all ask about the defender's replies, so they
-        // share one materialisation and one move generation.
-        const Board nb = make_move(b, m);
-        const std::vector<Move> replies =
-            legal_moves(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
-
-        if (s.max_defender_moves > 0 &&
-            static_cast<int>(replies.size()) > s.max_defender_moves) {
-            return true;
-        }
-        if (s.king_squares > 0) {
-            // "KingSquares" counts the square the king stands on as well, so a
-            // value of 1 permits no king move at all.
-            const int king_sq = nb.king_sq[them];
-            int reachable = 1;
-            for (const Move& r : replies) {
-                if (r.from == king_sq) {
-                    ++reachable;
-                }
-            }
-            if (reachable > s.king_squares) {
-                return true;
-            }
-        }
-        if (s.piece_limit > 0) {
-            std::array<bool, 64> movable{};
-            int distinct = 0;
-            for (const Move& r : replies) {
-                if (!movable[static_cast<std::size_t>(r.from)]) {
-                    movable[static_cast<std::size_t>(r.from)] = true;
-                    ++distinct;
-                }
-            }
-            if (distinct > s.piece_limit) {
-                return true;
-            }
-        }
-        return false;
-    }), moves.end());
-}
+void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves);
 
 bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);

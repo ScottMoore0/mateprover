@@ -10,6 +10,125 @@ namespace echest {
 
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
+// Is `m` a threat move? WinChest defines one as a move after which, if the
+// defender were allowed to pass, the attacker could mate within ThreatDepth.
+//
+// The null move makes the position unreachable by legal play, which is the
+// point: it measures what the attacker is threatening, not what is forced. The
+// probe therefore answers a different question from the enclosing search and is
+// given its own Search and its own table -- sharing one would let a
+// check-restricted disproof answer an unrestricted question.
+bool move_is_threat(Search& s, const Board& b, const Move& m, int depth_budget) {
+    if (s.threat_ctx == nullptr) {
+        s.threat_ctx.reset(new Search());
+        static_cast<SearchConfig&>(*s.threat_ctx) = static_cast<const SearchConfig&>(s);
+        // The probe is a plain mate search: no threat filter (which would
+        // recurse), no defender-side limits, and checks-only exactly when
+        // WinChest's sign says so.
+        s.threat_ctx->threat_depth = 0;
+        s.threat_ctx->king_squares = 0;
+        s.threat_ctx->piece_limit = 0;
+        s.threat_ctx->max_defender_moves = 0;
+        s.threat_ctx->checks_only = s.threat_depth > 0;
+        s.threat_ctx->emit_proof = false;
+        s.threat_ctx->tt.capacity = entry_capacity_for_mb(s.memory_mb);
+    }
+    Search& t = *s.threat_ctx;
+    t.attacker = s.attacker;
+    t.aborted = false;
+    t.has_deadline = s.has_deadline;
+    t.deadline = s.deadline;
+
+    Board nb = make_move(b, m);
+    // The defender passes: side to move returns to the attacker and any
+    // en-passant right created by `m` lapses.
+    nb.stm = s.attacker;
+    nb.ep = -1;
+
+    const Proof p = prove_attacker(t, nb, depth_budget);
+    if (t.timed_out) {
+        s.timed_out = true;
+    }
+    return p.ok;
+}
+
+void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves) {
+    const bool needs_child = s.king_squares > 0 || s.piece_limit > 0 || s.max_defender_moves > 0;
+    // WinChest disables ThreatDepth internally when ChecksOnly is on, because
+    // threats add nothing once every move must already be a check.
+    int threat = s.checks_only ? 0 : s.threat_depth;
+    if (threat != 0) {
+        // "The maximum value for this parameter is the current matenumber-2,
+        // higher values are ignored."
+        //
+        // "Ignored" means the option switches off, not that it clamps to the
+        // maximum. Differential testing settled this: clamping made a mate-in-3
+        // with -R 2 unsolvable for E while WinChest solved it, because clamping
+        // to 1 imposes a restriction where WinChest imposes none.
+        const int cap = s.root_depth - 2;
+        const int magnitude = threat < 0 ? -threat : threat;
+        if (cap < 1 || magnitude > cap) {
+            threat = 0;
+        }
+    }
+    if (!s.checks_only && !needs_child && threat == 0) {
+        return;
+    }
+    const Color them = other(b.stm);
+    moves.erase(std::remove_if(moves.begin(), moves.end(), [&](const Move& m) {
+        // ChecksOnly is answered without building the child position.
+        if (s.checks_only && !move_gives_check_fast(b, m)) {
+            return true;
+        }
+        if (threat != 0 && !move_is_threat(s, b, m, threat < 0 ? -threat : threat)) {
+            return true;
+        }
+        if (!needs_child) {
+            return false;
+        }
+        // The remaining three all ask about the defender's replies, so they
+        // share one materialisation and one move generation.
+        const Board nb = make_move(b, m);
+        const std::vector<Move> replies =
+            legal_moves(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+
+        if (s.max_defender_moves > 0 &&
+            static_cast<int>(replies.size()) > s.max_defender_moves) {
+            return true;
+        }
+        if (s.king_squares > 0) {
+            // "KingSquares" counts the square the king stands on as well, so a
+            // value of 1 permits no king move at all.
+            const int king_sq = nb.king_sq[them];
+            int reachable = 1;
+            for (const Move& r : replies) {
+                if (r.from == king_sq) {
+                    ++reachable;
+                }
+            }
+            if (reachable > s.king_squares) {
+                return true;
+            }
+        }
+        if (s.piece_limit > 0) {
+            std::array<bool, 64> movable{};
+            int distinct = 0;
+            for (const Move& r : replies) {
+                if (!movable[static_cast<std::size_t>(r.from)]) {
+                    movable[static_cast<std::size_t>(r.from)] = true;
+                    ++distinct;
+                }
+            }
+            if (distinct > s.piece_limit) {
+                return true;
+            }
+        }
+        return false;
+    }), moves.end());
+}
+
+
+
 Proof prove_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -1292,6 +1411,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     static_cast<SearchConfig&>(s) = config;
     s.attacker = b.stm;
     s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+    s.root_depth = max_depth; // ThreatDepth is capped relative to this
     if (s.time_limit > 0.0) {
         s.has_deadline = true;
         s.deadline = std::chrono::steady_clock::now() +

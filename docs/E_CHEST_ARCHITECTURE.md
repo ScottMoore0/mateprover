@@ -466,6 +466,22 @@ The suite also checks the property directly rather than only through the oracle:
 
 `-R` (ThreatDepth) and `-I` (threat flags) remain unimplemented. Both need null-move threat machinery that the exact kernel does not have, which is a larger change than a per-move filter.
 
+### 7e. ThreatDepth Implemented
+
+`-R N` is implemented. A move is examined only if, after it and a **null move by the defender**, the attacker can mate within `|N|`. The sign selects the threat search: positive uses check-moves only ("check threats"), negative allows any move ("quiet threats").
+
+Two things made this harder than the per-move filters.
+
+**The threat probe answers a different question.** After the null move the position is unreachable by legal play, which is the point -- it measures what the attacker *threatens* rather than what is forced -- and when `N > 0` the probe is additionally restricted to checks. Sharing a table between that and the enclosing search would let a check-restricted disproof answer an unrestricted question. The probe therefore gets its own `Search` and its own table, created lazily per search object so parallel workers do not share one.
+
+**"Higher values are ignored" means off, not clamped.** The manual caps ThreatDepth at *matenumber - 2*. Clamping an over-large value to the maximum seemed the natural reading and was wrong: differential testing found a mate-in-3 with `-R 2` that WinChest solved and E did not, because clamping to 1 imposes a restriction where WinChest imposes none. Switching the option off above the cap makes them agree. That is the second time these options' one-line documentation has been misleading and the oracle has settled it.
+
+WinChest also disables ThreatDepth when ChecksOnly is 1, "because in this case threats are not useful any longer". E does the same, and the suite checks `-C 1` and `-C 1 -R 1` agree.
+
+**Differentially validated**: 137 comparisons across `-R` 1, 2, 3, -1, -2, -3, **zero disagreements**. The restriction binds: against 13 solved unrestricted, `-R 1` and `-R -1` each give 10.
+
+Five of the six WinChest variants are now implemented and oracle-validated: `-C 1`, `-R`, `-K`, `-P`, `-X`. Only `-I` remains, and its one-line description gives no usable semantics.
+
 ### 8. Internal Parallelism
 
 E should support root split and deeper work stealing with:

@@ -130,7 +130,7 @@ void print_usage() {
 "  --fast-check-score, --exact-check-score, --score-checks, --no-check-score\n"
 "                                accepted; check scoring is a single shared\n"
 "                                plane query, so these select nothing\n"
-"WinChest special-mate variants. -C 1, -K, -P and -X are implemented and\n"
+"WinChest special-mate variants. -C 1, -R, -K, -P and -X are implemented and\n"
 "validated against the WinChest binary. Each selects a different problem, so\n"
 "the unimplemented ones are rejected rather than ignored:\n"
 "    -C N                        ChecksOnly bitmask; -C 1 implemented\n"
@@ -139,7 +139,9 @@ void print_usage() {
 "    -P N                        PieceLimit: at most N defender pieces may\n"
 "                                move\n"
 "    -X N                        MaxMoves: at most N defender moves in total\n"
-"    -R N                        examine threats only (not implemented)\n"
+"    -R N                        ThreatDepth: only moves threatening mate\n"
+"                                within |N| after a defender null move;\n"
+"                                N>0 check-threats, N<0 quiet threats\n"
 "    -I N                        threat flags (not implemented)\n"
 "    -n N, -N N                  accepted with a value, same treatment\n"
 "  Pass --allow-unimplemented to search the unrestricted problem instead.\n"
@@ -447,18 +449,22 @@ int main(int argc, char** argv) {
             } else {
                 config.max_defender_moves = (n == 0 || n >= 222) ? 0 : n;
             }
-        } else if (arg == "-R" || arg == "-I" || arg == "-n" || arg == "-N") {
+        } else if (arg == "-R") {
+            // ThreatDepth: examine only moves that threaten mate within N
+            // after a defender null move. The sign selects the threat
+            // search: positive uses check-moves only, negative any move.
+            const char* v = need_value(i);
+            if (!v) return usage_error("option -R requires a value");
+            const int n = std::atoi(v);
+            config.threat_depth = (n == 0 || n >= 125 || n <= -125) ? 0 : n;
+        } else if (arg == "-I" || arg == "-n" || arg == "-N") {
             if (!need_value(i)) {
                 return usage_error("option " + arg + " requires a value");
             }
             if (!allow_unimplemented) {
-                std::string meaning = "a restricted mate variant";
-                if (arg == "-R") meaning = "examine threats only";
-                else if (arg == "-I") meaning = "threat flags";
                 return usage_error("option " + arg + " selects a WinChest special-mate "
-                                   "variant (" + meaning + ") that this engine does not "
-                                   "implement. It solves ordinary directmates only, so "
-                                   "the restriction would be silently ignored and the "
+                                   "variant (threat flags) that this engine does not "
+                                   "implement. It would be silently ignored and the "
                                    "answer would be to a different problem. Pass "
                                    "--allow-unimplemented to search unrestricted.");
             }

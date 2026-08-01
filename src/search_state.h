@@ -64,6 +64,13 @@ struct SearchConfig {
     // WinChest MaxMoves: the defender may have at most this many legal moves in
     // total after the attacker's move. 0 means off.
     int max_defender_moves = 0;
+    // WinChest ThreatDepth. A move is examined only if, after it and a null
+    // move by the defender, the attacker can mate within |threat_depth|.
+    // Positive means the threat search uses check-moves only ("check threats");
+    // negative allows any move ("quiet threats"). 0 is off.
+    int threat_depth = 0;
+    // Root mate depth, needed because WinChest caps ThreatDepth at depth - 2.
+    int root_depth = 0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -115,6 +122,13 @@ struct Search : SearchConfig {
     // discarding it costs search effort and cannot change a verdict.
     std::unordered_map<TTKey, PnDnFwd, TTKeyHash> dfpn_tt;
     std::size_t dfpn_capacity = 1u << 21;
+
+    // Context for ThreatDepth probes. The threat search asks "can the attacker
+    // mate within R from this position", optionally restricted to checks, which
+    // is a DIFFERENT predicate from the enclosing search. Sharing a table
+    // between them would let a restricted disproof answer an unrestricted
+    // question, so it gets its own Search and its own table.
+    std::unique_ptr<Search> threat_ctx;
 
     void reset_for_new_search() {
         aborted = false;
