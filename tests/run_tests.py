@@ -389,13 +389,16 @@ def test_checks_only_restriction(engine: Path, res: Results) -> None:
         res.check(f"every attacker move gives check in {checked} restricted solution(s)",
                   offenders == 0, f"{offenders} non-checking attacker moves")
 
-    # Unimplemented ChecksOnly bits must still be refused.
-    proc = subprocess.run([str(engine), "-C", "3", "-z", "1", "-"],
-                          input=b"", capture_output=True, timeout=60)
-    out = (proc.stdout + proc.stderr).decode()
-    res.check("-C 3 (unimplemented bits) is refused",
-              proc.returncode == 2 and "does not implement" in out,
-              f"exit={proc.returncode}")
+    # All ChecksOnly bits are implemented now, but contradictory and
+    # out-of-range masks must still be refused.
+    for name, value, expect in (("contradictory 1|16", "17", "contradictory"),
+                                ("out of range", "99", "expects 0..31")):
+        proc = subprocess.run([str(engine), "-C", value, "-z", "1", "-"],
+                              input=b"", capture_output=True, timeout=60)
+        out = (proc.stdout + proc.stderr).decode()
+        res.check(f"-C {value} ({name}) is refused",
+                  proc.returncode == 2 and expect in out,
+                  f"exit={proc.returncode} {out.strip()[:70]!r}")
 
 
 def test_defender_restrictions(engine: Path, res: Results) -> None:

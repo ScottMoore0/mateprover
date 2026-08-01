@@ -50,10 +50,14 @@ struct SearchConfig {
     // Begin iterative deepening at the requested depth instead of 1. Only valid
     // when the caller wants "a mate within N" rather than "the shortest mate".
     bool direct_depth = false;
-    // WinChest ChecksOnly bit 1: the attacker may play only checking moves, so
-    // a solution is a serial-check mate. This selects a different problem, not
-    // a faster route to the same one.
-    bool checks_only = false;
+    // WinChest ChecksOnly, a bitmask over the attacker's move choice:
+    //    1  only own check-moves (serial-check mate)
+    //    2  no opponent checks
+    //    4  no opponent captures
+    //    8  no own capture moves
+    //   16  no own check-moves, except the mating move itself
+    // Each selects a different problem, not a faster route to the same one.
+    int checks_mask = 0;
     // WinChest KingSquares: allow only attacker moves after which the defender
     // king has at most this many squares available, counting the one it stands
     // on. 0 means off; 1 means the king cannot move at all.

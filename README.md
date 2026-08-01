@@ -119,7 +119,7 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-129 checks covering:
+130 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -207,14 +207,14 @@ immediately. Perft is a permanent gate for that reason.
 - Reach, as above: the shallow end of matetrack. This is a limitation of the
   search, not of resources: mate-in-10 solve rate is unchanged from 8 to 32
   threads and from 64 MB to unbounded memory.
-- WinChest's special-mate variants are **mostly implemented**: `-C 1`
-  (serial-check mate), `-R N` (threat depth, both signs), `-K N` (defender king
-  squares), `-P N` (defender pieces able to move) and `-X N` (defender moves in
-  total). All are validated against the WinChest binary — 344 comparisons, 0
-  disagreements. Still unimplemented: ChecksOnly bits 2/4/8/16 and `-I` (threat
-  flags), whose one-line description gives no usable semantics. Those are
-  rejected rather than ignored, since each selects a *different problem* — a
-  constrained request never returns an unconstrained answer.
+- WinChest's special-mate variants are **implemented**, except one: `-C N`
+  (ChecksOnly, all five bits), `-R N` (threat depth, both signs), `-K N`
+  (defender king squares), `-P N` (defender pieces able to move) and `-X N`
+  (defender moves in total). All are validated against the WinChest binary —
+  **666 comparisons, 0 disagreements**. Only `-I` (threat flags) is missing: it
+  has no entry in the manual at all, so there is nothing to implement against.
+  It is rejected rather than ignored, since it selects a *different problem* —
+  a constrained request never returns an unconstrained answer.
   `--allow-unimplemented` searches unrestricted instead. Chest 3.19 itself has
   none of these; they are WinChest extensions.
 - `-M` is an entry ceiling derived from an estimated bytes-per-entry, not a

@@ -130,10 +130,17 @@ void print_usage() {
 "  --fast-check-score, --exact-check-score, --score-checks, --no-check-score\n"
 "                                accepted; check scoring is a single shared\n"
 "                                plane query, so these select nothing\n"
-"WinChest special-mate variants. -C 1, -R, -K, -P and -X are implemented and\n"
+"WinChest special-mate variants. -C, -R, -K, -P and -X are implemented and\n"
 "validated against the WinChest binary. Each selects a different problem, so\n"
 "the unimplemented ones are rejected rather than ignored:\n"
-"    -C N                        ChecksOnly bitmask; -C 1 implemented\n"
+"    -C N                        ChecksOnly bitmask (0..31, -1 = off):\n"
+"                                  1 only own check-moves\n"
+"                                  2 no opponent checks\n"
+"                                  4 no opponent captures\n"
+"                                  8 no own captures*\n"
+"                                 16 no own check-moves*\n"
+"                                (* the mating move is exempt; 1 and 16\n"
+"                                are contradictory and refused)\n"
 "    -K N                        KingSquares: defender king has at most N\n"
 "                                squares, counting the one it stands on\n"
 "    -P N                        PieceLimit: at most N defender pieces may\n"
@@ -403,24 +410,24 @@ int main(int argc, char** argv) {
             if (!parse_size(v, value)) return usage_error("option '-M' expects a number");
             config.memory_mb = value; // 0 means unbounded
         } else if (arg == "-C") {
-            // WinChest ChecksOnly is a bitmask, not a count:
-            //   +1 only own check-moves      +2 no opponent checks
-            //   +4 no opponent captures      +8/+16 further restrictions
-            // Bit 1 is implemented; the others select problems this engine
-            // does not solve, so they are refused rather than ignored.
+            // ChecksOnly bitmask: 1 own checks only, 2 no opponent checks,
+            // 4 no opponent captures, 8 no own captures, 16 no own checks
+            // except the mating move. 0 and -1 are off.
             const char* v = need_value(i);
             if (!v) return usage_error("option -C requires a value");
             const int mask = std::atoi(v);
-            if (mask == 0 || mask == -1) {
-                config.checks_only = false;
-            } else if (mask == 1) {
-                config.checks_only = true;
-            } else if (!allow_unimplemented) {
-                return usage_error("option -C " + std::string(v) + " selects WinChest "
-                                   "ChecksOnly bits this engine does not implement. Only "
-                                   "-C 1 (attacker plays check-moves only) is supported; "
-                                   "bits 2, 4, 8 and 16 are not. Pass "
-                                   "--allow-unimplemented to search unrestricted.");
+            if (mask == -1 || mask == 0) {
+                config.checks_mask = 0;
+            } else if (mask < 0 || mask > 31) {
+                return usage_error("option -C expects 0..31 (a bitmask) or -1");
+            } else if ((mask & 1) && (mask & 16)) {
+                // The manual is explicit that these must not be combined:
+                // one demands every move be a check, the other forbids it.
+                return usage_error("option -C " + std::string(v) + " combines bit 1 "
+                                   "(only check-moves) with bit 16 (no check-moves), "
+                                   "which are contradictory.");
+            } else {
+                config.checks_mask = mask;
             }
         } else if (arg == "-K" || arg == "-P" || arg == "-X") {
             // KingSquares / PieceLimit / MaxMoves: each bounds what the

@@ -434,6 +434,30 @@ Implementation and validation:
 
 The manual also records that under restriction "it can not be guaranteed that there will be found any solution at all, or that a given solution is the best (i.e. shortest) one" -- which matches how E behaves: a restricted search may legitimately report nothing.
 
+### 7f. ChecksOnly Completed
+
+All five ChecksOnly bits are implemented:
+
+| bit | meaning |
+|---:|---|
+| 1 | only own check-moves |
+| 2 | no opponent checks |
+| 4 | no opponent captures |
+| 8 | no own captures, mating move exempt |
+| 16 | no own check-moves, mating move exempt |
+
+Bits 1 and 16 are contradictory and refused, as the manual requires; values outside 0..31 are refused.
+
+**The mating-move exemption on bit 8 is not in the documentation.** The manual states it only for bit 16 ("no own check moves, with the exception of the last mating move"). Implementing bit 8 literally produced six disagreements with WinChest, all of the same shape: positions where WinChest solved and E did not, including a mate-in-1 whose only move is a capture. Extending the exemption to bit 8 removed every disagreement.
+
+That is the third time the written specification for these options has been incomplete or misleading, after the ChecksOnly bitmask itself and the ThreatDepth cap. Each was caught only because the oracle was consulted rather than the prose trusted -- black-box differential testing has been worth more here than the manual.
+
+**Differentially validated**: 14 mask values (1..9, 12, 16, 20, 24, 28), **322 comparisons, 0 disagreements**. The bits bind and bind differently: against 13 solved unrestricted, `-C 1` gives 3, `-C 2` gives 11, `-C 4` gives 5, `-C 8` gives 9, `-C 16` gives 9, `-C 28` gives 4.
+
+Running total across all restriction work: **666 oracle comparisons, 0 disagreements**.
+
+`-I` (threat flags) is the only variant still unimplemented, and confirmed unimplementable from the available documentation: it appears in `Options.txt` as a one-line label with a numeric range, and has **no entry at all** in the English manual, unlike every other option which has a numbered section. There is no semantic content to implement against, and unlike the ChecksOnly bitmask, probing would not distinguish between plausible interpretations because there is no candidate interpretation to test.
+
 ### 7d. KingSquares, PieceLimit and MaxMoves Implemented
 
 Three more WinChest variants are implemented, all per-move filters on the attacker's list:

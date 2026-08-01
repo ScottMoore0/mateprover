@@ -29,7 +29,7 @@ bool move_is_threat(Search& s, const Board& b, const Move& m, int depth_budget) 
         s.threat_ctx->king_squares = 0;
         s.threat_ctx->piece_limit = 0;
         s.threat_ctx->max_defender_moves = 0;
-        s.threat_ctx->checks_only = s.threat_depth > 0;
+        s.threat_ctx->checks_mask = s.threat_depth > 0 ? 1 : 0;
         s.threat_ctx->emit_proof = false;
         s.threat_ctx->tt.capacity = entry_capacity_for_mb(s.memory_mb);
     }
@@ -53,10 +53,12 @@ bool move_is_threat(Search& s, const Board& b, const Move& m, int depth_budget) 
 }
 
 void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves) {
-    const bool needs_child = s.king_squares > 0 || s.piece_limit > 0 || s.max_defender_moves > 0;
-    // WinChest disables ThreatDepth internally when ChecksOnly is on, because
-    // threats add nothing once every move must already be a check.
-    int threat = s.checks_only ? 0 : s.threat_depth;
+    const int cm = s.checks_mask;
+    const bool needs_child = s.king_squares > 0 || s.piece_limit > 0 ||
+                             s.max_defender_moves > 0 || (cm & 2) != 0 || (cm & 4) != 0;
+    // WinChest disables ThreatDepth internally when ChecksOnly is 1 (or 3),
+    // because threats add nothing once every move must already be a check.
+    int threat = (cm & 1) ? 0 : s.threat_depth;
     if (threat != 0) {
         // "The maximum value for this parameter is the current matenumber-2,
         // higher values are ignored."
@@ -71,14 +73,28 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
             threat = 0;
         }
     }
-    if (!s.checks_only && !needs_child && threat == 0) {
+    if (cm == 0 && !needs_child && threat == 0) {
         return;
     }
     const Color them = other(b.stm);
     moves.erase(std::remove_if(moves.begin(), moves.end(), [&](const Move& m) {
-        // ChecksOnly is answered without building the child position.
-        if (s.checks_only && !move_gives_check_fast(b, m)) {
-            return true;
+        // The attacker-side bits need no child position.
+        const bool gives_check = (cm & (1 | 16)) ? move_gives_check_fast(b, m) : false;
+        if ((cm & 1) && !gives_check) {
+            return true;                       // 1: only own check-moves
+        }
+        // Bits 8 and 16 both exempt the mating move. The manual states the
+        // exception only for 16, but differential testing showed WinChest
+        // applying it to 8 as well: with -C 8 it solves mate-in-1 positions
+        // whose only move is a capture, which a literal "no own captures"
+        // reading forbids.
+        const bool bans_capture = (cm & 8) && (b.sq[m.to] != '.' || m.ep);
+        const bool bans_check = (cm & 16) && gives_check;
+        if (bans_capture || bans_check) {
+            const Board probe = make_move(b, m);
+            if (has_legal_move(probe, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+                return true;                   // not mate, so the ban applies
+            }
         }
         if (threat != 0 && !move_is_threat(s, b, m, threat < 0 ? -threat : threat)) {
             return true;
@@ -95,6 +111,22 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
         if (s.max_defender_moves > 0 &&
             static_cast<int>(replies.size()) > s.max_defender_moves) {
             return true;
+        }
+        if (cm & 2) {
+            // 2: the defender must have no move that checks the attacker.
+            for (const Move& r : replies) {
+                if (move_gives_check_fast(nb, r)) {
+                    return true;
+                }
+            }
+        }
+        if (cm & 4) {
+            // 4: the defender must have no capture of an attacker piece.
+            for (const Move& r : replies) {
+                if (nb.sq[r.to] != '.' || r.ep) {
+                    return true;
+                }
+            }
         }
         if (s.king_squares > 0) {
             // "KingSquares" counts the square the king stands on as well, so a
