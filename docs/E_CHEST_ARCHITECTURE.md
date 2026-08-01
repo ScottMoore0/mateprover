@@ -442,6 +442,24 @@ E needs a larger corpus than the current suite:
 - restrictions/stipulations;
 - frozen train/dev/test/holdout splits.
 
+### 13. CLI Contract
+
+A released prover is a tool other people drive from scripts, so the argument parser is part of the correctness surface, not decoration.
+
+The parser previously had **no else branch**: any unrecognised token was silently discarded. `--thredas 8` ran single-threaded without complaint, a trailing `-M` vanished, and `--help` was unrecognised so it fell through to reading stdin and hung forever. Chest restriction options `-C -R -K -P -X -I -n -N` consumed their value and were ignored, which is the most dangerous case of all: the caller asks a constrained question and receives a confident answer to a different, unconstrained one.
+
+This is the same failure mode as the `--fast-check-score` cliff, where one flag silently disabled move ordering and cost 30x while hiding behind a "rejected as slower" label. Silent acceptance of input the engine does not honour is a recurring hazard here, so it is now closed by construction.
+
+Current checkpoint:
+
+- unknown options, missing values and non-numeric values exit **2** with a diagnostic naming the option;
+- unimplemented Chest restrictions are **rejected**, with `--allow-unimplemented` as an explicit opt-out for harness compatibility. The opt-out is pre-scanned so it works regardless of argument order;
+- `-b`, `-1`, `-5` are explicitly accepted as documented compatibility no-ops rather than falling through;
+- `--help` and `--version` exist and exit 0; the version is defined by `project(VERSION)` in CMake with a source fallback for plain compiler builds;
+- nine CLI-contract tests are part of the in-repo suite, including that the escape hatch works and that compatibility flags are not caught by the new strictness.
+
+The promoted search path is unchanged: identical node counts, key moves and PVs on all four suites.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

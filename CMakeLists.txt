@@ -17,6 +17,7 @@ find_package(Threads REQUIRED)
 
 add_executable(echest src/echest.cpp)
 target_link_libraries(echest PRIVATE Threads::Threads)
+target_compile_definitions(echest PRIVATE ECHEST_VERSION="${PROJECT_VERSION}")
 
 if(MSVC)
     target_compile_options(echest PRIVATE /W4 /permissive-)

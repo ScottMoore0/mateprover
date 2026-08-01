@@ -2693,6 +2693,79 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
 
 } // namespace
 
+#ifndef ECHEST_VERSION
+#define ECHEST_VERSION "0.1.0-dev"
+#endif
+
+void print_version() {
+    std::cout << "echest " << ECHEST_VERSION << "\n";
+}
+
+void print_usage() {
+    std::cout <<
+"echest " ECHEST_VERSION " - exact directmate prover with machine-checkable proofs\n"
+"\n"
+"Usage:\n"
+"  echest [options] -            read EPD/FEN lines from stdin\n"
+"  echest [options] < file       read a single position from stdin\n"
+"\n"
+"Problem:\n"
+"  -z N                          requested mate depth (else inferred from #N)\n"
+"  --route NAME                  depth-first (default) | shallow-fast\n"
+"\n"
+"Resources:\n"
+"  -M N                          table budget in MB, honoured as an entry\n"
+"                                ceiling; 0 means unbounded (default 64)\n"
+"  --threads N | auto            root-split worker threads (default 1;\n"
+"                                the benchmark registry promotes 8)\n"
+"  --single-thread               force sequential search\n"
+"  --parallel-min-nodes N        run a depth sequentially until it exceeds\n"
+"                                N nodes, then split (default 500)\n"
+"  --no-parallel-gate            always split, never probe sequentially\n"
+"  --shared-tt | --private-tt    share one exact proof table across workers\n"
+"  --shared-tt-shards N          shards for the shared table (default 256)\n"
+"  --tt-reserve N                pre-reserve N table buckets\n"
+"\n"
+"Output:\n"
+"  -5                            UCI-style coordinate moves (compatibility)\n"
+"  --emit-proof                  append a recursive JSON proof certificate\n"
+"  --profile                     emit per-position counters to stderr\n"
+"  --list-legal                  list legal moves instead of solving\n"
+"  --perft N                     perft counts for depths 1..N\n"
+"  --perft-divide N              per-root-move perft breakdown at depth N\n"
+"\n"
+"Search tuning (all preserve exactness; see docs/E_CHEST_ARCHITECTURE.md):\n"
+"  --proof-hints | --no-proof-hints\n"
+"  --refutation-hints | --no-refutation-hints\n"
+"  --keep-iter-tt | --clear-iter-tt\n"
+"  --ordered-check-shortcut | --no-ordered-check-shortcut\n"
+"  --inplace-order | --scored-vector-order\n"
+"  --fused-order | --split-order\n"
+"  --lazy-defender | --eager-defender\n"
+"  --move-reserve-cap N          pseudo-move vector capacity (default 96)\n"
+"  --order-min-size N | --order-all\n"
+"  --bucket-order | --stable-sort-order\n"
+"  --score-mates | --no-mate-score\n"
+"  --bound-tt | --exact-tt-only\n"
+"  --bound-tt-failures | --bound-tt-ok-only\n"
+"  --static-pseudo | --vector-pseudo\n"
+"\n"
+"Compatibility:\n"
+"  -b, -1                        accepted and ignored\n"
+"  --fast-check-score, --exact-check-score, --score-checks, --no-check-score\n"
+"                                accepted; check scoring is a single shared\n"
+"                                plane query, so these select nothing\n"
+"  -C -R -K -P -X -I -n -N       Chest/WinChest restrictions: NOT IMPLEMENTED.\n"
+"                                Rejected by default so a constrained request\n"
+"                                never returns an unconstrained answer. Pass\n"
+"                                --allow-unimplemented to ignore them instead.\n"
+"\n"
+"  -h, --help                    this message\n"
+"  -V, --version                 version\n"
+"\n"
+"Exit codes: 0 success, 2 usage error.\n";
+}
+
 int main(int argc, char** argv) {
     SearchConfig config;
     int requested_depth = 0;
@@ -2700,6 +2773,22 @@ int main(int argc, char** argv) {
     bool perft_divide = false;
     bool read_stdin = false;
     bool list_legal = false;
+
+    // Pre-scan: this flag must work regardless of where it appears, otherwise
+    // it only takes effect when written before the option it excuses.
+    bool allow_unimplemented = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--allow-unimplemented") {
+            allow_unimplemented = true;
+            break;
+        }
+    }
+
+    auto usage_error = [](const std::string& message) {
+        std::cerr << "echest: " << message << "\n"
+                  << "Try 'echest --help' for usage.\n";
+        return 2;
+    };
 
     auto parse_size = [&](const char* text, std::size_t& out) {
         char* end = nullptr;
@@ -2711,12 +2800,36 @@ int main(int argc, char** argv) {
         return false;
     };
 
+    // Options taking a value must actually have one. Previously the value check
+    // lived in the match condition, so a trailing `-M` failed to match and then
+    // fell out of the loop entirely, silently doing nothing.
+    auto need_value = [&](int& idx) -> const char* {
+        if (idx + 1 >= argc) {
+            return nullptr;
+        }
+        return argv[++idx];
+    };
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-z" && i + 1 < argc) {
-            requested_depth = std::atoi(argv[++i]);
-        } else if (arg == "--route" && i + 1 < argc) {
-            std::string route_arg = argv[++i];
+        if (arg == "-h" || arg == "--help") {
+            print_usage();
+            return 0;
+        } else if (arg == "-V" || arg == "--version") {
+            print_version();
+            return 0;
+        } else if (arg == "--allow-unimplemented") {
+            allow_unimplemented = true;
+        } else if (arg == "-b" || arg == "-1" || arg == "-5") {
+            // Chest-compatible flags with no effect on this engine.
+        } else if (arg == "-z") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '-z' requires a mate depth");
+            requested_depth = std::atoi(v);
+        } else if (arg == "--route") {
+            const char* rv = need_value(i);
+            if (!rv) return usage_error("option '--route' requires a route name");
+            std::string route_arg = rv;
             if (auto parsed = parse_route_kind(route_arg)) {
                 config.route = *parsed;
             } else {
@@ -2728,11 +2841,12 @@ int main(int argc, char** argv) {
             config.debug = true;
         } else if (arg == "--list-legal") {
             list_legal = true;
-        } else if (arg == "--perft" && i + 1 < argc) {
-            perft_depth = std::atoi(argv[++i]);
-        } else if (arg == "--perft-divide" && i + 1 < argc) {
-            perft_depth = std::atoi(argv[++i]);
-            perft_divide = true;
+        } else if (arg == "--perft" || arg == "--perft-divide") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option " + arg + " requires a depth");
+            perft_depth = std::atoi(v);
+            if (perft_depth <= 0) return usage_error("option " + arg + " requires a positive depth");
+            perft_divide = (arg == "--perft-divide");
         } else if (arg == "--emit-proof") {
             config.emit_proof = true;
         } else if (arg == "--profile") {
@@ -2759,18 +2873,21 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
-        } else if (arg == "--tt-reserve" && i + 1 < argc) {
-            parse_size(argv[++i], config.tt_reserve);
+        } else if (arg == "--tt-reserve") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--tt-reserve' requires a bucket count");
+            if (!parse_size(v, config.tt_reserve)) return usage_error("option '--tt-reserve' expects a number");
         } else if (arg == "--move-reserve") {
             config.move_reserve = true;
         } else if (arg == "--no-move-reserve") {
             config.move_reserve = false;
-        } else if (arg == "--move-reserve-cap" && i + 1 < argc) {
+        } else if (arg == "--move-reserve-cap") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--move-reserve-cap' requires a capacity");
             std::size_t value = 0;
-            if (parse_size(argv[++i], value) && value > 0) {
-                config.move_reserve = true;
-                config.move_reserve_capacity = value;
-            }
+            if (!parse_size(v, value) || value == 0) return usage_error("option '--move-reserve-cap' expects a positive number");
+            config.move_reserve = true;
+            config.move_reserve_capacity = value;
         } else if (arg == "--inplace-order") {
             config.inplace_order = true;
         } else if (arg == "--scored-vector-order") {
@@ -2800,29 +2917,34 @@ int main(int argc, char** argv) {
             config.static_pseudo = true;
         } else if (arg == "--vector-pseudo") {
             config.static_pseudo = false;
-        } else if (arg == "--order-min-size" && i + 1 < argc) {
+        } else if (arg == "--order-min-size") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--order-min-size' requires a size");
             std::size_t value = 0;
-            if (parse_size(argv[++i], value)) {
-                config.order_min_size = std::max<std::size_t>(2, value);
-            }
-        } else if (arg == "--threads" && i + 1 < argc) {
-            std::string value = argv[++i];
+            if (!parse_size(v, value)) return usage_error("option '--order-min-size' expects a number");
+            config.order_min_size = std::max<std::size_t>(2, value);
+        } else if (arg == "--threads") {
+            const char* tv = need_value(i);
+            if (!tv) return usage_error("option '--threads' requires a count or 'auto'");
+            std::string value = tv;
             if (value == "auto") {
                 unsigned hw = std::thread::hardware_concurrency();
                 config.threads = hw > 0 ? static_cast<int>(hw) : 1;
             } else {
                 std::size_t parsed = 0;
-                if (parse_size(value.c_str(), parsed) && parsed > 0) {
-                    config.threads = static_cast<int>(parsed);
+                if (!parse_size(value.c_str(), parsed) || parsed == 0) {
+                    return usage_error("option '--threads' expects a positive number or 'auto'");
                 }
+                config.threads = static_cast<int>(parsed);
             }
         } else if (arg == "--single-thread") {
             config.threads = 1;
-        } else if (arg == "--parallel-min-nodes" && i + 1 < argc) {
+        } else if (arg == "--parallel-min-nodes") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--parallel-min-nodes' requires a node count");
             std::size_t value = 0;
-            if (parse_size(argv[++i], value)) {
-                config.parallel_min_nodes = static_cast<std::uint64_t>(value);
-            }
+            if (!parse_size(v, value)) return usage_error("option '--parallel-min-nodes' expects a number");
+            config.parallel_min_nodes = static_cast<std::uint64_t>(value);
         } else if (arg == "--no-parallel-gate") {
             config.parallel_min_nodes = 0;
         } else if (arg == "--lazy-defender") {
@@ -2837,20 +2959,36 @@ int main(int argc, char** argv) {
             config.shared_tt = true;
         } else if (arg == "--private-tt") {
             config.shared_tt = false;
-        } else if (arg == "--shared-tt-shards" && i + 1 < argc) {
+        } else if (arg == "--shared-tt-shards") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--shared-tt-shards' requires a shard count");
             std::size_t value = 0;
-            if (parse_size(argv[++i], value) && value > 0) {
-                config.shared_tt_shards = value;
-            }
+            if (!parse_size(v, value) || value == 0) return usage_error("option '--shared-tt-shards' expects a positive number");
+            config.shared_tt_shards = value;
         } else if (arg == "--order-all") {
             config.order_min_size = 2;
-        } else if (arg == "-M" && i + 1 < argc) {
+        } else if (arg == "-M") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '-M' requires a size in MB");
             std::size_t value = 0;
-            if (parse_size(argv[++i], value)) {
-                config.memory_mb = value; // 0 means unbounded
+            if (!parse_size(v, value)) return usage_error("option '-M' expects a number");
+            config.memory_mb = value; // 0 means unbounded
+        } else if (arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" ||
+                   arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") {
+            // Chest/WinChest restriction options. E does not implement their
+            // semantics. Silently ignoring them is the worst available
+            // behaviour: the caller asks a constrained question and gets a
+            // confident answer to a different, unconstrained one.
+            if (!need_value(i)) {
+                return usage_error("option " + arg + " requires a value");
             }
-        } else if ((arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {
-            ++i; // accepted for CLI compatibility; not yet semantically implemented
+            if (!allow_unimplemented) {
+                return usage_error("option " + arg + " (Chest restriction) is not implemented; "
+                                   "results would silently ignore it. "
+                                   "Pass --allow-unimplemented to proceed anyway.");
+            }
+        } else {
+            return usage_error("unknown option " + arg);
         }
     }
 

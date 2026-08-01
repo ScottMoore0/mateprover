@@ -193,6 +193,50 @@ def test_invariance(engine: Path, res: Results) -> None:
                   f"{len(diffs)} rows differ (first at index {diffs[0]})" if diffs else "")
 
 
+def test_cli_contract(engine: Path, res: Results) -> None:
+    """The CLI must diagnose bad input rather than quietly doing something else.
+
+    This suite exists because a flag that silently disabled move ordering cost
+    30x and hid behind a "rejected as slower" label, and because a silently
+    ignored restriction option would answer a constrained question with a
+    confident unconstrained result.
+    """
+    print("\n[cli] bad input is rejected, not silently ignored")
+
+    def run_raw(args: list[str], stdin: str = "") -> tuple[int, str]:
+        proc = subprocess.run([str(engine), *args], input=stdin.encode(),
+                              capture_output=True, timeout=60)
+        return proc.returncode, (proc.stdout + proc.stderr).decode()
+
+    checks = [
+        ("unknown option rejected", ["--thredas", "8", "-"], 2, "unknown option"),
+        ("missing value rejected", ["-M"], 2, "requires a size"),
+        ("missing depth rejected", ["-z"], 2, "requires a mate depth"),
+        ("bad thread count rejected", ["--threads", "zero", "-"], 2, "positive number"),
+        ("unimplemented restriction rejected", ["-R", "2", "-"], 2, "not implemented"),
+    ]
+    for name, args, want_code, want_text in checks:
+        code, out = run_raw(args)
+        res.check(name, code == want_code and want_text in out,
+                  f"exit={code} output={out.strip()[:90]!r}")
+
+    code, out = run_raw(["--help"])
+    res.check("--help exits 0 and lists options", code == 0 and "--threads" in out,
+              f"exit={code}")
+    code, out = run_raw(["--version"])
+    res.check("--version exits 0", code == 0 and "echest" in out, f"exit={code}")
+
+    # The escape hatch must still work, for harness compatibility.
+    code, out = run_raw(["-R", "2", "--allow-unimplemented", "-z", "1", "-"],
+                        "8/8/8/8/8/8/5k2/7K w - -\n")
+    res.check("--allow-unimplemented restores acceptance", code == 0, f"exit={code}")
+
+    # Compatibility flags must be accepted, not rejected by the new strictness.
+    code, out = run_raw(["-b", "-1", "-5", "-z", "1", "-"],
+                        "8/8/8/8/8/8/5k2/7K w - -\n")
+    res.check("Chest compatibility flags accepted", code == 0, f"exit={code}")
+
+
 def test_pv_and_certificates(engine: Path, res: Results) -> None:
     print("\n[verify] PV replay and proof certificates (needs python-chess)")
     if not HAVE_CHESS:
@@ -278,6 +322,7 @@ def main() -> int:
     test_known_mates(args.engine, res)
     test_no_mate(args.engine, res)
     test_invariance(args.engine, res)
+    test_cli_contract(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
