@@ -236,6 +236,10 @@ Current E checkpoint:
 - `--route depth-first` selects the current exact iterative depth-first directmate route, which remains the promoted default;
 - `--route shallow-fast` selects an unpromoted exact route that tries direct mate-in-1 and mate-in-2 before falling back to depth-first from the first untried depth for deeper requests;
 - `run_route` is now the common dispatch point for future exact routes, so shallow, DFPN-first, defender-refutation, and threat/mating-net routes can be added without changing output acceptance or proof verification;
+- `--route dfpn` implements native depth-first proof-number search as a **preconditioner, never an output authority**: it contributes exact disproofs through the audited store helper and proof moves through the ordering-hint table only, so a numeric bug can cost time or a missed proof but cannot manufacture a mate;
+- **DFPN is implemented and rejected.** On the four hardest deep-corpus positions the exact route solves 4/4 in 26.8 s while DFPN solves 0/4 and times out at 280 s -- at least 10x slower. On easy suites it is ~2x slower;
+- it loses for identifiable reasons: E's static move ordering already approximates what DFPN would discover dynamically; DFPN's defining re-descent makes each internal node cost O(branching) per visit where the exact search visits once; depth-bounded directmate has cheap decisive terminal tests that a single pass exploits directly; and the exact table already captures transpositions, so the number table adds a second cache without new information;
+- a measurement trap was caught during this work and is worth recording: DFPN node visits did not initially increment `acn`, so the first run appeared to cut smoke from 260,157 nodes to 491. Any DFPN comparison that does not count preconditioner nodes flatters itself by hiding its entire cost;
 - unsupported route names are not treated as proof mechanisms; E falls back to the current exact route and reports the unsupported name on stderr.
 
 ### 5. Proof-Safe Move Ordering
