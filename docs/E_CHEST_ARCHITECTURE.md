@@ -36,6 +36,19 @@ The final target is bitboards, compact undo, incremental attacks, pins/check sta
 
 The first E checkpoint uses a simpler array board to establish correctness. Bitboard occupancy planes have now been added beside it; the array board remains the source of truth for piece-at-square queries.
 
+#### One Attack Implementation, Not Two
+
+E carried two independent implementations of the same predicate, "is square X attacked after move M":
+
+- the plane path used by move generation;
+- `is_attacked_after_move` plus `attacked_by_slider_after_move` plus `piece_after_move`, 84 lines walking the attack geometry against a virtual mailbox, reached only through `move_gives_check_fast`.
+
+Two implementations of one predicate is the exact shape of hazard that hid the castling-rights soundness bug: a rule fixed in one place stays broken in the other, and no test that exercises only the first will ever notice.
+
+`move_gives_check_fast` now shares the single plane path, and the 84 duplicated lines plus a newly orphaned helper are deleted. The promoted configuration does not call `move_gives_check_fast` at all, so this is behaviour-neutral there -- verified by identical node counts, key moves and PVs against the previous binary on all four suites, 294/294 movegen parity, and all six perft positions still exact.
+
+Its real effect is on the probes that *do* use it, `--fast-check-score` and `--lazy-defender`, which were both rejected on measurements taken before the plane primitive existed.
+
 #### Copy-Free Move Generation
 
 The bitboard slice above returned only 1.018x because it *added* a

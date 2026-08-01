@@ -914,10 +914,6 @@ int king_square(const Board& b, Color c) {
     return -1;
 }
 
-bool slider_attacker_matches(char p, bool diagonal) {
-    char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
-    return diagonal ? (lp == 'b' || lp == 'q') : (lp == 'r' || lp == 'q');
-}
 
 
 // Bitboard forms of the leaper and ray tables, derived from the same square
@@ -1260,99 +1256,91 @@ bool is_checkmate(const Board& b, bool move_reserve = false, std::size_t move_re
     return in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
-char piece_after_move(const Board& b, const Move& m, int sq) {
-    char p = b.sq[m.from];
-    char placed = p;
-    if (m.promo) {
-        placed = b.stm == WHITE ? static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))) : m.promo;
-    }
+// Occupancy planes only: enough to answer attack queries, without the mailbox,
+// packed TT words, castling rights or side-to-move that a full Board carries.
+struct Planes {
+    std::uint64_t occ = 0;
+    std::array<std::uint64_t, 2> by_color{};
+    std::array<std::uint64_t, 6> by_type{};
+};
 
-    if (sq == m.from) {
-        return '.';
-    }
+inline void plane_clear(Planes& pl, int sq, Color c, PieceType t) {
+    const std::uint64_t bit = 1ull << sq;
+    pl.occ &= ~bit;
+    pl.by_color[c] &= ~bit;
+    pl.by_type[t] &= ~bit;
+}
+
+inline void plane_set(Planes& pl, int sq, Color c, PieceType t) {
+    const std::uint64_t bit = 1ull << sq;
+    pl.occ |= bit;
+    pl.by_color[c] |= bit;
+    pl.by_type[t] |= bit;
+}
+
+// Apply a move to occupancy planes alone, mirroring make_move's piece movement
+// exactly: source vacated, en-passant victim removed, ordinary capture removed,
+// promotion piece substituted, destination occupied, castling rook relocated.
+//
+// This exists so that move generation never has to build a child Board. The
+// only questions generation asks of the child position are "is the mover's king
+// attacked" (legality) and "is the opponent's king attacked" (check ordering),
+// and both are answered by these planes.
+Planes planes_after_move(const Board& b, const Move& m, int& mover_king_sq) {
+    Planes pl;
+    pl.occ = b.occ;
+    pl.by_color = b.by_color;
+    pl.by_type = b.by_type;
+
+    const Color us = b.stm;
+    const Color them = other(us);
+    const char moving = b.sq[m.from];
+    const PieceType pt = type_of(moving);
+
+    plane_clear(pl, m.from, us, pt);
     if (m.ep) {
-        int cap_sq = m.to + (b.stm == WHITE ? -8 : 8);
-        if (sq == cap_sq) {
-            return '.';
+        plane_clear(pl, m.to + (us == WHITE ? -8 : 8), them, PT_PAWN);
+    } else {
+        const char captured = b.sq[m.to];
+        if (type_of(captured) != PT_NONE) {
+            plane_clear(pl, m.to, them, type_of(captured));
         }
     }
-    if (sq == m.to) {
-        return placed;
-    }
-    if (m.castle) {
-        if (p == 'K' && m.to == square_of(6, 0)) {
-            if (sq == square_of(7, 0)) return '.';
-            if (sq == square_of(5, 0)) return 'R';
-        } else if (p == 'K' && m.to == square_of(2, 0)) {
-            if (sq == square_of(0, 0)) return '.';
-            if (sq == square_of(3, 0)) return 'R';
-        } else if (p == 'k' && m.to == square_of(6, 7)) {
-            if (sq == square_of(7, 7)) return '.';
-            if (sq == square_of(5, 7)) return 'r';
-        } else if (p == 'k' && m.to == square_of(2, 7)) {
-            if (sq == square_of(0, 7)) return '.';
-            if (sq == square_of(3, 7)) return 'r';
+    plane_set(pl, m.to, us, m.promo ? type_of(m.promo) : pt);
+
+    if (m.castle && pt == PT_KING) {
+        const int home = us == WHITE ? 0 : 7;
+        if (m.to == square_of(6, home)) {
+            plane_clear(pl, square_of(7, home), us, PT_ROOK);
+            plane_set(pl, square_of(5, home), us, PT_ROOK);
+        } else if (m.to == square_of(2, home)) {
+            plane_clear(pl, square_of(0, home), us, PT_ROOK);
+            plane_set(pl, square_of(3, home), us, PT_ROOK);
         }
     }
-    return b.sq[sq];
+
+    mover_king_sq = (pt == PT_KING) ? m.to : b.king_sq[us];
+    return pl;
 }
 
-bool attacked_by_slider_after_move(const Board& b, const Move& m, int target, Color by, int first_dir, int last_dir, bool diagonal) {
-    const auto& rays = ray_table();
-    for (int dir = first_dir; dir < last_dir; ++dir) {
-        const SquareList& ray = rays[dir][target];
-        for (int i = 0; i < ray.count; ++i) {
-            char p = piece_after_move(b, m, ray.sq[i]);
-            if (p != '.') {
-                if (is_piece_color(p, by)) {
-                    if (slider_attacker_matches(p, diagonal)) {
-                        return true;
-                    }
-                }
-                break;
-            }
-        }
-    }
-    return false;
-}
 
-bool is_attacked_after_move(const Board& b, const Move& m, int target, Color by) {
-    const SquareList& pawns = pawn_attacker_table()[by][target];
-    for (int i = 0; i < pawns.count; ++i) {
-        char p = piece_after_move(b, m, pawns.sq[i]);
-        if (p == (by == WHITE ? 'P' : 'p')) {
-            return true;
-        }
-    }
 
-    const SquareList& knights = knight_table()[target];
-    for (int i = 0; i < knights.count; ++i) {
-        char p = piece_after_move(b, m, knights.sq[i]);
-        if (p == (by == WHITE ? 'N' : 'n')) {
-            return true;
-        }
-    }
 
-    if (attacked_by_slider_after_move(b, m, target, by, 4, 8, true)) {
-        return true;
-    }
-    if (attacked_by_slider_after_move(b, m, target, by, 0, 4, false)) {
-        return true;
-    }
-
-    const SquareList& kings = king_table()[target];
-    for (int i = 0; i < kings.count; ++i) {
-        char p = piece_after_move(b, m, kings.sq[i]);
-        if (p == (by == WHITE ? 'K' : 'k')) {
-            return true;
-        }
-    }
-    return false;
-}
-
+// Does this move give check, without materialising the child board?
+//
+// This used to be a second, independent implementation of "is square X attacked
+// after move M" -- 84 lines duplicating the attack logic against a virtual
+// mailbox. Two implementations of the same predicate is the exact shape of
+// hazard that hid the castling-rights bug, so it now shares the single plane
+// path used by move generation.
 bool move_gives_check_fast(const Board& b, const Move& m) {
-    int enemy_king = king_square(b, other(b.stm));
-    return enemy_king < 0 || is_attacked_after_move(b, m, enemy_king, b.stm);
+    const int enemy_king = king_square(b, other(b.stm));
+    if (enemy_king < 0) {
+        return true;
+    }
+    int ignored = -1;
+    const Planes pl = planes_after_move(b, m, ignored);
+    return attacked_on_planes(pl.occ, pl.by_color, pl.by_type, enemy_king, b.stm);
 }
 
 // Move-ordering terms that need no child board: capture, promotion, and moving
@@ -1509,73 +1497,6 @@ bool move_to_front(std::vector<Move>& moves, const Move& hint) {
 // This is an evaluation-order change only. The scores produced are identical to
 // the split path, so the resulting move order, and therefore the search, is
 // unchanged.
-// Occupancy planes only: enough to answer attack queries, without the mailbox,
-// packed TT words, castling rights or side-to-move that a full Board carries.
-struct Planes {
-    std::uint64_t occ = 0;
-    std::array<std::uint64_t, 2> by_color{};
-    std::array<std::uint64_t, 6> by_type{};
-};
-
-inline void plane_clear(Planes& pl, int sq, Color c, PieceType t) {
-    const std::uint64_t bit = 1ull << sq;
-    pl.occ &= ~bit;
-    pl.by_color[c] &= ~bit;
-    pl.by_type[t] &= ~bit;
-}
-
-inline void plane_set(Planes& pl, int sq, Color c, PieceType t) {
-    const std::uint64_t bit = 1ull << sq;
-    pl.occ |= bit;
-    pl.by_color[c] |= bit;
-    pl.by_type[t] |= bit;
-}
-
-// Apply a move to occupancy planes alone, mirroring make_move's piece movement
-// exactly: source vacated, en-passant victim removed, ordinary capture removed,
-// promotion piece substituted, destination occupied, castling rook relocated.
-//
-// This exists so that move generation never has to build a child Board. The
-// only questions generation asks of the child position are "is the mover's king
-// attacked" (legality) and "is the opponent's king attacked" (check ordering),
-// and both are answered by these planes.
-Planes planes_after_move(const Board& b, const Move& m, int& mover_king_sq) {
-    Planes pl;
-    pl.occ = b.occ;
-    pl.by_color = b.by_color;
-    pl.by_type = b.by_type;
-
-    const Color us = b.stm;
-    const Color them = other(us);
-    const char moving = b.sq[m.from];
-    const PieceType pt = type_of(moving);
-
-    plane_clear(pl, m.from, us, pt);
-    if (m.ep) {
-        plane_clear(pl, m.to + (us == WHITE ? -8 : 8), them, PT_PAWN);
-    } else {
-        const char captured = b.sq[m.to];
-        if (type_of(captured) != PT_NONE) {
-            plane_clear(pl, m.to, them, type_of(captured));
-        }
-    }
-    plane_set(pl, m.to, us, m.promo ? type_of(m.promo) : pt);
-
-    if (m.castle && pt == PT_KING) {
-        const int home = us == WHITE ? 0 : 7;
-        if (m.to == square_of(6, home)) {
-            plane_clear(pl, square_of(7, home), us, PT_ROOK);
-            plane_set(pl, square_of(5, home), us, PT_ROOK);
-        } else if (m.to == square_of(2, home)) {
-            plane_clear(pl, square_of(0, home), us, PT_ROOK);
-            plane_set(pl, square_of(3, home), us, PT_ROOK);
-        }
-    }
-
-    mover_king_sq = (pt == PT_KING) ? m.to : b.king_sq[us];
-    return pl;
-}
-
 std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, bool& out_scored) {
     out_scored = false;
     std::vector<Move> pseudo;
