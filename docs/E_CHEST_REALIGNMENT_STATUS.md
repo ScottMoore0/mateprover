@@ -62,6 +62,26 @@ It is the largest single speed improvement so far, and it confirms the
 diagnosis: the planes only paid once they replaced the copy rather than
 competing with it.
 
+## Capability Baseline
+
+With a wall-clock budget implemented, solve rate is measurable and is now the
+primary metric. Against matetrack, promoted configuration:
+
+| suite | 1 thread @ 5 s | 8 threads @ 5 s |
+|---|---:|---:|
+| mate-in-8 | 7/24 | **10/24 (42%)** |
+| mate-in-10 | 0/20 | **2/20 (10%)** |
+
+Every frozen suite in this repository reports 100%, so this is the first
+measurement of E's actual reach. It also revises parallelism upward: at a fixed
+budget 8 threads solves 2.5x the mate-8 problems at 0.5 s and turns 0/20 into
+2/20 at mate-10, which matters more than the 1.36x wall-clock speedup measured
+on positions both configurations already solve.
+
+E addresses the shallow end of a standard benchmark. The limitation is reach,
+not throughput, and another 3.5x of speed would shift the curve rather than
+change it.
+
 ## Corpus Ceiling Lifted
 
 All frozen suites topped out at mate-in-5 and 185k nodes, so every speed
