@@ -856,14 +856,19 @@ The prover had grown to 3,534 lines in one translation unit. It is now split int
 
 | module | lines | purpose |
 |---|---:|---|
-| `types.h` | 270 | colours, moves, boards, proofs, statistics, table keys |
-| `table.h` | 192 | bounded and shared proof tables, memory-budget conversion |
-| `search_state.h` | 215 | search configuration, per-search state, cancellation |
-| `board.h` | 400 | geometry, attack tables, FEN parsing, attack queries |
-| `movegen.h` | 312 | pseudo-legal generation, make_move, legality, planes |
-| `ordering.h` | 293 | ordering scores and ordered move-list generators |
-| `prooftable.h` | 96 | centralised exact proof-table probe and store |
-| `search.h` | 1361 | proof kernel, DFPN preconditioner, routes, parallel search |
+| `types.h` | 305 | colours, moves, boards, proofs, statistics, table keys |
+| `table.h` | 219 | bounded and shared proof tables, memory-budget conversion |
+| `search_state.h` | 273 | search configuration, per-search state, cancellation |
+| `board.h` | 458 | geometry, attack tables, FEN parsing, attack queries |
+| `movegen.h` | 357 | pseudo-legal generation, make_move, legality, planes |
+| `ordering.h` | 331 | ordering scores and ordered move-list generators |
+| `prooftable.h` | 64 | centralised exact proof-table probe and store |
+| `prove.h` | 408 | the exact AND/OR kernel: attacker and defender nodes, threats, restrictions |
+| `rootsplit.h` | 222 | root-split parallel search and worker coordination |
+| `dfpn.h` | 281 | DFPN preconditioner, never an output authority |
+| `routes.h` | 375 | route implementations and the output-acceptance guard |
+| `report.h` | 237 | perft, profile counters, line-oriented output helpers |
+| `solve.h` | 287 | restriction portfolio and the per-position driver |
 
 **Compilation remains a unity build, deliberately.** The modules are headers included in their original order by one translation unit, so the preprocessed result is textually equivalent to the previous single file. Two reasons: the search depends on cross-module inlining in its hottest paths, and preserving textual order makes the refactor behaviour-preserving *by construction* rather than by inspection.
 
@@ -871,7 +876,26 @@ That was verified rather than assumed: node counts, key moves and PVs are identi
 
 The split was performed by a script that cuts on declaration boundaries and backs up over preceding comment blocks and `template` headers, so no cut orphans a comment from the code it documents. The first attempt did exactly that -- it separated `template <typename MoveSink>` from `gen_pseudo` -- which is why the boundary logic exists.
 
-`search.h` remains large at 1,361 lines and is the obvious candidate for a further split into kernel, routes, and parallel scheduling.
+The search module was that remaining monolith, at 1,745 lines by the time it was
+split, and no longer exists as a single file.
+It is now six modules, cut on the seams the code already had: the kernel, the
+root-split scheduler, the DFPN preconditioner, the routes, the reporting
+helpers, and the portfolio driver. No module now exceeds 400 lines.
+
+The cut points were chosen by checking, mechanically, that no earlier module
+references a symbol defined in a later one -- the only candidate was a mention of
+`perft` inside two comments in the routes section, which is not a reference at
+all. Textual order within each module is unchanged, so the preprocessed
+translation unit is identical to before and the refactor is behaviour-preserving
+by construction.
+
+Verified rather than assumed, again: with wall-clock timing fields normalised
+away, the pre-split and post-split binaries produce **byte-identical output** on
+the mate corpus, on the same corpus with `--emit-proof`, on the no-mate controls,
+and on perft to depths 4 and 5. Timing fields were the only difference, and
+noticing that they were the *entire* difference required stripping them -- the
+first comparison reported every case as differing, including perft, which cannot
+vary.
 
 ### 13. CLI Contract
 

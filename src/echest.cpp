@@ -39,7 +39,12 @@
 #include "movegen.h"
 #include "ordering.h"
 #include "prooftable.h"
-#include "search.h"
+#include "prove.h"
+#include "rootsplit.h"
+#include "dfpn.h"
+#include "routes.h"
+#include "report.h"
+#include "solve.h"
 
 using namespace echest;
 

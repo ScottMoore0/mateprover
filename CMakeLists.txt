@@ -27,7 +27,12 @@ add_executable(echest
     src/movegen.h
     src/ordering.h
     src/prooftable.h
-    src/search.h)
+    src/prove.h
+    src/rootsplit.h
+    src/dfpn.h
+    src/routes.h
+    src/report.h
+    src/solve.h)
 target_link_libraries(echest PRIVATE Threads::Threads)
 target_compile_definitions(echest PRIVATE ECHEST_VERSION="${PROJECT_VERSION}")
 
