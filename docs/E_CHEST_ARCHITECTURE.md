@@ -1575,6 +1575,43 @@ Twice now, writing down a contract has found a defect in it: 8q a stalemate
 accepted as a mate, 8r a disproof reported as a timeout. Both were invisible to
 gates that tested the thing rather than the claim about the thing.
 
+### 8s. Documented Defaults, Checked Against Real Ones
+
+8n found the shipped defaults were the untuned ones, undetected because every
+gate passed explicit flags. The obvious follow-up is a gate that compares what
+`--help` claims against what the engine does. Building it turned up two things.
+
+First, eleven paired options -- `--proof-hints | --no-proof-hints` and the rest
+of the tuning section -- **documented no default at all**. After 8n flipped five
+of them on, a reader could not tell from the help which side was active. Each
+now states it, including `--no-refutation-hints (measured harmful)`, which
+records 8m's result where a user will actually see it.
+
+Second, and more interesting, the natural behavioural check does not work.
+"Passing the documented default must change nothing" is exactly right in
+principle, and on a mate-in-2 **none of seven non-default flags changed the
+output either** -- these settings preserve exactness and, on small positions,
+node counts too. At mate-in-5 only two of six discriminated. Such a gate passes
+whether the documentation is true or false, which is the same failure mode as a
+gate that has never failed.
+
+So the engine now reports its own resolved configuration. `--print-config`
+prints the effective settings as JSON after every default and sentinel has been
+applied -- the configuration that *would run*, not a restatement of the flags
+given. It earns its place independently of testing: a run becomes reproducible
+from its own report, which matters for an engine whose output is a proof.
+
+The gate compares the help text against that JSON, reading documented values out
+of the help rather than hard-coding them so drift on either side is caught. It
+covers all eleven paired defaults, five numeric defaults, the `auto` thread
+count, the portfolio default from 8n, and that `--direct-depth` is *not* default
+-- the last because defaulting it would silently weaken the advertised claim from
+"the shortest mate is N" to "a mate within N".
+
+Verified by flipping `proof_hints` to false in the source and confirming the
+suite fails with `proof_hints=False, help claims True`, then restoring it. 192
+checks.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

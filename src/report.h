@@ -207,6 +207,40 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << "}\n";
 }
 
+// Print the effective configuration as JSON.
+//
+// Exists so that a run is reproducible from its own report, and so that the
+// defaults --help advertises can be checked against the ones actually in
+// force. Documentation and behaviour had already drifted apart once.
+void emit_config_json(const SearchConfig& c) {
+    std::ostream& out = std::cout;
+    out << "{\"route\":\"" << route_name(c.route) << "\"";
+    out << ",\"threads\":" << c.threads;
+    out << ",\"memory_mb\":" << c.memory_mb;
+    out << ",\"time_limit\":" << c.time_limit;
+    out << ",\"parallel_min_nodes\":" << c.parallel_min_nodes;
+    out << ",\"shared_tt_shards\":" << c.shared_tt_shards;
+    out << ",\"move_reserve_capacity\":" << c.move_reserve_capacity;
+    out << ",\"order_min_size\":" << c.order_min_size;
+    out << ",\"direct_depth\":" << (c.direct_depth ? "true" : "false");
+    out << ",\"portfolio\":" << (c.portfolio ? "true" : "false");
+    out << ",\"portfolio_parallel\":" << (c.portfolio_parallel ? "true" : "false");
+    out << ",\"shared_tt\":" << (c.shared_tt ? "true" : "false");
+    out << ",\"move_reserve\":" << (c.move_reserve ? "true" : "false");
+    out << ",\"proof_hints\":" << (c.proof_hints ? "true" : "false");
+    out << ",\"refutation_hints\":" << (c.refutation_hints ? "true" : "false");
+    out << ",\"keep_iter_tt\":" << (c.keep_iter_tt ? "true" : "false");
+    out << ",\"ordered_check_shortcut\":" << (c.ordered_check_shortcut ? "true" : "false");
+    out << ",\"inplace_order\":" << (c.inplace_order ? "true" : "false");
+    out << ",\"fused_order\":" << (c.fused_order ? "true" : "false");
+    out << ",\"lazy_defender\":" << (c.lazy_defender ? "true" : "false");
+    out << ",\"bucket_order\":" << (c.bucket_order ? "true" : "false");
+    out << ",\"score_mates\":" << (c.score_mates ? "true" : "false");
+    out << ",\"static_pseudo\":" << (c.static_pseudo ? "true" : "false");
+    out << ",\"emit_proof\":" << (c.emit_proof ? "true" : "false");
+    out << ",\"profile\":" << (c.profile ? "true" : "false");
+    out << "}\n";
+}
 void list_legal_line(const std::string& raw) {
     std::string line = trim(raw);
     if (line.empty()) {

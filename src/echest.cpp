@@ -112,6 +112,8 @@ void print_usage() {
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
 "  --emit-proof                  append a recursive JSON proof certificate\n"
+"  --print-config                print the effective configuration as JSON\n"
+"                                and exit; every default already resolved\n"
 "  --profile                     emit per-position counters to stderr\n"
 "  --no-profile                  default; no counters\n"
 "  --debug                       verbose search diagnostics on stderr\n"
@@ -121,18 +123,29 @@ void print_usage() {
 "\n"
 "Search tuning (all preserve exactness; see docs/E_CHEST_ARCHITECTURE.md):\n"
 "  --proof-hints | --no-proof-hints\n"
+"                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
+"                                default: --no-refutation-hints (measured harmful)\n"
 "  --keep-iter-tt | --clear-iter-tt\n"
+"                                default: --keep-iter-tt\n"
 "  --ordered-check-shortcut | --no-ordered-check-shortcut\n"
+"                                default: --ordered-check-shortcut\n"
 "  --inplace-order | --scored-vector-order\n"
+"                                default: --inplace-order\n"
 "  --fused-order | --split-order\n"
+"                                default: --fused-order\n"
 "  --lazy-defender | --eager-defender\n"
+"                                default: --eager-defender\n"
 "  --move-reserve-cap N          pseudo-move vector capacity (default 96)\n"
 "  --no-move-reserve             disable pseudo-move vector preallocation\n"
 "  --order-min-size N | --order-all\n"
+"                                default: --order-min-size 2\n"
 "  --bucket-order | --stable-sort-order\n"
+"                                default: --stable-sort-order\n"
 "  --score-mates | --no-mate-score\n"
+"                                default: --no-mate-score\n"
 "  --static-pseudo | --vector-pseudo\n"
+"                                default: --vector-pseudo\n"
 "\n"
 "DFPN route (unpromoted; slower than the default at every measured depth):\n"
 "  --dfpn-sort | --dfpn-no-sort  sort moves at DFPN nodes (default: no)\n"
@@ -180,6 +193,7 @@ void print_usage() {
 
 int main(int argc, char** argv) {
     SearchConfig config;
+    bool print_config = false;
     int requested_depth = 0;
     int perft_depth = 0;
     bool perft_divide = false;
@@ -261,6 +275,8 @@ int main(int argc, char** argv) {
             perft_divide = (arg == "--perft-divide");
         } else if (arg == "--emit-proof") {
             config.emit_proof = true;
+        } else if (arg == "--print-config") {
+            print_config = true;
         } else if (arg == "--profile") {
             config.profile = true;
         } else if (arg == "--no-profile") {
@@ -510,6 +526,14 @@ int main(int argc, char** argv) {
         const unsigned hw = std::thread::hardware_concurrency();
         const int detected = hw > 0 ? static_cast<int>(hw) : 1;
         config.threads = std::min(detected, AUTO_THREAD_CAP);
+    }
+
+    // Report the configuration that would actually be used and stop. Printed
+    // after every default and sentinel is resolved, so this is the effective
+    // configuration rather than a restatement of the flags given.
+    if (print_config) {
+        emit_config_json(config);
+        return 0;
     }
 
     if (read_stdin) {

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -922,6 +923,93 @@ def test_output_format_conformance(engine: Path, res: Results) -> None:
               illegal.endswith("error input;"), illegal[:100])
 
 
+def test_documented_defaults_are_real(engine: Path, res: Results) -> None:
+    """Every default --help advertises must be the one actually in force.
+
+    Checked against `--print-config`, which reports the effective configuration
+    after all defaults and sentinels resolve. A purely behavioural check is not
+    enough: most tuning flags preserve exactness AND node counts on small
+    positions, so passing the non-default value changes nothing observable and
+    a false claim in the help would pass unnoticed. Measured on a mate-in-2,
+    none of seven non-default flags altered the output at all.
+
+    8n found the shipped defaults were the untuned ones while every gate passed
+    explicit flags, so nothing had ever compared documentation to reality.
+    """
+    print("\n[cli] documented defaults match actual defaults")
+
+    help_text = run(engine, ["--help"], "")
+    config = json.loads(run(engine, ["--print-config"], ""))
+
+    # 1. Every "A | B" pair must say which side is the default.
+    undocumented = []
+    for block in re.finditer(r"^  (--[\w-]+(?: N)? \| --[\w-]+(?: N)?)\s*$(.*?)(?=^  --|^\w|\Z)",
+                             help_text, re.M | re.S):
+        if "default" not in block.group(2):
+            undocumented.append(block.group(1))
+    res.check("every paired option documents its default",
+              not undocumented, "; ".join(undocumented[:4]))
+
+    # 2. Each documented default flag must match the effective configuration.
+    #    The flag names the side that is on, so a "--no-" or negative-sense name
+    #    means the underlying setting is off.
+    flag_settings = {
+        "--proof-hints": ("proof_hints", True),
+        "--no-refutation-hints": ("refutation_hints", False),
+        "--keep-iter-tt": ("keep_iter_tt", True),
+        "--ordered-check-shortcut": ("ordered_check_shortcut", True),
+        "--inplace-order": ("inplace_order", True),
+        "--fused-order": ("fused_order", True),
+        "--eager-defender": ("lazy_defender", False),
+        "--stable-sort-order": ("bucket_order", False),
+        "--no-mate-score": ("score_mates", False),
+        "--vector-pseudo": ("static_pseudo", False),
+    }
+    documented = set(re.findall(r"default: (--[\w-]+)(?=\s*(?:\(|$))",
+                                help_text, re.M))
+    res.check("every documented default flag is covered by this test",
+              documented <= set(flag_settings), str(sorted(documented - set(flag_settings))))
+    for flag in sorted(documented):
+        key, expected = flag_settings[flag]
+        res.check(f"help says {flag} is default and it is",
+                  config.get(key) is expected,
+                  f"{key}={config.get(key)}, help claims {expected}")
+
+    # 3. Documented default VALUES must match too, read out of the help text so
+    #    that drift on either side is caught rather than hard-coded here.
+    value_settings = [
+        (r"-M N.*?\(default (\d+)\)", "memory_mb"),
+        (r"--parallel-min-nodes.*?\(default (\d+)\)", "parallel_min_nodes"),
+        (r"--shared-tt-shards.*?\(default (\d+)\)", "shared_tt_shards"),
+        (r"--move-reserve-cap.*?\(default (\d+)\)", "move_reserve_capacity"),
+        (r"default: --order-min-size (\d+)", "order_min_size"),
+    ]
+    for pattern, key in value_settings:
+        match = re.search(pattern, help_text, re.S)
+        if not match:
+            res.check(f"help documents a default for {key}", False, "no default found")
+            continue
+        res.check(f"help's default for {key} is the real one",
+                  config.get(key) == int(match.group(1)),
+                  f"{key}={config.get(key)}, help says {match.group(1)}")
+
+    # 4. --threads defaults to the auto value rather than to 1.
+    res.check("help documents --threads default as auto", "(default: auto)" in help_text)
+    res.check("effective thread count is the auto value",
+              config.get("threads") == min(os.cpu_count() or 1, 16),
+              f"threads={config.get('threads')}, cores={os.cpu_count()}")
+
+    # 5. The portfolio default the help claims must hold.
+    res.check("help says the portfolio is the default with a time limit",
+              "is the default whenever --time-limit is set" in help_text)
+    res.check("portfolio is enabled in the effective configuration",
+              config.get("portfolio") is True and config.get("portfolio_parallel") is True)
+
+    # 6. --direct-depth must NOT be default: it weakens the advertised claim
+    #    from "the shortest mate is N" to "a mate within N".
+    res.check("iterative depth remains the default", config.get("direct_depth") is False)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -950,6 +1038,7 @@ def main() -> int:
     test_castling_needs_its_rook(args.engine, res)
     test_cli_contract(args.engine, res)
     test_help_documents_every_option(args.engine, res)
+    test_documented_defaults_are_real(args.engine, res)
     test_checks_only_restriction(args.engine, res)
     test_defender_restrictions(args.engine, res)
     test_restriction_portfolio(args.engine, res)
