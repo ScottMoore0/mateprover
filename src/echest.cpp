@@ -1507,7 +1507,12 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
 
     std::vector<Move> legal;
     legal.reserve(pseudo.size());
-    const bool want_scores = !cfg.fast_check_score;
+    // Always score. `--fast-check-score` used to select a delta-based check
+    // test; now that move_gives_check_fast shares this same plane path, "fast"
+    // and "exact" check scoring are the identical computation, so the flag has
+    // nothing left to select. It previously suppressed scoring entirely here,
+    // which silently disabled move ordering and cost ~30x on every suite.
+    const bool want_scores = true;
     const Color us = b.stm;
     const Color them = other(us);
     const int enemy_king = b.king_sq[them];

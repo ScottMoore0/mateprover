@@ -36,6 +36,22 @@ The final target is bitboards, compact undo, incremental attacks, pins/check sta
 
 The first E checkpoint uses a simpler array board to establish correctness. Bitboard occupancy planes have now been added beside it; the array board remains the source of truth for piece-at-square queries.
 
+#### Stale Rejections Re-Tested After Unification
+
+`--fast-check-score` and `--lazy-defender` were both rejected on measurements taken before the plane representation existed, so both rejections were stale by construction. Re-tested at 8 threads over 4 interleaved trials, together with the proof-hint question left open by the earlier profile:
+
+| probe | geomean vs promoted | outcome |
+|---|---:|---|
+| `--lazy-defender` | 1.010x | still neutral, rejection stands |
+| `--fast-check-score` | 0.081x | **exposed a bug**, see below |
+| `--no-proof-hints` | 0.972x | proof hints confirmed worth keeping |
+
+**`--fast-check-score` was a 30x cliff, not a slow option.** In the fused generator `want_scores` was `!cfg.fast_check_score`, so passing the flag returned *unscored* moves; `generate_ordered_moves` then skipped the sort and the entire search ran unordered. A single flag silently disabled move ordering and cost roughly 2700-3100% on every suite.
+
+Now that `move_gives_check_fast` shares this same plane path, "fast" and "exact" check scoring are the identical computation by identical means, so the flag has nothing left to select. Scoring is now unconditional and `--fast-check-score` / `--exact-check-score` are retained only as no-op CLI aliases. Verified: with the flag set, output and node counts are identical to the promoted default and timing matches.
+
+**Proof hints earn their place after all.** The iteration-6 profile measured a 0.7% hint hit rate (9624 of 1296036 probes) and flagged them as possibly not worth their overhead. Removing them is *slower*: `+5.9%` on regression controls, `+4.8%` on the hard holdout, `+1.1%` on negative controls, `-0.1%` on smoke, geomean 0.972x. A low hit rate is not the same as a low value -- when a hint does fire it moves a proven move to the front of an attacker node, which prunes a subtree rather than saving a probe. The open question from that profile is now closed: keep them.
+
 #### One Attack Implementation, Not Two
 
 E carried two independent implementations of the same predicate, "is square X attacked after move M":

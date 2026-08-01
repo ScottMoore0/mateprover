@@ -87,8 +87,8 @@ Supported now:
 - `--no-mate-score`: keep the promoted default, included for explicitness in experiments;
 - `--score-checks`: keep the promoted default, which scores checking moves during ordering;
 - `--no-check-score`: experimental probe that disables checking-move scoring during ordering;
-- `--fast-check-score`: experimental probe that uses delta-based check detection during move scoring;
-- `--exact-check-score`: keep the promoted default, included for explicitness in experiments;
+- `--fast-check-score`: no-op alias, retained for CLI compatibility; check scoring is now a single shared plane query;
+- `--exact-check-score`: no-op alias, retained for CLI compatibility;
 - `--order-min-size N`: experimental probe that skips scoring/sorting legal move lists smaller than `N`;
 - `--order-all`: restore the promoted default, equivalent to ordering move lists with at least two moves;
 - `--bucket-order`: experimental probe that groups moves by descending score while preserving stable order inside each score bucket;
