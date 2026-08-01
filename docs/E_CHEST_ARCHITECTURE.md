@@ -1821,6 +1821,59 @@ budget-limited and mate-in-10 is not. Spending more time helps at one depth and
 does nothing at the other, and there is no configuration in which hardware
 substitutes for the portfolio.
 
+### 8y. Lane Strength Is Depth-Dependent; The Lane Set Is Not
+
+8x showed the portfolio is the only axis that buys reach at mate-in-10, but the
+table it uses was derived entirely on mate-in-8 (8f). Whether the best lane set
+is depth-specific was the obvious question, and mate-in-10 is where an answer
+would matter most, since nothing else works there.
+
+Swept twenty restrictions standalone over 24 fresh mate-in-10 positions, disjoint
+from the held-out 24. The per-lane ranking is **completely different** from
+mate-in-8:
+
+| lane | mate-8 (of 60) | mate-10 (of 24) |
+|---|---|---|
+| unrestricted | 22 | 6 |
+| K3 | 26 | **10** |
+| K4 | 21 | **9** |
+| K2 | 26 | 6 |
+| X4 | 11 | 6 |
+| R2 | 8 | 2 |
+| R1 | 5 | 1 |
+
+At mate-in-10, `K3` and `K4` beat the unrestricted search outright, while the
+threat-depth lanes -- which hold three slots in the promoted table -- solve one to
+three positions between them. Greedy cover on this data reaches 16/24 against the
+promoted table's 13/24, and 16 is the oracle union of all twenty candidates.
+
+A merged table maximising coverage across both depths (`unrestricted, K2, K3, K4,
+R2, C6, R1, Rq2`) scores 43/60 and 15/24 on training, against the promoted
+table's 44/60 and 13/24: one mate-in-8 position traded for two at mate-in-10.
+
+At the operating point it is **exactly identical**. 32 threads, 30 s, held-out
+mate-in-10: 18/24 for both tables, the same 18 positions, nothing gained and
+nothing lost. Rejected. The mate-in-8 regression arm was never needed, since a
+change that cannot show a gain on its target depth has nothing to trade against.
+
+The explanation matters more than the result. Under `--portfolio-parallel` every
+lane runs concurrently with the **whole** budget, so a lane being individually
+weak costs nothing -- it occupies a few threads that root splitting could not have
+used anyway (8d). What matters is only whether the union of lanes covers the
+problem, and 8f already saturated that union. Per-lane strength is therefore a
+property of the *training* conditions -- 2 threads and a 20 s slice -- and has
+almost no bearing on the operating point, where the question is coverage alone.
+
+That also explains why training coverage understates reality: the twenty-candidate
+oracle reaches 16/24 under training conditions while the promoted eight lanes
+reach 18/24 at the operating point. Training numbers rank candidates; they do not
+predict outcomes. This is the second table-tuning attempt to die at exactly this
+step, after 8g, and for the same reason.
+
+The practical conclusion is that the portfolio needs no depth awareness. One
+table, derived once at one depth, is not merely adequate at another depth -- it is
+indistinguishable from a table derived for that depth specifically.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
