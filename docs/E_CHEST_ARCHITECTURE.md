@@ -170,6 +170,23 @@ E should support root split and deeper work stealing with:
 - deterministic debug mode;
 - no shared mutable proof corruption.
 
+Current E checkpoint:
+
+- `--threads N` enables an unpromoted root-split search; `--threads auto` uses the hardware concurrency count; `--single-thread` and the promoted default `N=1` keep the exact sequential path;
+- workers claim root attacker move indices from a shared counter and prove their move in a private `Search` with a private table, so no proof state is shared mutably;
+- the accepted answer is the successful root move with the **lowest index**, which is exactly the move the sequential attacker loop would have returned, so splitting changes search speed and node counts but never the reported key move;
+- this was verified directly: at 2, 4, 8, 16, and 32 threads the smoke, regression-control, negative-control, and hard-holdout suites returned identical solvedness and identical `bm` for all 126 rows;
+- cancellation is cooperative. `Search` carries an optional atomic cancel flag polled once per node and an `aborted` bit. A worker whose root index can no longer win is cancelled, unwinds, and records nothing;
+- **an aborted subtree has no verdict.** Both proof-table store helpers refuse to write while `aborted` is set, and the attacker/defender loops refuse to read an aborted empty result as a refutation. This is the core safety property of the split: without it, an abandoned search would cache a false disproof;
+- a worker re-reads the best index after publishing its own, closing the race where a finishing worker scanned the slots before the new index was announced;
+- worker construction is lazy, so positions that resolve without ever splitting pay nothing;
+- depth 1 is never split; it is a flat immediate-mate scan where thread setup costs more than it saves;
+- per-worker counters are folded back into the reported totals by `Stats::operator+=`, guarded by a `static_assert` on `sizeof(Stats)` so a new counter cannot silently escape the merge;
+- measured on the 40-case hard holdout: `197.8 ms` average sequential versus `72.7 ms` at 16 threads, a 2.72x speedup, with p95 `454.8 ms` to `155.8 ms`;
+- measured on smoke: `60.2 ms` average sequential versus `20.3 ms` at 8 threads;
+- the probe is **not promoted**. Node counts grow with thread count (3.34M sequential to 6.43M at 16 threads) because each worker keeps a private table, and cheaply refuted no-mate positions get slower (`0.60 ms` to `0.86 ms` average on negative controls) since a position with no proof has no early exit to win and simply pays the split overhead;
+- promotion should wait for a shared proof/disproof table, which removes the duplicated work, plus a cost gate that keeps trivially cheap positions sequential.
+
 ### 9. Persistent Service Mode
 
 E should run as a long-lived worker:

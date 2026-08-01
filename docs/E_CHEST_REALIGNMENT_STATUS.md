@@ -13,6 +13,8 @@ E is now aligned around a route-neutral exact prover boundary:
 
 Implemented core pieces:
 
+- root-split internal parallelism behind `--threads N`, returning the lowest-index successful root move so the key move matches sequential E exactly, with cooperative cancellation that never lets an abandoned subtree be cached as a disproof;
+
 - exact directmate proof kernel;
 - conservative array board plus packed board key cache;
 - exact keyed TT and promoted iterative TT retention;
@@ -30,7 +32,7 @@ Missing target architecture pieces:
 - threat/mating-net route;
 - typed Chest/WinChest restriction model;
 - persistent worker and batch scheduler for E;
-- internal route portfolio parallelism;
+- internal route portfolio parallelism; root-split parallelism now exists behind `--threads N` but is unpromoted pending a shared table and a cost gate;
 - neural ordering, which remains later-stage guidance only.
 
 ## Revised Impact Order

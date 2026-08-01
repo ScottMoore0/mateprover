@@ -14,9 +14,12 @@
 #include <cstdlib>
 #include <cstddef>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -125,7 +128,58 @@ struct Stats {
     std::uint64_t proof_hint_stores = 0;
     std::uint64_t route_rejections = 0;
     std::uint64_t defender_refutations = 0;
+
+    // Accumulate another search's counters into this one. Used to fold
+    // per-worker statistics back into the reported totals after a root
+    // split, so acn stays an honest whole-search node count.
+    Stats& operator+=(const Stats& o) {
+        nodes += o.nodes;
+        attacker_nodes += o.attacker_nodes;
+        defender_nodes += o.defender_nodes;
+        tt_probes += o.tt_probes;
+        tt_hits += o.tt_hits;
+        tt_stores += o.tt_stores;
+        exact_tt_proof_hits += o.exact_tt_proof_hits;
+        exact_tt_disproof_hits += o.exact_tt_disproof_hits;
+        exact_tt_proof_stores += o.exact_tt_proof_stores;
+        exact_tt_disproof_stores += o.exact_tt_disproof_stores;
+        shallow_fast_attempts += o.shallow_fast_attempts;
+        shallow_fast_hits += o.shallow_fast_hits;
+        shallow_fast_fallbacks += o.shallow_fast_fallbacks;
+        bound_tt_probes += o.bound_tt_probes;
+        bound_tt_hits += o.bound_tt_hits;
+        bound_tt_ok_hits += o.bound_tt_ok_hits;
+        bound_tt_fail_hits += o.bound_tt_fail_hits;
+        bound_tt_stores += o.bound_tt_stores;
+        attacker_move_lists += o.attacker_move_lists;
+        attacker_moves += o.attacker_moves;
+        attacker_candidates += o.attacker_candidates;
+        defender_move_lists += o.defender_move_lists;
+        defender_moves += o.defender_moves;
+        defender_replies_tried += o.defender_replies_tried;
+        order_calls += o.order_calls;
+        order_moves += o.order_moves;
+        immediate_mate_tests += o.immediate_mate_tests;
+        ordered_check_shortcut_uses += o.ordered_check_shortcut_uses;
+        ordered_check_shortcut_checks += o.ordered_check_shortcut_checks;
+        ordered_check_shortcut_skips += o.ordered_check_shortcut_skips;
+        immediate_mates += o.immediate_mates;
+        refutation_hint_probes += o.refutation_hint_probes;
+        refutation_hint_hits += o.refutation_hint_hits;
+        refutation_hint_stores += o.refutation_hint_stores;
+        proof_hint_probes += o.proof_hint_probes;
+        proof_hint_hits += o.proof_hint_hits;
+        proof_hint_stores += o.proof_hint_stores;
+        route_rejections += o.route_rejections;
+        defender_refutations += o.defender_refutations;
+        return *this;
+    }
 };
+
+// Guard: every Stats member is a counter folded by operator+=. If a field is
+// added without extending the merge, this assertion fails at compile time.
+static_assert(sizeof(Stats) == 39 * sizeof(std::uint64_t),
+              "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
     std::array<std::uint64_t, 4> board{};
@@ -200,6 +254,7 @@ struct SearchConfig {
     bool bound_tt_enabled = false;
     bool bound_tt_failures = false;
     bool ordered_check_shortcut = false;
+    int threads = 1;
 };
 
 // Per-search mutable state. Inheriting the config keeps every existing
@@ -1449,14 +1504,199 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     return {};
 }
 
+// One worker's coordination slot. `current_root` is the root move index the
+// worker is presently proving; `cancel` is the flag its Search polls.
+struct WorkerSlot {
+    std::atomic<int> current_root{0};
+    std::atomic<bool> cancel{false};
+};
+
+// Prove one depth by splitting the root attacker moves across workers.
+//
+// Workers claim root indices from a shared counter and prove their move in a
+// private Search with a private table. The accepted answer is the successful
+// move with the LOWEST root index, which is precisely the move the sequential
+// attacker loop would have returned -- so splitting never changes which key
+// move is reported, only how fast it is found.
+//
+// A worker whose index can no longer win (a lower index already succeeded) is
+// cancelled and unwinds without recording a verdict, so an abandoned subtree
+// is never mistaken for a disproof.
+bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& workers,
+                          std::vector<std::unique_ptr<WorkerSlot>>& slots,
+                          const Board& b, int depth, Proof& out) {
+    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    if (moves.empty()) {
+        return false;
+    }
+    bool moves_scored = false;
+    if (should_order(s, moves.size())) {
+        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score,
+                    s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
+                    s.inplace_order, s.bucket_order);
+        moves_scored = true;
+    }
+    if (s.proof_hints) {
+        TTKey hint_key = move_hint_key(b, 'A', s.attacker);
+        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
+            move_to_front(moves, hint->second);
+        }
+    }
+    const bool shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates;
+
+    const int n = static_cast<int>(moves.size());
+    const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
+
+    std::atomic<int> next_index{0};
+    std::atomic<int> best_index{n}; // lowest root index proved so far
+    std::mutex result_mutex;
+    std::vector<Proof> results(static_cast<std::size_t>(n));
+
+    for (int w = 0; w < worker_count; ++w) {
+        slots[static_cast<std::size_t>(w)]->current_root.store(n, std::memory_order_relaxed);
+        slots[static_cast<std::size_t>(w)]->cancel.store(false, std::memory_order_relaxed);
+    }
+
+    auto worker_body = [&](int w) {
+        Search& ws = *workers[static_cast<std::size_t>(w)];
+        WorkerSlot& slot = *slots[static_cast<std::size_t>(w)];
+        for (;;) {
+            int i = next_index.fetch_add(1, std::memory_order_relaxed);
+            if (i >= n || i > best_index.load(std::memory_order_acquire)) {
+                break;
+            }
+            slot.current_root.store(i, std::memory_order_release);
+            slot.cancel.store(false, std::memory_order_release);
+            ws.aborted = false;
+            // Re-read after publishing our index: this closes the window where
+            // a finishing worker scanned the slots before we announced this
+            // move and so did not cancel us.
+            if (i > best_index.load(std::memory_order_acquire)) {
+                continue;
+            }
+
+            Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
+            bool mate = false;
+            if (shortcut) {
+                if (moves[static_cast<std::size_t>(i)].score >= 50000) {
+                    mate = !has_legal_move(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
+                }
+            } else {
+                mate = is_checkmate(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
+            }
+
+            Proof found;
+            if (mate) {
+                found.ok = true;
+                found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+                if (ws.emit_proof) {
+                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + ",\"mate\":true}";
+                }
+            } else if (depth > 1) {
+                Proof all_replies = prove_defender(ws, nb, depth - 1);
+                if (ws.aborted) {
+                    continue; // abandoned: no verdict, nothing recorded
+                }
+                if (all_replies.ok) {
+                    found.ok = true;
+                    found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+                    found.pv.insert(found.pv.end(), all_replies.pv.begin(), all_replies.pv.end());
+                    if (ws.emit_proof) {
+                        found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)]))
+                                   + ",\"d\":" + all_replies.cert + "}";
+                    }
+                }
+            }
+
+            if (found.ok) {
+                std::lock_guard<std::mutex> lock(result_mutex);
+                results[static_cast<std::size_t>(i)] = std::move(found);
+                int prev = best_index.load(std::memory_order_acquire);
+                while (i < prev && !best_index.compare_exchange_weak(prev, i, std::memory_order_acq_rel)) {
+                }
+                const int best = best_index.load(std::memory_order_acquire);
+                for (auto& other : slots) {
+                    if (other->current_root.load(std::memory_order_acquire) > best) {
+                        other->cancel.store(true, std::memory_order_release);
+                    }
+                }
+            }
+        }
+        slot.current_root.store(n, std::memory_order_release);
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(static_cast<std::size_t>(worker_count - 1));
+    for (int w = 1; w < worker_count; ++w) {
+        pool.emplace_back(worker_body, w);
+    }
+    worker_body(0);
+    for (std::thread& t : pool) {
+        t.join();
+    }
+
+    for (int w = 0; w < worker_count; ++w) {
+        s.stats += workers[static_cast<std::size_t>(w)]->stats;
+        workers[static_cast<std::size_t>(w)]->stats = Stats{};
+        workers[static_cast<std::size_t>(w)]->aborted = false;
+    }
+
+    const int best = best_index.load(std::memory_order_acquire);
+    if (best < n && results[static_cast<std::size_t>(best)].ok) {
+        out = std::move(results[static_cast<std::size_t>(best)]);
+        return true;
+    }
+    return false;
+}
+
 RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_depth, int max_depth) {
     RouteResult result;
     start_depth = std::max(1, start_depth);
+
+    // Workers are built once for the whole route so their tables survive
+    // across iterative-deepening passes exactly as the sequential table does,
+    // and lazily so that positions resolved without ever splitting -- shallow
+    // mates and quickly refuted no-mate controls -- pay nothing for threads
+    // they never use.
+    std::vector<std::unique_ptr<Search>> workers;
+    std::vector<std::unique_ptr<WorkerSlot>> slots;
+    const int thread_count = std::max(1, s.threads);
+    auto ensure_workers = [&]() {
+        if (!workers.empty()) {
+            return;
+        }
+        workers.reserve(static_cast<std::size_t>(thread_count));
+        slots.reserve(static_cast<std::size_t>(thread_count));
+        for (int w = 0; w < thread_count; ++w) {
+            slots.emplace_back(new WorkerSlot());
+            auto ws = std::unique_ptr<Search>(new Search());
+            static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
+            ws->cancel = &slots.back()->cancel;
+            if (ws->tt_reserve > 0) {
+                ws->tt.reserve(ws->tt_reserve);
+            }
+            workers.push_back(std::move(ws));
+        }
+    };
+
     for (int depth = start_depth; depth <= max_depth; ++depth) {
         if (!s.keep_iter_tt) {
             s.tt.clear();
+            for (auto& ws : workers) {
+                ws->tt.clear();
+            }
         }
-        result.proof = prove_attacker(s, b, depth);
+        // Depth 1 is a flat scan for immediate mates; the split would cost more
+        // in thread setup than it saves.
+        if (thread_count > 1 && depth > 1) {
+            ensure_workers();
+            Proof proof;
+            if (run_root_split_depth(s, workers, slots, b, depth, proof)) {
+                result.proof = std::move(proof);
+            }
+        } else {
+            result.proof = prove_attacker(s, b, depth);
+        }
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
             break;
@@ -1926,6 +2166,19 @@ int main(int argc, char** argv) {
             if (parse_size(argv[++i], value)) {
                 config.order_min_size = std::max<std::size_t>(2, value);
             }
+        } else if (arg == "--threads" && i + 1 < argc) {
+            std::string value = argv[++i];
+            if (value == "auto") {
+                unsigned hw = std::thread::hardware_concurrency();
+                config.threads = hw > 0 ? static_cast<int>(hw) : 1;
+            } else {
+                std::size_t parsed = 0;
+                if (parse_size(value.c_str(), parsed) && parsed > 0) {
+                    config.threads = static_cast<int>(parsed);
+                }
+            }
+        } else if (arg == "--single-thread") {
+            config.threads = 1;
         } else if (arg == "--order-all") {
             config.order_min_size = 2;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {

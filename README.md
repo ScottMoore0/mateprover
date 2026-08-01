@@ -71,6 +71,9 @@ Supported now:
 - `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
 - `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
 - `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
+- `--threads N`: unpromoted root-split parallel search across `N` worker threads;
+- `--threads auto`: use the detected hardware concurrency;
+- `--single-thread`: keep the promoted default of one thread and the exact sequential path;
 - `-`: read EPD/FEN lines from stdin.
 
 Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
