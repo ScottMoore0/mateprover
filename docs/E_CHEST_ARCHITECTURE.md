@@ -1743,6 +1743,39 @@ corpus by half. Deduplicated. `nomate.epd` also repeats FENs, but those are *not
 duplicates -- the same position at depth 1 and depth 2 are different claims -- and
 the file now says so, since deduplicating it would silently delete test cases.
 
+### 8w. Persistent Service Mode Already Existed, By Accident
+
+The last untouched backlog item was a persistent service or batch mode. It turned
+out to be almost entirely present already: one process reads positions from
+stdin, answers each, and carries no state between them -- which 8v had just
+established and gated. Nothing needed building.
+
+What did need fixing was the part holding it up. Each answer reached the client
+promptly, but nothing in the code flushed: it worked because `std::cin` is tied
+to `std::cout`, so the *next* read flushed the previous answer. That is guaranteed
+by the standard, not platform luck -- but it is a load-bearing subtlety with no
+mention anywhere in the source. `sync_with_stdio(false)` and `std::cin.tie(nullptr)`
+are the two most routine I/O throughput tweaks in C++, and either one silently
+converts a streaming service into output that appears only at exit.
+
+Result lines are now flushed explicitly. Verified both ways: removing the flush
+*and* applying those two tweaks makes the new gate report **0 of 3 positions
+answered** while the process stays open, and the cost of the flush is
+unmeasurable -- 1,320 positions in 42.41s against 42.47s without it, a search
+per position dwarfing a flush per position.
+
+The service contract is now stated in `OUTPUT_FORMAT.md`, including the part
+users would otherwise have to discover: a long-lived process gains nothing from
+prior work, because there is no cross-position cache to warm. Keeping the engine
+resident saves process startup and nothing else. Presenting that honestly seemed
+better than implying a warm service is faster than a cold one.
+
+This is the fourth backlog item to close by measurement rather than
+implementation -- after DFPN (8e), bitboards (8i, 8k) and the transposition table
+(8l). The pattern is consistent enough to be worth naming: items on that list
+were guesses about where value lay, made before any of it was measured, and most
+have not survived contact with measurement.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

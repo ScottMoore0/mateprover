@@ -168,6 +168,11 @@ echest --help                 full option list
 Input is a FEN (the first four fields are enough). The mate depth comes from
 `-z N`, or is inferred from a `#N` token in an EPD line.
 
+echest can also be kept running as a service: feed it positions one at a time on
+stdin and each answer is flushed as soon as it is ready. Answers never depend on
+order or batching, so a long-lived process and a fresh one give identical
+results.
+
 **The defaults are the tuned configuration.** Every setting measured as a win is
 on by default: all cores up to 16, the search tunings, and, whenever
 `--time-limit` is given, the restriction portfolio. Supplying a time limit is

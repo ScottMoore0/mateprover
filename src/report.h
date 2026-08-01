@@ -40,7 +40,7 @@ void perft_divide_line(const std::string& raw, int depth) {
     }
     auto parsed = parse_fen4(line);
     if (!parsed) {
-        std::cout << line << "; perft error input;\n";
+        std::cout << line << "; perft error input;\n" << std::flush;
         return;
     }
     const Board b = *parsed;
@@ -67,7 +67,7 @@ void perft_line(const std::string& raw, int depth) {
     }
     auto parsed = parse_fen4(line);
     if (!parsed) {
-        std::cout << line << "; perft error input;\n";
+        std::cout << line << "; perft error input;\n" << std::flush;
         return;
     }
     const Board b = *parsed;
@@ -75,7 +75,8 @@ void perft_line(const std::string& raw, int depth) {
         const auto start = std::chrono::steady_clock::now();
         const std::uint64_t nodes = perft(b, d);
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        std::cout << fen4(b) << "; perft " << d << "; nodes " << nodes << "; acs " << seconds << ";\n";
+        std::cout << fen4(b) << "; perft " << d << "; nodes " << nodes << "; acs " << seconds << ";\n"
+                  << std::flush;
     }
 }
 
@@ -248,7 +249,7 @@ void list_legal_line(const std::string& raw) {
     }
     auto parsed = parse_fen4(line);
     if (!parsed) {
-        std::cout << line << "; legal_count 0; error input;\n";
+        std::cout << line << "; legal_count 0; error input;\n" << std::flush;
         return;
     }
     Board b = *parsed;
@@ -263,7 +264,7 @@ void list_legal_line(const std::string& raw) {
     for (const std::string& move : uci) {
         std::cout << ' ' << move;
     }
-    std::cout << ";\n";
+    std::cout << ";\n" << std::flush;
 }
 
 } // namespace echest

@@ -57,7 +57,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     }
     auto parsed = parse_fen4(line);
     if (!parsed) {
-        std::cout << line << "; acn 0; acs 0; error input;\n";
+        std::cout << line << "; acn 0; acs 0; error input;\n" << std::flush;
         return;
     }
     Board b = *parsed;
@@ -306,7 +306,16 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // released tool would report the same thing for both.
         std::cout << "; timeout";
     }
-    std::cout << ";\n";
+    // Flush at the line boundary so the engine works as a persistent service:
+    // a client that writes one position and waits gets its answer immediately.
+    //
+    // This also happens implicitly today, because std::cin is tied to std::cout
+    // and the next std::getline flushes it. That is easy to destroy:
+    // std::cin.tie(nullptr) and sync_with_stdio(false) are routine throughput
+    // tweaks, and either would silently turn streaming answers into a batch that
+    // appears only at exit. Being explicit costs one flush per position, against
+    // a search costing at least microseconds.
+    std::cout << ";\n" << std::flush;
     if (s.profile) {
         emit_profile_line(b, s, requested_depth, proved_depth, seconds);
     }

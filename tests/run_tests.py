@@ -20,6 +20,7 @@ import os
 import random
 import re
 import subprocess
+import threading
 import sys
 import time
 from pathlib import Path
@@ -1220,6 +1221,67 @@ def test_order_and_scheduling_independence(engine: Path, res: Results) -> None:
                   f"{differing[0][0][:30] if differing else ''}")
 
 
+def test_persistent_service_mode(engine: Path, res: Results) -> None:
+    """The engine must answer each position before the next one arrives.
+
+    Feeding positions on stdin and reading answers as they come is the whole of
+    the "persistent service" mode: one process, many positions, no restart cost
+    and no protocol beyond the documented line format. That only works if each
+    result line reaches the client immediately.
+
+    It did so before the flush was made explicit, but only because std::cin is
+    tied to std::cout so the next read flushes it. sync_with_stdio(false) or
+    cin.tie(nullptr) -- both routine throughput tweaks -- would have silently
+    turned this into output that appears only at exit. This pins the behaviour
+    against that.
+    """
+    print("\n[service] positions are answered as they arrive")
+
+    mate = "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - - bm #2;"
+    nomate = "4k3/8/8/8/8/8/8/4K3 w - - bm #1;"
+
+    process = subprocess.Popen(
+        [str(engine), "-5", "--no-portfolio", "-"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+    answers = []
+    try:
+        for request in (mate, nomate, mate):
+            process.stdin.write((request + chr(10)).encode())
+            process.stdin.flush()
+            captured = {}
+
+            def read_one():
+                captured["line"] = process.stdout.readline()
+
+            reader = threading.Thread(target=read_one, daemon=True)
+            reader.start()
+            reader.join(timeout=30)
+            if "line" not in captured:
+                break
+            answers.append(captured["line"].decode())
+    finally:
+        try:
+            process.stdin.close()
+            process.wait(timeout=30)
+        except Exception:
+            process.kill()
+
+    res.check("every position was answered while the process stayed open",
+              len(answers) == 3, f"got {len(answers)} of 3")
+    if len(answers) != 3:
+        return
+    res.check("the mate is solved in service mode", "dm 2" in answers[0], answers[0].strip()[:80])
+    res.check("the negative control is disproved, not timed out",
+              DM_RE.search(answers[1]) is None and "timeout" not in answers[1],
+              answers[1].strip()[:80])
+    res.check("repeating a position gives the same answer",
+              re.sub(r"ac[ns] [\d.e+-]+", "X", answers[0])
+              == re.sub(r"ac[ns] [\d.e+-]+", "X", answers[2]),
+              answers[2].strip()[:80])
+    res.check("the process exits cleanly at end of input", process.returncode == 0,
+              str(process.returncode))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1259,6 +1321,7 @@ def main() -> int:
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
+    test_persistent_service_mode(args.engine, res)
     test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
 

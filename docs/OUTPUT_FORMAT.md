@@ -77,6 +77,22 @@ portfolio became the default, every genuine disproof was briefly reported as a
 timeout because any lane's failure was being treated as the search running out
 of time.
 
+## Persistent service
+
+The engine may be kept running and fed positions one at a time. Each result line
+is flushed as it is produced, so a client that writes one position and waits
+receives the answer before sending the next; there is no protocol beyond the
+line format above, and no restart cost between positions.
+
+Answers do not depend on batching or on order. A position produces the same
+result whether it is sent alone, first in a batch, or last, because each position
+is searched with fresh state -- nothing is carried between them. That is gated,
+not merely intended.
+
+The consequence of the same property is that a long-lived process gains nothing
+from work already done: there is no cross-position cache to warm. Restarting per
+position costs only process startup.
+
 ## Other modes
 
 `--perft N` emits one line per depth, and `--perft-divide N` emits `move count`
