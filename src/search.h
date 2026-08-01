@@ -16,9 +16,10 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     }
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
-    TTKey key = tt_key(b, depth, 'D', s.attacker);
+    // Depth is not part of the key; it is supplied to probe/store instead.
+    TTKey key = tt_key(b, 0, 'D', s.attacker);
     Proof exact_cached;
-    if (probe_exact_proof_table(s, key, exact_cached)) {
+    if (probe_exact_proof_table(s, key, depth, exact_cached)) {
         return exact_cached;
     }
     TTKey hint_key;
@@ -49,7 +50,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         s.stats.defender_moves += replies.size();
     }
     if (replies.empty()) {
-        store_exact_proof_table(s, key, {});
+        store_exact_proof_table(s, key, depth, {});
         if (s.bound_tt_enabled) {
             store_bound_tt(s, get_hint_key(), depth, {});
         }
@@ -96,7 +97,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
                 ++s.stats.refutation_hint_stores;
                 s.defender_refutations[get_hint_key()] = dmove;
             }
-            store_exact_proof_table(s, key, {});
+            store_exact_proof_table(s, key, depth, {});
             if (s.bound_tt_enabled) {
                 store_bound_tt(s, get_hint_key(), depth, {});
             }
@@ -117,7 +118,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     // there were none. That is stalemate, not mate, and must be treated exactly
     // like the empty-list case above rather than reported as a proof.
     if (lazy && !any_legal) {
-        store_exact_proof_table(s, key, {});
+        store_exact_proof_table(s, key, depth, {});
         if (s.bound_tt_enabled) {
             store_bound_tt(s, get_hint_key(), depth, {});
         }
@@ -134,7 +135,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         cert.clear();
     }
     Proof proof{true, representative, cert};
-    store_exact_proof_table(s, key, proof);
+    store_exact_proof_table(s, key, depth, proof);
     if (s.bound_tt_enabled) {
         store_bound_tt(s, get_hint_key(), depth, proof);
     }
@@ -150,9 +151,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     if (depth <= 0 || b.stm != s.attacker) {
         return {};
     }
-    TTKey key = tt_key(b, depth, 'A', s.attacker);
+    // Depth is not part of the key; it is supplied to probe/store instead.
+    TTKey key = tt_key(b, 0, 'A', s.attacker);
     Proof exact_cached;
-    if (probe_exact_proof_table(s, key, exact_cached)) {
+    if (probe_exact_proof_table(s, key, depth, exact_cached)) {
         return exact_cached;
     }
     TTKey hint_key;
@@ -213,7 +215,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 s.attacker_proofs[get_hint_key()] = amove;
             }
             Proof proof{true, pv, cert};
-            store_exact_proof_table(s, key, proof);
+            store_exact_proof_table(s, key, depth, proof);
             if (s.bound_tt_enabled) {
                 store_bound_tt(s, get_hint_key(), depth, proof);
             }
@@ -263,7 +265,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                     s.attacker_proofs[get_hint_key()] = amove;
                 }
                 Proof proof{true, pv, cert};
-                store_exact_proof_table(s, key, proof);
+                store_exact_proof_table(s, key, depth, proof);
                 if (s.bound_tt_enabled) {
                     store_bound_tt(s, get_hint_key(), depth, proof);
                 }
@@ -275,7 +277,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
-    store_exact_proof_table(s, key, {});
+    store_exact_proof_table(s, key, depth, {});
     if (s.bound_tt_enabled) {
         store_bound_tt(s, get_hint_key(), depth, {});
     }
@@ -571,7 +573,7 @@ void dfpn_store(Search& s, const TTKey& key, const PnDn& v) {
 void dfpn_publish(Search& s, const Board& b, int depth, char kind, const PnDn& v) {
     if (v.dn == 0 && s.dfpn_share_disproofs) {
         ++s.stats.dfpn_disproved;
-        store_exact_proof_table(s, tt_key(b, depth, kind, s.attacker), {});
+        store_exact_proof_table(s, tt_key(b, 0, kind, s.attacker), depth, {});
     }
 }
 
@@ -584,7 +586,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // itself by hiding the preconditioner's cost entirely.
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
-    const TTKey key = tt_key(b, depth, 'D', s.attacker);
+    const TTKey key = tt_key(b, 0, 'D', s.attacker);
 
     bool scored = false;
     std::vector<Move> replies = dfpn_moves(s, b, scored);
@@ -656,7 +658,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     }
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
-    const TTKey key = tt_key(b, depth, 'A', s.attacker);
+    const TTKey key = tt_key(b, 0, 'A', s.attacker);
 
     if (depth <= 0 || b.stm != s.attacker) {
         const PnDn v{DFPN_INF, 0};

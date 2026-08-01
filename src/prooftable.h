@@ -8,7 +8,9 @@
 
 namespace echest {
 
-bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
+// Probe for a verdict at `depth`. The key excludes depth; the entry's bounds
+// decide whether what is stored answers this particular question.
+bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out) {
     ++s.stats.tt_probes;
     TTEntry entry;
     if (s.shared_table != nullptr) {
@@ -18,36 +20,40 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
     } else if (!s.tt.probe(key, entry)) {
         return false;
     }
-    ++s.stats.tt_hits;
-    if (entry.kind == TTEntryKind::Proof) {
+    // A mate within min_proved is a mate within any larger bound.
+    if (depth >= entry.min_proved) {
+        ++s.stats.tt_hits;
         ++s.stats.exact_tt_proof_hits;
         out = {true, std::move(entry.pv), std::move(entry.cert)};
-    } else {
+        return true;
+    }
+    // No mate within max_disproved means none within any smaller bound.
+    if (depth <= entry.max_disproved) {
+        ++s.stats.tt_hits;
         ++s.stats.exact_tt_disproof_hits;
         out = {};
+        return true;
     }
-    return true;
+    // The position is known, but not at a bound that settles this depth.
+    return false;
 }
 
-void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
+void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof& proof) {
     // An aborted subtree produced no verdict. Storing its empty result would
     // cache a false disproof, so nothing is written once the search unwinds.
     if (s.aborted) {
         return;
     }
     ++s.stats.tt_stores;
-    TTEntry entry;
     if (proof.ok) {
         ++s.stats.exact_tt_proof_stores;
-        entry = {TTEntryKind::Proof, proof.pv, proof.cert};
     } else {
         ++s.stats.exact_tt_disproof_stores;
-        entry = {TTEntryKind::Disproof, {}, ""};
     }
     if (s.shared_table != nullptr) {
-        s.shared_table->store(key, std::move(entry));
+        s.shared_table->merge(key, depth, proof.ok, proof.pv, proof.cert);
     } else {
-        s.tt.store(key, std::move(entry));
+        s.tt.merge(key, depth, proof.ok, proof.pv, proof.cert);
     }
 }
 

@@ -271,11 +271,43 @@ enum class TTEntryKind {
     Proof,
 };
 
+// One entry per position and context, with depth deliberately NOT part of the
+// key. Instead the entry carries monotone depth bounds:
+//
+//   depth <= max_disproved  =>  no mate within that depth
+//   depth >= min_proved     =>  mate within that depth; pv/cert give it
+//
+// Both directions are exact. A mate within d is also a mate within any larger
+// bound, and the absence of a mate within d also means its absence within any
+// smaller bound. Keying by depth, as this table previously did, threw both
+// implications away and made a separate bound table necessary to recover them.
 struct TTEntry {
-    TTEntryKind kind = TTEntryKind::Disproof;
+    static constexpr int NO_DISPROOF = -1;
+    static constexpr int NO_PROOF = 1 << 29;
+
+    int max_disproved = NO_DISPROOF;
+    int min_proved = NO_PROOF;
     std::vector<Move> pv;
     std::string cert;
     std::uint32_t gen = 0;
+
+    bool empty() const {
+        return max_disproved == NO_DISPROOF && min_proved == NO_PROOF;
+    }
+
+    // Fold a new verdict in, keeping the strongest bound seen.
+    void absorb(int depth, bool proved, const std::vector<Move>& new_pv,
+                const std::string& new_cert) {
+        if (proved) {
+            if (depth < min_proved) {
+                min_proved = depth;
+                pv = new_pv;
+                cert = new_cert;
+            }
+        } else if (depth > max_disproved) {
+            max_disproved = depth;
+        }
+    }
 };
 
 } // namespace echest

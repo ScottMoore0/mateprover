@@ -43,6 +43,19 @@ struct BoundedTable {
         }
     }
 
+    // Read-modify-write of the depth bounds for one key. Merging rather than
+    // overwriting is what lets a single entry accumulate both a disproof bound
+    // and a proof bound as the search visits the position at several depths.
+    void merge(const TTKey& key, int depth, bool proved,
+               const std::vector<Move>& pv, const std::string& cert) {
+        TTEntry& entry = map[key];
+        entry.absorb(depth, proved, pv, cert);
+        entry.gen = generation;
+        if (capacity != 0 && map.size() > capacity) {
+            evict();
+        }
+    }
+
     void evict() {
         // First pass: drop anything untouched during the current generation.
         for (auto it = map.begin(); it != map.end();) {
@@ -123,6 +136,15 @@ public:
         Shard& shard = shard_for(key);
         std::lock_guard<std::mutex> lock(shard.mutex);
         shard.table.store(key, std::move(entry));
+    }
+
+    // The read-modify-write happens under the shard lock, so two workers
+    // folding different depth bounds into the same position cannot lose one.
+    void merge(const TTKey& key, int depth, bool proved,
+               const std::vector<Move>& pv, const std::string& cert) {
+        Shard& shard = shard_for(key);
+        std::lock_guard<std::mutex> lock(shard.mutex);
+        shard.table.merge(key, depth, proved, pv, cert);
     }
 
     // Adopt entries computed before the table existed, so the sequential

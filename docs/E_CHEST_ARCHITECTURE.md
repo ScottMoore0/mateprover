@@ -197,6 +197,28 @@ Current E checkpoint:
 - `--profile` emits stderr JSON counters for TT probes, hits, stores, table size, node split, move-list sizes, and ordering/refutation activity, and `benchmarks\scripts\collect_e_profiles.py` stores those rows as case-labelled JSONL;
 - this is correctness groundwork for later packed/bucketed TT work, not yet the final high-performance TT design.
 
+### 3d. Shared Proof/Disproof Table
+
+Depth is no longer part of the table key. One entry per position and context carries `max_disproved` (no mate within that depth, hence none within any smaller) and `min_proved` (a mate within that depth, hence within any larger, with the payload). A single probe answers both questions.
+
+Both implications are unconditional and hold for attacker and defender nodes alike, so this is exact. Stores **merge** rather than overwrite, letting one entry accumulate both bounds as the search revisits a position at several depths; for the shared table the read-modify-write happens under the shard lock so concurrent folds cannot lose one. The abort invariant is unchanged -- an aborted search still writes nothing.
+
+Measured on a hard matetrack mate-in-8 position with `--direct-depth`:
+
+| config | nodes | time |
+|---|---:|---:|
+| exact table only | 268,260 | 0.124 s |
+| plus separate bound table | 245,083 (-8.6%) | 0.142 s (+14.5%) |
+| **one shared table** | **245,083 (-8.6%)** | **0.110 s (-11.3%)** |
+
+The node count is *identical* to the two-table arrangement, confirming the mechanism is exactly equivalent; the whole difference is bookkeeping. Frozen suites, 3 interleaved trials: regression controls `-2.7%` sequential and `-8.6%` at 8 threads, smoke `-2.5%`/`-6.4%`, hard holdout `-0.4%`/`-7.0%`, negative controls `+0.6%` in both. Gains are larger in parallel because workers searching at different depths now share bounds through one table.
+
+Capability is unchanged at 13/24 mate-in-8 and 3/20 mate-in-10, consistent with the scaling cliff: at these depths no speed improvement of this size moves problems across the line.
+
+This was the highest-stakes change available -- depth in the key is what made `--keep-iter-tt` safe, and an error in the monotone comparison yields false proofs rather than slow searches. Identical `bm` and `dm` on every suite, with certificates still verifying independently, is the evidence that exactness survived.
+
+`--bound-tt` is now redundant: the shared table subsumes it and does the same work for free.
+
 ### 3c. Bounded Tables And Honoured `-M`
 
 Until this checkpoint every table was an unbounded `unordered_map`, and `-M` was parsed and discarded. A sufficiently deep problem could grow the table until the process died, and the CLI advertised a memory option it did not implement.

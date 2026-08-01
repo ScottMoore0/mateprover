@@ -96,7 +96,7 @@ The remaining headroom is in reducing nodes, not executing them faster, which
 raises the priority of the native DFPN route above further parallel or
 efficiency work.
 
-## Next Increment: The Shared Proof/Disproof Table
+## Done: The Shared Proof/Disproof Table
 
 Now concretely motivated rather than aspirational. `--bound-tt` implements an
 exact monotonic prune -- no mate within depth d implies no mate within any
@@ -108,10 +108,10 @@ Keying one table by position *without* depth, storing `max_disproved_depth`,
 `min_proved_depth` and the proof payload, makes that prune free: one probe
 answers both questions and the second table disappears.
 
-This is the highest-stakes change available. Depth in the key is exactly what
-makes `--keep-iter-tt` safe, and an error in the monotonic comparison yields
-false proofs rather than slow searches. It needs its own increment with the
-full gate set.
+Implemented and promoted. The shared table reaches an *identical* node count to
+the two-table arrangement (245,083 on the reference position), confirming exact
+equivalence, while turning a 14.5% time cost into an 11.3% saving. Frozen-suite
+gains are 6-9% in parallel. `--bound-tt` is now redundant.
 
 ## Revised Impact Order
 
