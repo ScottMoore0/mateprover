@@ -50,6 +50,10 @@ struct SearchConfig {
     // Begin iterative deepening at the requested depth instead of 1. Only valid
     // when the caller wants "a mate within N" rather than "the shortest mate".
     bool direct_depth = false;
+    // WinChest ChecksOnly bit 1: the attacker may play only checking moves, so
+    // a solution is a serial-check mate. This selects a different problem, not
+    // a faster route to the same one.
+    bool checks_only = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

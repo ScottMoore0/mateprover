@@ -349,6 +349,55 @@ def test_castling_needs_its_rook(engine: Path, res: Results) -> None:
                       f"engine-only {sorted(mine - theirs)}, missing {sorted(theirs - mine)}")
 
 
+def test_checks_only_restriction(engine: Path, res: Results) -> None:
+    """-C 1 must actually restrict the attacker to checking moves.
+
+    This is not a pruning heuristic. Removing a legal attacker move would be
+    unsound for an ordinary directmate; it is correct only because -C 1 asks a
+    different question, so the removed moves are not candidates for it. The
+    test therefore checks the restriction is real (every attacker move in a
+    solution gives check) and that it is off unless asked for.
+    """
+    print("\n[restriction] -C 1 restricts the attacker to checking moves")
+
+    cases = load_epd(HERE / "mates.epd")
+    baseline = solve(engine, cases, ["-M", "64"])
+    off = solve(engine, cases, ["-M", "64", "-C", "0"])
+    res.check("-C 0 leaves the search unrestricted",
+              [BM_RE.search(l) is not None for l in baseline] ==
+              [BM_RE.search(l) is not None for l in off])
+
+    restricted = solve(engine, cases, ["-M", "64", "-C", "1"])
+    solved = sum(1 for l in restricted if DM_RE.search(l))
+    res.check("-C 1 is at least as restrictive as no restriction",
+              solved <= sum(1 for l in baseline if DM_RE.search(l)),
+              f"restricted solved {solved}")
+
+    if HAVE_CHESS:
+        offenders = 0
+        checked = 0
+        for (fen, _), line in zip(cases, restricted):
+            pv = PV_RE.search(line)
+            if not pv:
+                continue
+            checked += 1
+            board = chess.Board(fen + " 0 1")
+            for i, token in enumerate(pv.group(1).split()):
+                board.push(chess.Move.from_uci(token))
+                if i % 2 == 0 and not board.is_check():
+                    offenders += 1
+        res.check(f"every attacker move gives check in {checked} restricted solution(s)",
+                  offenders == 0, f"{offenders} non-checking attacker moves")
+
+    # Unimplemented ChecksOnly bits must still be refused.
+    proc = subprocess.run([str(engine), "-C", "3", "-z", "1", "-"],
+                          input=b"", capture_output=True, timeout=60)
+    out = (proc.stdout + proc.stderr).decode()
+    res.check("-C 3 (unimplemented bits) is refused",
+              proc.returncode == 2 and "does not implement" in out,
+              f"exit={proc.returncode}")
+
+
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.
 
@@ -554,6 +603,7 @@ def main() -> int:
     test_castling_needs_its_rook(args.engine, res)
     test_cli_contract(args.engine, res)
     test_help_documents_every_option(args.engine, res)
+    test_checks_only_restriction(args.engine, res)
     test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 

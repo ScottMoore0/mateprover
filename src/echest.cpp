@@ -132,7 +132,7 @@ void print_usage() {
 "                                plane query, so these select nothing\n"
 "  WinChest special-mate variants, NOT IMPLEMENTED. Each selects a different\n"
 "  problem rather than a tuning knob, so they are rejected, not ignored:\n"
-"    -C N                        examine checking moves only\n"
+"    -C N                        ChecksOnly bitmask; -C 1 IS implemented\n"
 "    -R N                        examine threats only\n"
 "    -K N                        limit defender king mobility\n"
 "    -P N                        limit the set of moving pieces\n"
@@ -140,6 +140,8 @@ void print_usage() {
 "    -I N                        threat flags\n"
 "    -n N, -N N                  accepted with a value, same treatment\n"
 "  Pass --allow-unimplemented to search the unrestricted problem instead.\n"
+"  -C 1 restricts the attacker to check-moves (serial-check mate) and is\n"
+"  supported. ChecksOnly bits 2/4/8/16 and the other variants are not.\n"
 "  Chest 3.19 has none of these; they are WinChest extensions.\n"
 "\n"
 "  -h, --help                    this message\n"
@@ -395,22 +397,34 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '-M' expects a number");
             config.memory_mb = value; // 0 means unbounded
-        } else if (arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" ||
+        } else if (arg == "-C") {
+            // WinChest ChecksOnly is a bitmask, not a count:
+            //   +1 only own check-moves      +2 no opponent checks
+            //   +4 no opponent captures      +8/+16 further restrictions
+            // Bit 1 is implemented; the others select problems this engine
+            // does not solve, so they are refused rather than ignored.
+            const char* v = need_value(i);
+            if (!v) return usage_error("option -C requires a value");
+            const int mask = std::atoi(v);
+            if (mask == 0 || mask == -1) {
+                config.checks_only = false;
+            } else if (mask == 1) {
+                config.checks_only = true;
+            } else if (!allow_unimplemented) {
+                return usage_error("option -C " + std::string(v) + " selects WinChest "
+                                   "ChecksOnly bits this engine does not implement. Only "
+                                   "-C 1 (attacker plays check-moves only) is supported; "
+                                   "bits 2, 4, 8 and 16 are not. Pass "
+                                   "--allow-unimplemented to search unrestricted.");
+            }
+        } else if (arg == "-R" || arg == "-K" || arg == "-P" ||
                    arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") {
-            // Chest/WinChest restriction options. E does not implement their
-            // semantics. Silently ignoring them is the worst available
-            // behaviour: the caller asks a constrained question and gets a
-            // confident answer to a different, unconstrained one.
             if (!need_value(i)) {
                 return usage_error("option " + arg + " requires a value");
             }
             if (!allow_unimplemented) {
-                // Name the semantics. "Not implemented" alone leaves the
-                // caller unable to tell whether they asked for something
-                // meaningful, or made a typo.
                 std::string meaning = "a restricted mate variant";
-                if (arg == "-C") meaning = "examine checking moves only";
-                else if (arg == "-R") meaning = "examine threats only";
+                if (arg == "-R") meaning = "examine threats only";
                 else if (arg == "-K") meaning = "limit defender king mobility";
                 else if (arg == "-P") meaning = "limit the set of moving pieces";
                 else if (arg == "-X") meaning = "limit maximum moves";

@@ -151,6 +151,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
 
     bool moves_scored = false;
     auto moves = generate_ordered_moves(s, b, moves_scored);
+    restrict_attacker_moves(s, b, moves);
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
     if (s.proof_hints) {
@@ -283,6 +284,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                     s.inplace_order, s.bucket_order);
         moves_scored = true;
     }
+    restrict_attacker_moves(s, b, moves);
     if (s.proof_hints) {
         TTKey hint_key = move_hint_key(b, 'A', s.attacker);
         if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
@@ -635,6 +637,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
 
     bool scored = false;
     std::vector<Move> moves = dfpn_moves(s, b, scored);
+    restrict_attacker_moves(s, b, moves);
     if (moves.empty()) {
         const PnDn v{DFPN_INF, 0};
         dfpn_store(s, key, v);

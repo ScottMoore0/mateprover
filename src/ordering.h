@@ -297,6 +297,21 @@ std::vector<Move> pseudo_defender_moves(Search& s, const Board& b) {
     return pseudo;
 }
 
+// Apply attacker-side restrictions that change which problem is being solved.
+//
+// This is not a pruning heuristic: removing a legal attacker move would be
+// unsound for an ordinary directmate. It is only correct because `-C 1` asks a
+// different question -- "is there a mate in which every attacker move gives
+// check" -- and under that question the removed moves are not candidates.
+void restrict_attacker_moves(const Search& s, const Board& b, std::vector<Move>& moves) {
+    if (!s.checks_only) {
+        return;
+    }
+    moves.erase(std::remove_if(moves.begin(), moves.end(),
+                               [&](const Move& m) { return !move_gives_check_fast(b, m); }),
+                moves.end());
+}
+
 bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);
 }

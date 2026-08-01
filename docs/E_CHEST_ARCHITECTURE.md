@@ -408,6 +408,32 @@ Each selects a **different problem**, not a tuning knob on the same one. That is
 
 The rejection message now names the semantics, so a caller can tell whether they asked for something meaningful or made a typo. Implementing any of them remains open, and would need differential validation against the WinChest binary since the semantics are documented only as one-line summaries.
 
+### 7c. ChecksOnly Implemented
+
+`-C 1` is now implemented: the attacker may play only checking moves, so a solution is a serial-check mate.
+
+Getting there needed the semantics, and the one-line summary in `Options.txt` was actively misleading. Black-box probing of the WinChest binary showed **even values solving and odd values failing**, with node counts falling as the value rose -- which fits no reading of "examine checks only" as a count. The manual resolves it: `ChecksOnly` is a **bitmask**, not a count.
+
+| bit | meaning |
+|---:|---|
+| +1 | only own check-moves |
+| +2 | no opponent checks |
+| +4 | no opponent captures |
+| +8, +16 | further restrictions |
+
+Every odd value sets bit 1, and the probe position's first move is not a check, so every odd value failed. The mystery was bit 0.
+
+Implementation and validation:
+
+- `restrict_attacker_moves` filters the attacker's list at every attacker site -- the depth-first prover, the DFPN preconditioner, and the parallel root split -- so the restriction cannot be evaded by route or by thread count;
+- this is **not** a pruning heuristic. Removing a legal attacker move would be unsound for an ordinary directmate; it is correct only because `-C 1` asks a different question, under which the removed moves are not candidates. The code says so at the definition, because the distinction is exactly the kind that erodes;
+- **validated differentially against the WinChest oracle**: 23 positions, 23 agreements on solvedness, 0 disagreements;
+- self-consistency checked independently: in every restricted solution found, every attacker move in the PV gives check;
+- `-C 0` and `-C -1` are off, matching WinChest, and leave the unrestricted search bit-identical;
+- ChecksOnly bits 2/4/8/16 remain refused with a message naming what was asked for, as do `-R -K -P -X -I`.
+
+The manual also records that under restriction "it can not be guaranteed that there will be found any solution at all, or that a given solution is the best (i.e. shortest) one" -- which matches how E behaves: a restricted search may legitimately report nothing.
+
 ### 8. Internal Parallelism
 
 E should support root split and deeper work stealing with:
