@@ -1658,6 +1658,41 @@ missing reservation rather than a crash. The stress matrix is now a permanent
 gate across five configurations, and it fails against the pre-fix binary with
 the original `std::length_error`. 202 checks.
 
+### 8u. The Property The Portfolio Actually Rests On
+
+The restrictions were validated against the WinChest binary for **agreement**.
+That is a weaker and different claim than the one the portfolio depends on.
+Agreeing with another engine about which positions a restricted search solves
+says nothing about whether those answers are sound with respect to the
+*unrestricted* problem -- and the portfolio's entire justification is that a mate
+found under a restriction is a real mate. That was never tested.
+
+Stated properly, and now gated: a restriction only removes attacker options, so
+for every restriction R, anything R proves must also be provable unrestricted,
+and never at a *shorter* depth. Measured over the corpus with untimed sequential
+searches, so every search completes: **zero violations** across thirteen
+restrictions.
+
+The nesting properties hold too -- a tighter numeric bound solves a subset of a
+looser one (K2 ⊆ K3 ⊆ K4, X2 ⊆ X4 ⊆ X6, R1 ⊆ R2) -- but establishing that
+corrected a misconception of mine. I first checked C1 ⊆ C2 ⊆ C4 and it failed.
+That is not a defect: `-C` is a **bitmask**, not a strictness ladder. C1 ("only
+own check moves"), C2 ("no opponent checks") and C4 ("no opponent captures") are
+independent conditions and are not comparable at all. What makes a mask stricter
+is *adding bits*, so the real property is that a mask solves a subset of every
+mask whose bits it contains: C3 ⊆ C1, C3 ⊆ C2, C6 ⊆ C2, C6 ⊆ C4. All hold. The
+portfolio's C-lanes are therefore unordered with respect to each other, which is
+consistent with 8f having selected them by set cover rather than by strength.
+
+The gate also requires that certificates produced *under* a restriction verify,
+since the portfolio can return one and that is the path a caller sees.
+
+Verified adversarially rather than assumed: injecting a fault that drops one
+defender reply when a KingSquares restriction is active produces ten failures,
+and the shipped certificate verifier independently rejects the resulting proofs
+with `missing defences ['f8c5']`. Two unrelated mechanisms catch the same
+injected unsoundness, which is the arrangement worth having. 228 checks.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

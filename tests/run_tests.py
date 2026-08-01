@@ -1069,6 +1069,90 @@ def test_abort_invariant_under_stress(engine: Path, res: Results) -> None:
             res.check(f"no false verdicts [{label}]", True)
 
 
+def test_restriction_soundness_and_nesting(engine: Path, res: Results) -> None:
+    """The property the restriction portfolio's soundness actually rests on.
+
+    A restriction only removes attacker options, so a mate found under one must
+    be a real mate, and cannot be shorter than the unrestricted answer. The
+    restrictions had been validated against the WinChest oracle for AGREEMENT,
+    which is a different claim: agreeing with another engine about which
+    positions a restricted search solves says nothing about whether those
+    answers are sound with respect to the unrestricted problem. That is what the
+    portfolio depends on, and it was untested.
+
+    Searches here are untimed and sequential so that every one completes; the
+    subset properties hold for completed searches, not for truncated ones.
+    """
+    print("\n[restriction] restricted answers are sound and nest")
+
+    cases = load_epd(HERE / "mates.epd")
+
+    def solve_depths(extra):
+        lines = solve(engine, cases, ["--no-portfolio", "--single-thread", *extra])
+        out = {}
+        for (fen, _), line in zip(cases, lines):
+            found = DM_RE.search(line)
+            out[fen] = int(found.group(1)) if found else None
+        return out
+
+    base = solve_depths([])
+    res.check("unrestricted search solves the corpus",
+              sum(1 for v in base.values() if v) >= 10)
+
+    named = {
+        "K2": ["-K", "2"], "K3": ["-K", "3"], "K4": ["-K", "4"],
+        "X2": ["-X", "2"], "X4": ["-X", "4"], "X6": ["-X", "6"],
+        "R1": ["-R", "1"], "R2": ["-R", "2"],
+        "C1": ["-C", "1"], "C2": ["-C", "2"], "C3": ["-C", "3"],
+        "C4": ["-C", "4"], "C6": ["-C", "6"],
+    }
+    depths = {name: solve_depths(flags) for name, flags in named.items()}
+
+    # 1. Soundness: anything a restriction proves is a real mate, and never
+    #    shorter than the unrestricted answer.
+    for name, found in depths.items():
+        unsound = [fen for fen, value in found.items()
+                   if value is not None and (base[fen] is None or base[fen] > value)]
+        res.check(f"{name} proves nothing the unrestricted search cannot",
+                  not unsound, "; ".join(f[:26] for f in unsound[:2]))
+
+    # 2. Numeric bounds nest: a tighter bound must solve a subset.
+    for tight, loose in [("K2", "K3"), ("K3", "K4"), ("X2", "X4"), ("X4", "X6"), ("R1", "R2")]:
+        a = {f for f, v in depths[tight].items() if v}
+        b = {f for f, v in depths[loose].items() if v}
+        res.check(f"{tight} solves a subset of {loose}", a <= b,
+                  "; ".join(f[:26] for f in sorted(a - b)[:2]))
+
+    # 3. ChecksOnly is a BITMASK, not a ladder: C1, C2 and C4 are independent
+    #    conditions, so C2 is not comparable to C4. Adding bits is what makes a
+    #    mask stricter, so a mask must solve a subset of every mask whose bits
+    #    it contains.
+    masks = {1: "C1", 2: "C2", 3: "C3", 4: "C4", 6: "C6"}
+    for bits, name in masks.items():
+        for other_bits, other_name in masks.items():
+            if bits != other_bits and (bits & other_bits) == other_bits:
+                a = {f for f, v in depths[name].items() if v}
+                b = {f for f, v in depths[other_name].items() if v}
+                res.check(f"{name} solves a subset of {other_name}", a <= b,
+                          "; ".join(f[:26] for f in sorted(a - b)[:2]))
+
+    # 4. A proof found under a restriction must verify like any other. The
+    #    portfolio can return one, so this is the path a caller actually sees.
+    if not HAVE_CHESS:
+        res.skip("restricted certificates verify", "python-chess not installed")
+        return
+    tool = HERE.parent / "tools" / "verify_proof.py"
+    for name in ("K3", "C2", "R2"):
+        text = "" + chr(10).join(
+            solve(engine, cases, ["--no-portfolio", "--single-thread",
+                                  "--emit-proof", *named[name]])) + chr(10)
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "-"],
+                              input=text.encode(), capture_output=True, timeout=180)
+        res.check(f"certificates produced under {name} verify",
+                  proc.returncode == 0,
+                  (proc.stdout + proc.stderr).decode().strip()[:120])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1101,6 +1185,7 @@ def main() -> int:
     test_documented_defaults_are_real(args.engine, res)
     test_checks_only_restriction(args.engine, res)
     test_defender_restrictions(args.engine, res)
+    test_restriction_soundness_and_nesting(args.engine, res)
     test_restriction_portfolio(args.engine, res)
     test_shipped_verifier(args.engine, res)
     test_verifier_rejects_stalemate_as_mate(args.engine, res)

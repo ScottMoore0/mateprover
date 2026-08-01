@@ -78,6 +78,12 @@ verifier can confirm from the certificate alone. Under `--direct-depth` the
 engine searches the requested depth directly and minimality is not claimed at
 all.
 
+A proof found under a restriction (`-C`, `-K`, `-P`, `-X`, `-R`) is an ordinary
+proof and carries no trace of the restriction: a restriction only removes
+attacker options, so any mate found under one is a mate outright. The output
+line names the restriction with a `via` field, but the certificate needs no
+special handling and is verified identically.
+
 It does not claim that the proof is the only one, or a canonical one. Under
 `--portfolio-parallel` the particular proof returned may differ between runs of
 the same position; each is independently valid.
