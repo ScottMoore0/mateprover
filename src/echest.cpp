@@ -175,6 +175,8 @@ struct Stats {
     std::uint64_t dfpn_disproved = 0;
     std::uint64_t dfpn_table_size = 0;
     std::uint64_t dfpn_abandoned = 0;
+    std::uint64_t root_sequential_tried = 0;
+    std::uint64_t root_sequential_hits = 0;
     std::uint64_t order_calls = 0;
     std::uint64_t order_moves = 0;
     std::uint64_t immediate_mate_tests = 0;
@@ -226,6 +228,8 @@ struct Stats {
         dfpn_disproved += o.dfpn_disproved;
         dfpn_table_size += o.dfpn_table_size;
         dfpn_abandoned += o.dfpn_abandoned;
+        root_sequential_tried += o.root_sequential_tried;
+        root_sequential_hits += o.root_sequential_hits;
         order_calls += o.order_calls;
         order_moves += o.order_moves;
         immediate_mate_tests += o.immediate_mate_tests;
@@ -247,7 +251,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 46 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 48 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
@@ -514,6 +518,8 @@ struct SearchConfig {
     // shared with the exact table; proofs are shared only as ordering hints.
     bool dfpn_share_disproofs = true;
     std::uint64_t dfpn_node_limit = 0; // 0 = unlimited
+    // Root moves searched sequentially before the split. 0 splits everything.
+    int root_sequential_first = 0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -2076,7 +2082,67 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     const int n = static_cast<int>(moves.size());
     const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
 
-    std::atomic<int> next_index{0};
+    // Young-brothers-wait at the root.
+    //
+    // The accepted answer is the lowest-index successful root move, so every
+    // node spent on a higher index is discarded the moment a lower one
+    // succeeds. Move ordering is good enough that the first root move is
+    // frequently the proof, which makes an immediate full split maximally
+    // wasteful: on the deep corpus, 8 threads explored 2.2x the sequential
+    // node count.
+    //
+    // So try the first few moves sequentially. If one proves, the split never
+    // happens and no work is wasted at all. If none does, the shared table is
+    // warm before the workers start, which also cuts their duplication.
+    const int seq_first = std::max(0, std::min(s.root_sequential_first, n));
+    {
+        Search& probe = *workers[0]; // already points at the shared table
+        for (int i = 0; i < seq_first; ++i) {
+            probe.aborted = false;
+            slots[0]->cancel.store(false, std::memory_order_release);
+            slots[0]->current_root.store(i, std::memory_order_release);
+            ++probe.stats.root_sequential_tried;
+
+            const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
+            bool mate = false;
+            if (shortcut) {
+                if (moves[static_cast<std::size_t>(i)].score >= 50000) {
+                    mate = !has_legal_move(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
+                }
+            } else {
+                mate = is_checkmate(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
+            }
+
+            Proof found;
+            if (mate) {
+                found.ok = true;
+                found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+                if (probe.emit_proof) {
+                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + ",\"mate\":true}";
+                }
+            } else if (depth > 1) {
+                Proof all_replies = prove_defender(probe, nb, depth - 1);
+                if (!probe.aborted && all_replies.ok) {
+                    found.ok = true;
+                    found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+                    found.pv.insert(found.pv.end(), all_replies.pv.begin(), all_replies.pv.end());
+                    if (probe.emit_proof) {
+                        found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)]))
+                                   + ",\"d\":" + all_replies.cert + "}";
+                    }
+                }
+            }
+            if (found.ok) {
+                ++probe.stats.root_sequential_hits;
+                s.stats += probe.stats;
+                probe.stats = Stats{};
+                out = std::move(found);
+                return true;
+            }
+        }
+    }
+
+    std::atomic<int> next_index{seq_first};
     std::atomic<int> best_index{n}; // lowest root index proved so far
     std::mutex result_mutex;
     std::vector<Proof> results(static_cast<std::size_t>(n));
@@ -2867,6 +2933,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"dfpn_proved\":" << st.dfpn_proved
               << ",\"dfpn_disproved\":" << st.dfpn_disproved
               << ",\"dfpn_table_size\":" << st.dfpn_table_size
+              << ",\"root_sequential_tried\":" << st.root_sequential_tried
+              << ",\"root_sequential_hits\":" << st.root_sequential_hits
               << ",\"lazy_defender\":" << (s.lazy_defender ? "true" : "false")
               << ",\"order_calls\":" << st.order_calls
               << ",\"order_moves\":" << st.order_moves
@@ -3231,6 +3299,14 @@ int main(int argc, char** argv) {
             config.parallel_min_nodes = static_cast<std::uint64_t>(value);
         } else if (arg == "--no-parallel-gate") {
             config.parallel_min_nodes = 0;
+        } else if (arg == "--root-sequential-first") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--root-sequential-first' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--root-sequential-first' expects a number");
+            config.root_sequential_first = static_cast<int>(value);
+        } else if (arg == "--root-split-all") {
+            config.root_sequential_first = 0;
         } else if (arg == "--dfpn-hints-only") {
             config.dfpn_share_disproofs = false;
         } else if (arg == "--dfpn-share-disproofs") {

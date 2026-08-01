@@ -368,6 +368,18 @@ Current E checkpoint:
 - key move, mate depth and solvedness are identical to sequential E on every validated row; only node counts differ, because workers explore concurrently;
 - `--threads 8` beat 16, 24 and `auto` (32 here) once the cost gate was in place, geometric mean 2.35x versus 2.22x/2.19x/2.16x. With cheap depths no longer split, these suites' root branching does not keep more than about eight workers usefully busy, and extra threads only add contention and duplicated search. This is a suite- and machine-specific tuning that should be re-swept on a larger corpus and on smaller machines;
 
+### 8c. Root Young-Brothers-Wait (measured, not promoted)
+
+The deep corpus showed 2.2x node inflation at 8 threads and 2.9x at 16. That follows from the acceptance rule rather than being incidental overhead: the accepted answer is the lowest-index successful root move, so every node spent on a higher index is discarded the moment a lower one succeeds. With median root branching of 39, and ordering good enough that the first move is often the proof, an immediate full split puts most workers on results that can never be used.
+
+`--root-sequential-first N` searches the first N root moves sequentially before splitting the rest; `--root-split-all` is the promoted default. Answers are unchanged by construction and verified identical.
+
+- it works as predicted: **node waste falls ~29%** at both thread counts, 151.8M to 107.0M at 8 threads and 198.7M to 142.2M at 16;
+- it does not convert to wall time. Serialising the first root move adds critical-path latency, so the effects cancel at 8 threads (+0.6%) and the saving only wins at 16 (-3.7%);
+- on the easy suites it is a clear loss, 10-19% slower, since those resolve in milliseconds and had little waste to recover;
+- **not promoted**: an efficiency gain rather than a speed gain, and it costs time on the suites representing typical use;
+- what it settles: roughly 29 points of the inflation are speculative root work superseded by a lower-index proof. The residue is genuine duplication *within* sibling subtrees, which root-level scheduling cannot reach. That is the argument for work stealing on interior nodes rather than further root-level scheduling.
+
 ### 8b. Parallel Cost Gate
 
 Thread setup is pure overhead on work that would have finished in microseconds, but search cost is not knowable in advance. A gate that only inspects completed depths is useless here: cost grows exponentially with depth, so by the time a shallow depth shows the position is expensive, the expensive depth is the one already running.
