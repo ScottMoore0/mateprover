@@ -36,6 +36,51 @@ The final target is bitboards, compact undo, incremental attacks, pins/check sta
 
 The first E checkpoint uses a simpler array board to establish correctness. Bitboard occupancy planes have now been added beside it; the array board remains the source of truth for piece-at-square queries.
 
+#### Copy-Free Move Generation
+
+The bitboard slice above returned only 1.018x because it *added* a
+representation rather than replacing one. This increment collects the rest by
+using the planes to remove the copies they were competing with.
+
+Move generation asks exactly two questions of each child position: is the
+mover's king attacked (legality), and is the opponent's king attacked (check
+ordering). Neither needs a mailbox, packed TT words, castling rights or side to
+move. Both are answered by occupancy planes.
+
+- `planes_after_move` applies a move to occupancy planes alone, mirroring
+  `make_move`'s piece movement exactly: source vacated, en-passant victim
+  removed, ordinary capture removed, promotion piece substituted, destination
+  occupied, castling rook relocated;
+- generation now builds a 72-byte plane set with a handful of bit operations
+  instead of copying a 184-byte `Board` and running scatter writes through
+  `set_square`;
+- `--score-mates` still needs `is_checkmate` on a real child board, so it keeps
+  the materialising path; every other configuration never builds a child
+  `Board` during generation;
+- roughly 46M `make_move` calls per hard-suite run are removed. The ~20M copies
+  for moves actually searched remain, because recursion needs a real board;
+- this is an implementation change only: identical node counts and PVs on all
+  four suites, all six perft positions exact, 294/294 movegen parity with
+  python-chess.
+
+Measured over 5 interleaved trials:
+
+| suite | seq gain | par8 gain |
+|---|---:|---:|
+| negative controls | -20.9% | -11.3% |
+| regression controls | -26.2% | -21.3% |
+| smoke | -25.0% | -16.7% |
+| hard holdout | -23.6% | -20.2% |
+
+Geometric mean **1.316x sequential** and **1.212x parallel**. Hard-holdout
+throughput rose from 473 to **659 knps** at identical node counts, a 39%
+improvement.
+
+This closes the loop opened three increments ago. The lazy-defender measurement
+said board copies were not dominant; the bitboard measurement said adding
+planes made copies worse; together they said the two costs had to be attacked
+at once. Removing the copy that the planes made redundant is what paid.
+
 #### Bitboard Attack Detection
 
 Prompted by the measured finding that attack scanning, not board copying, dominates. `is_attacked` previously walked pawn, knight and king square lists and stepped along slider rays one square at a time.

@@ -51,9 +51,16 @@ Bitboard attack detection was then implemented on that basis and returned only
 1.018x geometric mean, because it *added* a representation rather than
 replacing one: `Board` grew ~64%, so cheaper attack queries partly paid for
 more expensive copies. The refined conclusion is that neither cost can be
-removed alone. The next board increment must do both at once -- make/unmake in
-place plus a single representation -- rather than layering another encoding on
-top of `sq[]` and `packed[]`.
+removed alone.
+
+Acting on that, move generation now answers its two questions -- is the mover's
+king attacked, is the opponent's king attacked -- from occupancy planes instead
+of a materialised child board, removing roughly 46M `make_move` calls per
+hard-suite run. That returned **1.316x sequential and 1.212x parallel**, and
+raised hard-holdout throughput from 473 to 659 knps at identical node counts.
+It is the largest single speed improvement so far, and it confirms the
+diagnosis: the planes only paid once they replaced the copy rather than
+competing with it.
 
 ## Revised Impact Order
 
