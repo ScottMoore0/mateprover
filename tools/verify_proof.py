@@ -75,6 +75,16 @@ def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
         branches = node.get("d")
         if branches is None:
             raise Failure(f"after {where} {move_uci}: non-leaf node has no replies")
+        if not branches:
+            # An empty reply list is never legitimate. If the position really
+            # has no legal replies it is mate or stalemate, and mate must be
+            # claimed with "mate": true so that it gets checked. Accepting an
+            # empty list here would verify a STALEMATE as a forced mate: the
+            # listed-equals-legal comparison below is vacuously true when both
+            # are empty, and the recursion adds a ply and returns success.
+            raise Failure(f"after {where} {move_uci}: empty reply list; a "
+                          f"position with no legal replies is mate or "
+                          f"stalemate and must be stated as a leaf")
 
         listed = sorted(b.get("r", "") for b in branches)
         legal = sorted(m.uci() for m in board.legal_moves)
@@ -86,6 +96,15 @@ def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
                 detail.append(f"missing defences {missing}")
             if extra:
                 detail.append(f"claims illegal defences {extra}")
+            if not detail:
+                # Same set, different multiset: a legal reply listed more than
+                # once. Rejected either way, but say why rather than failing
+                # with an empty explanation.
+                seen = {}
+                for uci in listed:
+                    seen[uci] = seen.get(uci, 0) + 1
+                dupes = sorted(u for u, n in seen.items() if n > 1)
+                detail.append(f"lists duplicate defences {dupes}")
             raise Failure(f"after {where} {move_uci}: " + "; ".join(detail))
 
         worst = 0

@@ -33,6 +33,10 @@ mine to assert:
 echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
+The certificate format is specified in [docs/PROOF_FORMAT.md](docs/PROOF_FORMAT.md),
+precisely enough to write an independent verifier without reading the engine.
+That is the point of it: the claim should not rest on trusting the prover.
+
 It re-derives every legal move itself with python-chess and never consults the
 engine, so it catches a certificate that omits an inconvenient defence, marks a
 non-mating leaf as mate, or overstates the depth. The test suite exercises

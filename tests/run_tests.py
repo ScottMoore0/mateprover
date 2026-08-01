@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
@@ -615,11 +616,42 @@ def test_shipped_verifier(engine: Path, res: Results) -> None:
         code, _ = run_verifier(replaced(forged))
         res.check("verifier rejects a forged mate leaf", code != 0)
 
-    # 3. corrupt the principal variation
+    # 3. invent a defence that is not legal
+    invented = json.loads(json.dumps(node))
+    if invented.get("d"):
+        invented["d"].append({"r": "a1a2", "p": {"a": "a2a3", "mate": True}})
+        code, _ = run_verifier(replaced(invented))
+        res.check("verifier rejects an invented illegal defence", code != 0)
+
+    # 4. list a legal defence twice. The reply multiset must match exactly, so a
+    #    duplicate is as wrong as an omission even though nothing is missing.
+    doubled = json.loads(json.dumps(node))
+    if doubled.get("d"):
+        doubled["d"].append(json.loads(json.dumps(doubled["d"][0])))
+        code, detail = run_verifier(replaced(doubled))
+        res.check("verifier rejects a duplicated defence", code != 0)
+        res.check("duplicate rejection explains itself", "duplicate" in detail.lower(),
+                  detail.strip()[:120])
+
+    # 5. make the attacker's own move illegal
+    illegal = json.loads(json.dumps(node))
+    illegal["a"] = "a1a2"
+    code, _ = run_verifier(replaced(illegal))
+    res.check("verifier rejects an illegal attacker move", code != 0)
+
+    # 6. empty the reply list. A non-leaf node claiming no defences exist is
+    #    claiming stalemate or mate without saying so.
+    emptied = json.loads(json.dumps(node))
+    if emptied.get("d"):
+        emptied["d"] = []
+        code, _ = run_verifier(replaced(emptied))
+        res.check("verifier rejects an empty reply list", code != 0)
+
+    # 7. corrupt the principal variation
     code, _ = run_verifier(re.sub(r"pv [^;]+;", "pv a1a2;", first) + "\n")
     res.check("verifier rejects a corrupted pv", code != 0)
 
-    # 4. overstate the mate depth
+    # 8. overstate the mate depth
     dm = DM_RE.search(first)
     if dm:
         wrong = first.replace(f"dm {dm.group(1)};", f"dm {int(dm.group(1)) + 1};")
@@ -790,6 +822,46 @@ def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
               not dangling, "; ".join(dangling[:4]))
 
 
+def test_verifier_rejects_stalemate_as_mate(engine: Path, res: Results) -> None:
+    """A stalemate must never verify as a forced mate.
+
+    Found while specifying the certificate format. A node of the form
+    {"a": <move>, "d": []} was accepted whenever the move left the defender with
+    no legal reply: the listed-equals-legal check is vacuously true when both
+    sides are empty, so the recursion added a ply and returned success. That
+    accepts a STALEMATE as a mate.
+
+    A full output line was still rejected, but only by the separate pv check, so
+    the hole was invisible from outside and would have opened up for any
+    stalemate buried in a branch the pv does not follow. This exercises
+    verify_node directly for that reason.
+    """
+    print("\n[verifier] a stalemate is not a mate")
+
+    if not HAVE_CHESS:
+        res.skip("stalemate rejection", "python-chess not installed")
+        return
+
+    spec = importlib.util.spec_from_file_location(
+        "verify_proof", HERE.parent / "tools" / "verify_proof.py")
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+
+    # f1f7 leaves Black stalemated: no legal reply, and not in check.
+    board = chess.Board("7k/8/8/8/8/8/8/1K3Q2 w - - 0 1")
+    probe = board.copy()
+    probe.push(chess.Move.from_uci("f1f7"))
+    res.check("the probe position really is stalemate, not mate",
+              probe.is_stalemate() and not probe.is_checkmate())
+
+    try:
+        depth = verifier.verify_node(board.copy(), {"a": "f1f7", "d": []}, [])
+        res.check("verifier rejects a stalemate claimed as mate", False,
+                  f"accepted, returned depth {depth}")
+    except verifier.Failure:
+        res.check("verifier rejects a stalemate claimed as mate", True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -822,6 +894,7 @@ def main() -> int:
     test_defender_restrictions(args.engine, res)
     test_restriction_portfolio(args.engine, res)
     test_shipped_verifier(args.engine, res)
+    test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)

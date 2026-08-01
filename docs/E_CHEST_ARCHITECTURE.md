@@ -1490,6 +1490,48 @@ deliberately **not** renumbered despite being out of order: they are cited by
 each other and by commit messages, so their stability is worth more than their
 tidiness.
 
+### 8q. Specifying The Certificate Found A Hole In The Verifier
+
+The certificate is the project's central claim: that you need not trust the
+prover. Until now it existed only as emitter code, a reference verifier, and
+prose. Anyone writing an independent checker -- the entire point of the format --
+had to reverse-engineer it. `docs/PROOF_FORMAT.md` now specifies the grammar, the
+obligations a verifier must discharge, and, as importantly, what the certificate
+does **not** claim.
+
+Two non-claims are worth stating because both are easy to assume. A certificate
+proves "the attacker can force mate in at most N", not that N is minimal:
+minimality follows from iterative deepening refuting every shorter depth first,
+which is a property of the search discipline and cannot be confirmed from the
+certificate alone -- and under `--direct-depth` it is not claimed at all. And a
+certificate is not canonical: under `--portfolio-parallel` the same position may
+yield different valid proofs on different runs.
+
+Writing obligation 3 -- that a defender node lists *exactly* the legal replies --
+exposed a hole in the shipped verifier. A node `{"a": <move>, "d": []}` was
+accepted whenever the move left the defender with no legal reply, because
+"listed equals legal" is vacuously true when both are empty; the recursion then
+added a ply and returned success. That accepts a **stalemate as a forced mate**.
+
+The reason it had never been caught is instructive. A whole output line carrying
+such a certificate *was* rejected -- by the principal-variation check, which
+independently requires the pv to end in checkmate. From outside the tool the
+behaviour looked correct. The hole was reachable only for a stalemate in a branch
+the pv does not follow, and confirming it required calling `verify_node`
+directly. A second, unrelated check was masking a soundness bug in the first.
+
+Fixed by rejecting an empty reply list outright, which is never legitimate: the
+engine emits mate as a leaf. The adversarial suite now forges certificates six
+ways rather than two -- omitted defence, invented illegal defence, duplicated
+defence, non-mating leaf, illegal attacker move, empty reply list -- plus a
+direct check that the node logic itself rejects stalemate-as-mate. The verifier
+also now explains a duplicate rejection instead of failing with an empty reason,
+which it previously did because it compared sorted lists but diagnosed with sets.
+
+148 checks. The general lesson is that a format with one implementation has no
+specification, only behaviour; writing the specification is what turns "what it
+does" into "what it must do", and the gap between those two was a soundness bug.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
