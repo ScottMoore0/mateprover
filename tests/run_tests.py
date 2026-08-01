@@ -280,6 +280,39 @@ def test_cli_contract(engine: Path, res: Results) -> None:
     res.check("Chest compatibility flags accepted", code == 0, f"exit={code}")
 
 
+def test_help_documents_every_option(engine: Path, res: Results) -> None:
+    """Every option the parser accepts must appear in --help.
+
+    Help text drifts silently: a flag gets added during development and the
+    usage block is not updated, so a released tool accepts options nobody can
+    discover. This caught 14 undocumented options when first written, including
+    --time-limit and --direct-depth.
+    """
+    print("\n[docs] --help covers every accepted option")
+
+    source = HERE.parent / "src" / "echest.cpp"
+    if not source.exists():
+        res.skip("help coverage", "source not alongside tests")
+        return
+
+    text = source.read_text(encoding="utf-8", errors="replace")
+    try:
+        start = text.index("for (int i = 1; i < argc; ++i)")
+        end = text.index("if (read_stdin)", start)
+    except ValueError:
+        res.skip("help coverage", "could not locate the argument parser")
+        return
+
+    accepted = sorted(set(re.findall(r'arg == "(-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*)"',
+                                     text[start:end])))
+    proc = subprocess.run([str(engine), "--help"], capture_output=True, timeout=60)
+    help_text = proc.stdout.decode()
+
+    missing = [flag for flag in accepted if flag not in help_text]
+    res.check(f"--help documents all {len(accepted)} accepted options",
+              not missing, f"missing: {missing}")
+
+
 def test_pv_and_certificates(engine: Path, res: Results) -> None:
     print("\n[verify] PV replay and proof certificates (needs python-chess)")
     if not HAVE_CHESS:
@@ -367,6 +400,7 @@ def main() -> int:
     test_invariance(args.engine, res)
     test_time_limit(args.engine, res)
     test_cli_contract(args.engine, res)
+    test_help_documents_every_option(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")

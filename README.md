@@ -1,39 +1,93 @@
-# E Chest
+# echest
 
-E Chest is the architectural rewrite line for an exact directmate prover.
+An exact directmate prover that emits **machine-checkable proof certificates**.
 
-It is a new implementation. Other mate solvers are used for testing,
-benchmarking and verification, but the prover core is written from scratch
-and uses no code from any of them.
+Given a position and a depth N, echest either proves a forced mate in N and
+emits a proof an independent checker can verify, or reports that it found none.
+It does not estimate, search heuristically for a likely mate, or return a score
+— every reported mate is a complete AND/OR proof in which every legal defender
+reply is refuted.
 
-## Current Status
+```
+$ echo "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" | echest -z 2 -
+2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -; acn 43; acs 0.0002; bm h5a5; dm 2; pv h5a5 d8d7 e3f5;
+```
 
-This initial checkpoint establishes:
+## What makes it different
 
-- standalone source tree;
-- standalone executable interface compatible with the benchmark harness;
-- legal move generation and directmate proof scaffolding;
-- incrementally maintained packed board words for exact TT key construction;
-- proof-carrying output in UCI move format;
-- exact PV replay compatibility with the existing validator;
-- opt-in recursive proof-tree output verified independently with python-chess;
-- documentation for the full rewrite path.
+Most engines reporting `mate in N` are reporting a search result. echest
+reports a **proof**, and with `--emit-proof` it hands you the whole thing:
 
-The first implementation is intentionally conservative. It prioritizes correctness and auditability over maximum speed while the proof kernel and board representation are brought up under tests.
+```
+proof {"a":"h5a5","d":[{"r":"d8d7","p":{"a":"e3f5","mate":true}}, ...]}
+```
+
+Every attacker node carries one proof move. Every defender node enumerates
+**exactly** the legal replies — no sampling, no representative line — and each
+leaf ends in real checkmate. `tests/run_tests.py` verifies these certificates
+against python-chess without trusting the engine at all.
+
+That property drives the design: an optimisation is acceptable only if the
+proof still verifies, and several plausible optimisations in this engine's
+history were rejected for failing that bar rather than for being slow.
+
+## Performance
+
+Measured on a 32-core Windows host, GCC 15, `-O3`.
+
+Single-threaded throughput on a 40-position hard suite: **659k nodes/sec**.
+
+Speed relative to the same suites earlier in development, with identical
+answers and identical node counts:
+
+| | speedup |
+|---|---:|
+| sequential (efficiency only) | 1.44x |
+| default (8 threads) | 2.93x |
+
+## Capability
+
+Speed matters less than reach, so this is measured against
+[matetrack](https://github.com/vondele/matetrack), a public mate benchmark,
+rather than suites chosen by this project.
+
+Solve rate within a wall-clock budget, 8 threads, `-M 256`:
+
+| problems | 0.5 s | 2 s | 5 s |
+|---|---:|---:|---:|
+| mate-in-8 (24 sampled) | 5/24 | 6–7/24 | 10–11/24 |
+| mate-in-10 (20 sampled) | 0/20 | 0/20 | 2/20 |
+
+With `--direct-depth`, which proves "a mate within N" instead of "the shortest
+mate is N":
+
+| problems | 2 s | 5 s |
+|---|---:|---:|
+| mate-in-8 | 9/24 | 12/24 |
+| mate-in-10 | 3/20 | 3/20 |
+
+Ranges reflect run-to-run variation for problems sitting near the budget
+boundary.
+
+**Read this honestly:** echest solves mate-in-5 and below essentially always,
+mate-in-6/7 reliably in seconds, roughly half of mate-in-8 within 5 seconds,
+and a small fraction of mate-in-10. It addresses the shallow end of a standard
+benchmark. Its limitation is reach, not throughput.
 
 ## Build
 
-Requires a C++17 compiler and CMake 3.16+. No third-party libraries.
+C++17 and CMake 3.16+. No third-party libraries.
 
 ```
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-The binary lands at `build/echest` (`build/echest.exe` on Windows).
+The binary lands at `build/echest` (`.exe` on Windows).
 
-Verified on Linux/GCC 13, Windows/MinGW-w64 GCC 15, and configured for
-macOS/Clang and Windows/MSVC in CI.
+Verified on Linux/GCC 13 and Windows/MinGW-w64 GCC 15; macOS/Clang and
+Windows/MSVC are configured in CI. Builds clean under
+`-Wall -Wextra -pedantic -Werror`.
 
 ## Test
 
@@ -47,110 +101,98 @@ or directly:
 python tests/run_tests.py --engine build/echest
 ```
 
-The suite covers:
+91 checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
   including under-promotion, and pinned-piece legality;
-- **known directmates** solved at the exact stated depth with a PV of the
-  right length;
-- **negative controls** that must produce no `dm` token;
-- **invariance**: the key move and mate depth must not change with thread
-  count, table sharing, the parallel cost gate, or the memory budget --
-  including a budget tight enough to force heavy eviction;
-- **PV replay and proof-certificate verification**, enabled automatically when
+- known directmates solved at the exact depth with a PV of the right length;
+- negative controls that must produce no mate;
+- **invariance** — the key move and mate depth must not change with thread
+  count, table sharing, the parallel cost gate, or the memory budget, including
+  a budget tight enough to force heavy eviction;
+- **time-limit soundness** — a budgeted search must stop on time and must never
+  claim a mate it did not prove;
+- CLI contract — bad input is rejected, not silently ignored;
+- PV replay and recursive certificate verification, enabled automatically when
   `python-chess` is installed and skipped cleanly when it is not.
 
 The core tests have no third-party dependency.
 
-## CLI Shape
+## Usage
 
-E accepts the Chest-style subset needed by the existing benchmark harness:
-
-```text
-echest.exe -b -1 -5 -M 64 -z 2 -
+```
+echest [options] -            read EPD/FEN lines from stdin
+echest [options] < file       read a single position from stdin
+echest --help                 full option list
 ```
 
-Supported now:
+Input is a FEN (the first four fields are enough). The mate depth comes from
+`-z N`, or is inferred from a `#N` token in an EPD line.
 
-- `-b`: accepted for compatibility;
-- `-1`: accepted for compatibility;
-- `-5`: output UCI-style coordinate moves;
-- `-M N`: table memory budget in megabytes, honoured as an entry ceiling; `-M 0` is unbounded;
-- `-z N`: requested mate depth;
-- `--route depth-first`: select the current exact depth-first route; this is the promoted default;
-- `--route dfpn`: unpromoted proof-number search preconditioner; at least 10x slower than the default on deep positions, retained for reproducibility;
-- `--route shallow-fast`: unpromoted exact route that tries mate-in-1 and mate-in-2 directly, then falls back to depth-first for deeper requests;
-- `--emit-proof`: append a recursive JSON proof certificate for solved positions;
-- `--profile`: emit one `% e_profile {...}` JSON counter row to stderr per input position;
-- `--no-profile`: keep profiling disabled, which is the promoted default;
-- `--score-mates`: restore the older, more expensive move-order score that detects immediate mates during sorting;
-- `--no-mate-score`: keep the promoted default, included for explicitness in experiments;
-- `--score-checks`: keep the promoted default, which scores checking moves during ordering;
-- `--no-check-score`: experimental probe that disables checking-move scoring during ordering;
-- `--fast-check-score`: no-op alias, retained for CLI compatibility; check scoring is now a single shared plane query;
-- `--exact-check-score`: no-op alias, retained for CLI compatibility;
-- `--order-min-size N`: experimental probe that skips scoring/sorting legal move lists smaller than `N`;
-- `--order-all`: restore the promoted default, equivalent to ordering move lists with at least two moves;
-- `--bucket-order`: experimental probe that groups moves by descending score while preserving stable order inside each score bucket;
-- `--stable-sort-order`: restore the promoted stable-sort ordering implementation;
-- `--refutation-hints`: experimental probe that moves known defender refutations to the front;
-- `--no-refutation-hints`: keep defender refutation hints disabled, which is the promoted default;
-- `--proof-hints`: promoted ordering-only mode that moves known attacker proof moves to the front;
-- `--no-proof-hints`: disable attacker proof hints for rollback and A/B checks;
-- `--keep-iter-tt`: promoted exact-TT mode that keeps entries across iterative-depth passes;
-- `--clear-iter-tt`: restore the previous behavior, clearing exact TT entries before each iterative-depth pass;
-- `--bound-tt`: experimental probe that adds a depth-bound TT beside exact-depth TT entries;
-- `--exact-tt-only`: keep the promoted default, using exact-depth TT entries only;
-- `--bound-tt-failures`: include failed-node bounds in the depth-bound TT probe;
-- `--bound-tt-ok-only`: keep the probe default, storing only proven-node bounds;
-- `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
-- `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
-- `--lazy-defender`: unpromoted probe; order pseudo-legal defender replies and test legality only when reached;
-- `--eager-defender`: promoted default; establish legality for all defender replies up front;
-- `--fused-order`: promoted default; compute legality and ordering scores in one pass over the child boards;
-- `--split-order`: rollback path that generates and scores in two passes;
-- `--direct-depth`: start iterative deepening at the requested depth instead of 1. Proves "a mate within N" rather than "the shortest mate is N". Materially better solve rate at a fixed budget; see docs;
-- `--iterative-depth`: promoted default, shortest-mate semantics;
-- `--time-limit S`: wall-clock budget in seconds; on expiry the search stops and reports a `timeout` marker rather than a mate. 0 (default) is unlimited;
-- `--threads N`: root-split parallel search across `N` worker threads; the benchmark registry promotes `8`;
-- `--parallel-min-nodes N`: cost gate; a depth runs sequentially until it exceeds `N` nodes, then escalates to a split. Default `500`;
-- `--no-parallel-gate`: always split, never probe sequentially first;
-- `--shared-tt`: promoted table mode for the parallel path; workers share one sharded exact proof table;
-- `--private-tt`: rollback path giving each worker its own exact table;
-- `--shared-tt-shards N`: shard count for the shared table, default 256;
-- `--threads auto`: use the detected hardware concurrency;
-- `--single-thread`: keep the promoted default of one thread and the exact sequential path;
-- `--perft N`: print perft counts for depths 1..N for the position on stdin;
-- `--perft-divide N`: print the per-root-move perft breakdown at depth N;
-- `-`: read EPD/FEN lines from stdin.
+Output is one line per position:
 
-Unsupported options are currently ignored only when they are harmless compatibility flags. Native typed support for WinChest/Chest restriction options is a later E milestone.
-
-## Output
-
-Solved positions print:
-
-```text
-<fen4>; acn <nodes>; acs <seconds>; bm <uci>; dm <depth>; pv <uci ...>;
+```
+<fen>; acn <nodes>; acs <seconds>; bm <move>; dm <depth>; pv <moves...>;
 ```
 
-With `--emit-proof`, solved positions additionally print:
+`bm`, `dm` and `pv` are absent when no mate was proved. A `timeout` marker
+appears when the search hit its budget, so "gave up" is distinguishable from
+"proved there is no mate".
 
-```text
-proof {"a":"<attacker-move>","mate":true}
-```
+### Options worth knowing
 
-or, for non-leaf attacker nodes:
+| option | effect |
+|---|---|
+| `-z N` | requested mate depth |
+| `-M N` | table budget in MB, honoured as an entry ceiling; `0` unbounded |
+| `--threads N` \| `auto` | root-split parallel search |
+| `--time-limit S` | wall-clock budget; expiry reports `timeout`, never a mate |
+| `--direct-depth` | prove "a mate within N" rather than the shortest mate; materially better solve rate at a fixed budget |
+| `--emit-proof` | append the recursive JSON proof certificate |
+| `--perft N` / `--perft-divide N` | move-generation self-check |
+| `--profile` | per-position counters on stderr |
 
-```text
-proof {"a":"<attacker-move>","d":[{"r":"<defender-reply>","p":<child-proof>}, ...]}
-```
+`--help` lists the full set, including search-tuning flags and their rollback
+counterparts.
 
-The proof tree is verified by `benchmarks\scripts\e_verify_proof_tree.py`. A valid proof must enumerate exactly every legal defender reply at every defender node and each leaf must end in checkmate.
+## Correctness
 
-Proof-certificate construction is opt-in. Normal benchmark/search runs do not build recursive proof JSON internally unless `--emit-proof` is passed.
+The engine is exact. Beyond the test suite:
 
-No-mate or unproved positions print no `dm` token, so the existing harness treats them as no mate.
+- move generation matches python-chess on 294 benchmark positions with zero
+  mismatches, and matches published perft counts on six standard positions;
+- eviction from the proof table can never change an answer — the table is a
+  memo of verdicts that are pure functions of an exact key, so a missing entry
+  costs time and nothing else;
+- parallel search returns the lowest-index successful root move, so the key
+  move is defined independently of thread scheduling;
+- an aborted search — cancelled, out of budget, or out of time — records no
+  verdict, so it can never be mistaken for a disproof.
 
-Profile rows are stderr-only and are intended for search-design work, not for normal benchmark scoring. They include node counts, TT probes/hits/stores, attacker/defender move-list counts, ordering counts, immediate-mate tests, and refutation-hint counters. The helper script `benchmarks\scripts\collect_e_profiles.py` runs a registry engine over a suite and writes case-labelled JSONL profile rows.
+A move-generation bug found by perft during development would have allowed a
+**false mate**: castling rights were being revoked by captured piece type, so
+capturing a promoted rook stripped rights while the original rooks stood,
+removing a legal defender escape. Roughly four thousand directmate positions in
+this project's own suites never caught it; six perft positions caught it
+immediately. Perft is a permanent gate for that reason.
+
+## Limitations
+
+- Reach, as above: the shallow end of matetrack.
+- Chest/WinChest restriction options (`-C -R -K -P -X -I`) are **not
+  implemented** and are rejected rather than ignored, so a constrained request
+  never returns an unconstrained answer. `--allow-unimplemented` overrides.
+- `-M` is an entry ceiling derived from an estimated bytes-per-entry, not a
+  hard RSS bound; a node-based container cannot give one.
+- A DFPN route exists behind `--route dfpn` but is slower than the default at
+  every depth measured, and is not recommended.
+
+## Project context
+
+echest is a from-scratch implementation. Other mate solvers are used as
+behavioural oracles and differential references in testing; no code from any
+of them is used here.
+
+`docs/E_CHEST_ARCHITECTURE.md` records the design and, in more detail than is
+usual, the optimisations that were measured and **rejected** — including why.
