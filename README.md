@@ -179,7 +179,9 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- Reach, as above: the shallow end of matetrack.
+- Reach, as above: the shallow end of matetrack. This is a limitation of the
+  search, not of resources: mate-in-10 solve rate is unchanged from 8 to 32
+  threads and from 64 MB to unbounded memory.
 - Chest/WinChest restriction options (`-C -R -K -P -X -I`) are **not
   implemented** and are rejected rather than ignored, so a constrained request
   never returns an unconstrained answer. `--allow-unimplemented` overrides.

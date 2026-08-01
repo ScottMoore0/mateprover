@@ -374,6 +374,21 @@ Current E checkpoint:
 - key move, mate depth and solvedness are identical to sequential E on every validated row; only node counts differ, because workers explore concurrently;
 - `--threads 8` beat 16, 24 and `auto` (32 here) once the cost gate was in place, geometric mean 2.35x versus 2.22x/2.19x/2.16x. With cheap depths no longer split, these suites' root branching does not keep more than about eight workers usefully busy, and extra threads only add contention and duplicated search. This is a suite- and machine-specific tuning that should be re-swept on a larger corpus and on smaller machines;
 
+### 8e. Resource Scaling Is Exhausted
+
+Solve rate at a 5 s budget with `--direct-depth`, varying memory at 8 threads:
+
+| problems | 64 MB | 256 MB | 1024 MB | 4096 MB | unbounded |
+|---|---:|---:|---:|---:|---:|
+| matetrack mate-in-8 | 12/24 | 12/24 | 13/24 | 13/24 | 13/24 |
+| matetrack mate-in-10 | 3/20 | 3/20 | 3/20 | 3/20 | **3/20** |
+
+**mate-in-10 is 3/20 under every resource configuration tested** -- 8 to 32 threads, 64 MB to unbounded memory. Removing the memory bound entirely changes nothing.
+
+This closes off two whole classes of improvement. More cores do not help, because root split saturates on duplicated nodes. More memory does not help, because eviction was never throttling reach -- the bounded-table work was necessary for robustness and was costing no capability.
+
+That is a useful negative: it localises the limitation to the search itself and makes any further resource-scaling work dead. `-M 64` stays the default since `-M 1024` gains roughly one problem in twenty four at mate-in-8 and nothing at mate-in-10; the guidance is documented rather than imposed.
+
 ### 8d. Parallelism Saturates At About 16 Threads
 
 Solve rate at a 5 s budget with `--direct-depth` on a 32-core host:
