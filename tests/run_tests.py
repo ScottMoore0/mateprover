@@ -814,7 +814,11 @@ def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
     print("\n[docs] every referenced file ships with the engine")
 
     root = HERE.parent
-    external = {"Options.txt"}          # WinChest's own documentation, cited not shipped
+    # Deliberate citations of things that exist outside this repository.
+    external = {
+        "Options.txt",      # WinChest's own documentation
+        "matetrack.epd",    # the public corpus the held-out positions are drawn from
+    }
     pattern = re.compile(
         r"`([^`\s]+\.(?:py|cpp|h|md|txt|epd|ps1|yml|json))`"
         r"|(?:^|\s)((?:benchmarks|tools|tests|src|docs)[/\\\\][^\s`,;)]+)")

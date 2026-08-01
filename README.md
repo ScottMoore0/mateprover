@@ -33,6 +33,14 @@ mine to assert:
 echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
+The reach figures above are reproducible: the held-out positions ship in
+`benchmarks/`, and `python tools/reproduce_results.py --engine build/echest`
+re-runs the measurements and prints them beside the documented values.
+
+[docs/RESULTS.md](docs/RESULTS.md) is the place to start if you want to know
+where this engine's capability comes from, what was tried and rejected with
+measurements, and how far to trust the numbers above. It is short.
+
 The output line format is specified in
 [docs/OUTPUT_FORMAT.md](docs/OUTPUT_FORMAT.md). Note especially that a completed
 search finding no mate ends after `acs` with no marker, while a search that ran

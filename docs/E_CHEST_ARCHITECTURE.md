@@ -6,6 +6,12 @@ E Chest is a from-scratch exact directmate prover designed to exceed the current
 
 The current D line wins mostly through orchestration: batching, route selection, memory sizing, load balancing, and worker fanout. E aims to improve the core prover itself and then regain or exceed D's orchestration advantages.
 
+> **Start with [RESULTS.md](RESULTS.md)** if you want the argument rather than
+> the record. This document is the record: every finding in the order it was
+> made, including the ones that went nowhere and why. It is deliberately
+> chronological, because several conclusions here were later overturned by
+> re-measurement, and the sequence is part of the evidence.
+
 ## Contents
 
 Sections are numbered by the order they were written, not the order they
@@ -1873,6 +1879,42 @@ step, after 8g, and for the same reason.
 The practical conclusion is that the portfolio needs no depth awareness. One
 table, derived once at one depth, is not merely adequate at another depth -- it is
 indistinguishable from a table derived for that depth specifically.
+
+### 8z. A Record Is Not An Argument
+
+This document had reached fifty-six sections in the order they were discovered.
+That is the right shape for evidence -- several conclusions here were later
+overturned by re-measurement, and the sequence is part of what makes the
+corrections legible -- but it is the wrong shape for a reader deciding whether to
+trust or use the engine. Fifty-six chronological findings do not state what the
+capability comes from.
+
+`RESULTS.md` now does, in about a hundred lines: the one idea that produced
+essentially all of the capability, the measured reach, a table of everything
+implemented and rejected with its numbers, the defects found and what found them,
+and an explicit statement of what would actually move the needle. It says plainly
+that nothing on the original backlog would.
+
+Two things were added so that a reader need not take any of it on trust.
+
+The held-out position sets now **ship with the engine**, in `benchmarks/`, with a
+note on why they are worth quoting: no tuning, lane selection or parameter choice
+used them, the portfolio having been derived on a disjoint training set. Re-tuning
+against them would destroy the only property that makes them evidence.
+
+`tools/reproduce_results.py` re-runs the documented measurements and prints what
+it gets beside what is claimed. Verified from a clean extraction, so a reader who
+clones the published tree can check the headline numbers rather than believe them.
+The mate-in-8 figure was re-measured while writing this and reproduced exactly at
+52/60.
+
+Writing it also caught a conflation of my own. The mate-in-8 escalation series
+(51/60, 56/60, 60/60 at 15 s, 60 s and 300 s) was measured at 32 threads with
+`--direct-depth`, while the headline 52/60 is the plain default configuration.
+Presenting them as one series would have implied the default reaches 60/60 given
+time, which is not what was measured. They are now separate lines, each with its
+configuration -- the fourth instance in this document of a number that meant less
+than it appeared to until its configuration was attached to it.
 
 ## Promotion Rule
 
