@@ -62,6 +62,20 @@ It is the largest single speed improvement so far, and it confirms the
 diagnosis: the planes only paid once they replaced the copy rather than
 competing with it.
 
+## Corpus Ceiling Lifted
+
+All frozen suites topped out at mate-in-5 and 185k nodes, so every speed
+measurement in this line was taken on positions resolved in milliseconds. A
+mined deep corpus (42 positions, mate-in-6 and 7, up to 25.6M nodes) now exists
+and is fully verified.
+
+It immediately showed that parallel speedup is **1.36x** on deep positions
+against 3.51x on the easy ones, with 8 threads exploring 2.2x the sequential
+node count. Root splitting duplicates progressively more work as depth grows.
+The remaining headroom is in reducing nodes, not executing them faster, which
+raises the priority of the native DFPN route above further parallel or
+efficiency work.
+
 ## Revised Impact Order
 
 1. Keep the exact proof acceptance boundary small and route-neutral.

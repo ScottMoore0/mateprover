@@ -442,6 +442,16 @@ E needs a larger corpus than the current suite:
 - restrictions/stipulations;
 - frozen train/dev/test/holdout splits.
 
+
+
+Current E checkpoint:
+
+- `benchmarks/scripts/e_mine_deep_mates.py` mines directmates deeper than the frozen suites, using the engine's own iterative deepening to establish the exact mate distance and grading positions by measured node cost;
+- `benchmarks/suites/e_deep_mined_20260622.jsonl` holds 42 verified positions, 35 mate-in-6 and 7 mate-in-7, with a maximum cost of 25.6M nodes -- **138x** the previous corpus maximum of 185k, and a median 13x it;
+- every position is PV-replay verified (42/42) and the mate-6 subset is proof-certificate verified (35/35, 0 invalid);
+- **this corpus immediately corrected a headline claim.** Parallel speedup measured 3.51x on the easy suites but only **1.36x** here, and 16 threads is slower than 8. Node counts reveal why: 8 threads explores 2.2x the sequential nodes and 16 threads 2.9x, because sibling root subtrees share far more structure deep in the tree than shallow, so root splitting duplicates increasing amounts of work as depth grows;
+- the frozen easy suites remain the correctness and regression gates. They are not informative about scaling, and search-algorithm work must be measured here instead.
+
 ### 13. CLI Contract
 
 A released prover is a tool other people drive from scripts, so the argument parser is part of the correctness surface, not decoration.
