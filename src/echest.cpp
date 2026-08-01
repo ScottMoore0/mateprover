@@ -228,6 +228,91 @@ struct BoundEntry {
     int fail_depth = 0;
 };
 
+// Exact proof table shared by every worker of a root-split search.
+//
+// Sharing is safe precisely because the key is exact and complete: an entry
+// records the verdict for one board, side to move, attacker colour, node kind,
+// castling and en-passant state, AT one exact remaining depth. That verdict is
+// a pure function of the key, so it does not matter which worker computed it,
+// and a reader cannot be misled by the writer's search context. This is the
+// payoff for the conservative exact-key design.
+//
+// Storage is sharded so concurrent probes and stores on unrelated keys do not
+// serialise. The shard is chosen from the high bits of the key hash, which are
+// independent of the low bits an unordered_map uses for bucketing.
+class SharedProofTable {
+public:
+    explicit SharedProofTable(std::size_t shard_count, std::size_t reserve_total) {
+        std::size_t shards = 1;
+        while (shards < shard_count) {
+            shards <<= 1;
+        }
+        mask_ = shards - 1;
+        shards_.reserve(shards);
+        for (std::size_t i = 0; i < shards; ++i) {
+            shards_.emplace_back(new Shard());
+            if (reserve_total > 0) {
+                shards_.back()->map.reserve(reserve_total / shards + 1);
+            }
+        }
+    }
+
+    bool probe(const TTKey& key, TTEntry& out) const {
+        const Shard& shard = shard_for(key);
+        std::lock_guard<std::mutex> lock(shard.mutex);
+        auto it = shard.map.find(key);
+        if (it == shard.map.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
+
+    void store(const TTKey& key, TTEntry entry) {
+        Shard& shard = shard_for(key);
+        std::lock_guard<std::mutex> lock(shard.mutex);
+        shard.map[key] = std::move(entry);
+    }
+
+    void clear() {
+        for (auto& shard : shards_) {
+            std::lock_guard<std::mutex> lock(shard->mutex);
+            shard->map.clear();
+        }
+    }
+
+    std::size_t size() const {
+        std::size_t total = 0;
+        for (const auto& shard : shards_) {
+            std::lock_guard<std::mutex> lock(shard->mutex);
+            total += shard->map.size();
+        }
+        return total;
+    }
+
+private:
+    struct Shard {
+        mutable std::mutex mutex;
+        std::unordered_map<TTKey, TTEntry, TTKeyHash> map;
+    };
+
+    std::size_t shard_index(const TTKey& key) const {
+        const std::size_t h = TTKeyHash{}(key);
+        return (h >> 32) & mask_;
+    }
+
+    Shard& shard_for(const TTKey& key) {
+        return *shards_[shard_index(key)];
+    }
+
+    const Shard& shard_for(const TTKey& key) const {
+        return *shards_[shard_index(key)];
+    }
+
+    std::vector<std::unique_ptr<Shard>> shards_;
+    std::size_t mask_ = 0;
+};
+
 // All tunable search options. This is the single value passed from the CLI to
 // the search, and is also what each worker copies when a search is split
 // across threads, so worker construction never has to re-parse or re-plumb
@@ -255,6 +340,8 @@ struct SearchConfig {
     bool bound_tt_failures = false;
     bool ordered_check_shortcut = false;
     int threads = 1;
+    bool shared_tt = true;
+    std::size_t shared_tt_shards = 256;
 };
 
 // Per-search mutable state. Inheriting the config keeps every existing
@@ -274,6 +361,10 @@ struct Search : SearchConfig {
     // result must never be stored in a proof table or read as a refutation.
     const std::atomic<bool>* cancel = nullptr;
     bool aborted = false;
+
+    // When non-null, exact proof entries live in a table shared with the other
+    // workers of this search instead of in the private `tt` map above.
+    SharedProofTable* shared_table = nullptr;
 
     void reset_for_new_search() {
         aborted = false;
@@ -1165,14 +1256,22 @@ bool should_order(const Search& s, std::size_t move_count) {
 
 bool probe_exact_proof_table(Search& s, const TTKey& key, Proof& out) {
     ++s.stats.tt_probes;
-    auto it = s.tt.find(key);
-    if (it == s.tt.end()) {
-        return false;
+    TTEntry entry;
+    if (s.shared_table != nullptr) {
+        if (!s.shared_table->probe(key, entry)) {
+            return false;
+        }
+    } else {
+        auto it = s.tt.find(key);
+        if (it == s.tt.end()) {
+            return false;
+        }
+        entry = it->second;
     }
     ++s.stats.tt_hits;
-    if (it->second.kind == TTEntryKind::Proof) {
+    if (entry.kind == TTEntryKind::Proof) {
         ++s.stats.exact_tt_proof_hits;
-        out = {true, it->second.pv, it->second.cert};
+        out = {true, std::move(entry.pv), std::move(entry.cert)};
     } else {
         ++s.stats.exact_tt_disproof_hits;
         out = {};
@@ -1187,12 +1286,18 @@ void store_exact_proof_table(Search& s, const TTKey& key, const Proof& proof) {
         return;
     }
     ++s.stats.tt_stores;
+    TTEntry entry;
     if (proof.ok) {
         ++s.stats.exact_tt_proof_stores;
-        s.tt[key] = {TTEntryKind::Proof, proof.pv, proof.cert};
+        entry = {TTEntryKind::Proof, proof.pv, proof.cert};
     } else {
         ++s.stats.exact_tt_disproof_stores;
-        s.tt[key] = {TTEntryKind::Disproof, {}, ""};
+        entry = {TTEntryKind::Disproof, {}, ""};
+    }
+    if (s.shared_table != nullptr) {
+        s.shared_table->store(key, std::move(entry));
+    } else {
+        s.tt[key] = std::move(entry);
     }
 }
 
@@ -1660,10 +1765,14 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
     // they never use.
     std::vector<std::unique_ptr<Search>> workers;
     std::vector<std::unique_ptr<WorkerSlot>> slots;
+    std::unique_ptr<SharedProofTable> shared_table;
     const int thread_count = std::max(1, s.threads);
     auto ensure_workers = [&]() {
         if (!workers.empty()) {
             return;
+        }
+        if (s.shared_tt) {
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -1672,7 +1781,8 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             auto ws = std::unique_ptr<Search>(new Search());
             static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
             ws->cancel = &slots.back()->cancel;
-            if (ws->tt_reserve > 0) {
+            ws->shared_table = shared_table.get();
+            if (ws->shared_table == nullptr && ws->tt_reserve > 0) {
                 ws->tt.reserve(ws->tt_reserve);
             }
             workers.push_back(std::move(ws));
@@ -1684,6 +1794,9 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             s.tt.clear();
             for (auto& ws : workers) {
                 ws->tt.clear();
+            }
+            if (shared_table) {
+                shared_table->clear();
             }
         }
         // Depth 1 is a flat scan for immediate mates; the split would cost more
@@ -2179,6 +2292,15 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--single-thread") {
             config.threads = 1;
+        } else if (arg == "--shared-tt") {
+            config.shared_tt = true;
+        } else if (arg == "--private-tt") {
+            config.shared_tt = false;
+        } else if (arg == "--shared-tt-shards" && i + 1 < argc) {
+            std::size_t value = 0;
+            if (parse_size(argv[++i], value) && value > 0) {
+                config.shared_tt_shards = value;
+            }
         } else if (arg == "--order-all") {
             config.order_min_size = 2;
         } else if ((arg == "-M" || arg == "-C" || arg == "-R" || arg == "-K" || arg == "-P" || arg == "-X" || arg == "-I" || arg == "-n" || arg == "-N") && i + 1 < argc) {

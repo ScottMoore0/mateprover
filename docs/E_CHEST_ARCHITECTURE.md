@@ -184,8 +184,25 @@ Current E checkpoint:
 - per-worker counters are folded back into the reported totals by `Stats::operator+=`, guarded by a `static_assert` on `sizeof(Stats)` so a new counter cannot silently escape the merge;
 - measured on the 40-case hard holdout: `197.8 ms` average sequential versus `72.7 ms` at 16 threads, a 2.72x speedup, with p95 `454.8 ms` to `155.8 ms`;
 - measured on smoke: `60.2 ms` average sequential versus `20.3 ms` at 8 threads;
-- the probe is **not promoted**. Node counts grow with thread count (3.34M sequential to 6.43M at 16 threads) because each worker keeps a private table, and cheaply refuted no-mate positions get slower (`0.60 ms` to `0.86 ms` average on negative controls) since a position with no proof has no early exit to win and simply pays the split overhead;
-- promotion should wait for a shared proof/disproof table, which removes the duplicated work, plus a cost gate that keeps trivially cheap positions sequential.
+- the parallel route is **not promoted as the default**; `--threads 1` remains the promoted setting and is identical to sequential E in PV and exact node count;
+- the shared proof table below is promoted as the table mode *for* the parallel path, and it removed most of the original private-table cost;
+- the one remaining blocker to defaulting `--threads` on is cheaply refuted no-mate positions, which are still about 8% slower than sequential because a position with no proof has no early exit to win. A cost gate that keeps trivially cheap work sequential should clear this.
+
+### 3b. Shared Exact Proof Table
+
+Sharing exact proof entries between workers is safe *because* the key is exact and complete. An entry records the verdict for one board, side to move, attacker colour, node kind, castling state and en-passant state, at one exact remaining depth. That verdict is a pure function of the key, so it does not matter which worker computed it and a reader cannot be misled by the writer's search context. This is the payoff for the conservative exact-key design in section 3.
+
+Current E checkpoint:
+
+- `--shared-tt` is the promoted table mode whenever `--threads N` with `N > 1` is active; `--private-tt` is the rollback/A-B path; `--shared-tt-shards N` tunes shard count;
+- the table is sharded with one mutex per shard, selected from the high bits of the key hash so the shard choice is independent of the low bits `unordered_map` uses for bucketing;
+- the abort invariant is unchanged: an aborted subtree still stores nothing, so no worker can publish a false disproof into the shared table;
+- shard count is not sensitive: `64` through `16384` shards all land within measurement noise at 16 threads, so lock contention is not the bottleneck and `256` is the default;
+- sharing cuts duplicated work by 20-24%: 40-case hard-holdout nodes drop from 6.56M to 5.09M at 16 threads;
+- more importantly it cuts *variance*. Over three interleaved trials the private-table path measured 79.1/100.5/75.4 ms while the shared path measured 69.3/70.9/68.0 ms;
+- three-trial interleaved speedups versus sequential at 16 threads, private versus shared: hard holdout 2.24x vs **2.74x**, smoke 2.62x vs **2.86x**, regression controls 2.54x vs **2.68x**;
+- the shared table also largely heals the no-mate regression, from 0.70x to 0.92x of sequential on negative controls, because workers now reuse each other's disproofs, which is exactly what a position with no mate needs;
+- validated with proof-tree verification at 16 threads on smoke (9/9 valid), regression controls (11/11 valid, 33 skipped) and negative controls (0 false proofs), plus identical solvedness and identical key moves against sequential on all rows.
 
 ### 9. Persistent Service Mode
 

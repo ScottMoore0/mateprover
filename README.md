@@ -72,6 +72,9 @@ Supported now:
 - `--ordered-check-shortcut`: promoted attacker-loop mode that uses already computed check scores to skip immediate-mate tests for moves known not to give check;
 - `--no-ordered-check-shortcut`: disable the ordered-check shortcut for rollback and A/B checks;
 - `--threads N`: unpromoted root-split parallel search across `N` worker threads;
+- `--shared-tt`: promoted table mode for the parallel path; workers share one sharded exact proof table;
+- `--private-tt`: rollback path giving each worker its own exact table;
+- `--shared-tt-shards N`: shard count for the shared table, default 256;
 - `--threads auto`: use the detected hardware concurrency;
 - `--single-thread`: keep the promoted default of one thread and the exact sequential path;
 - `-`: read EPD/FEN lines from stdin.

@@ -25,7 +25,7 @@ Implemented core pieces:
 
 Missing target architecture pieces:
 
-- shared proof/disproof TT as the primary table design; the current centralized exact helpers and explicit proof/disproof entries are only the first boundary, not the final table layout or replacement policy;
+- a shared exact proof table now exists and is promoted for the parallel path, but it is still an `unordered_map` per shard with no replacement policy or fixed memory bound; the final packed, bucketed, generation-aged layout is still outstanding;
 - native DFPN-first route;
 - promoted shallow fast route; the current `--route shallow-fast` implementation is available through `chest_E_shallow_fast_probe` for validation but is not the default;
 - defender-refutation route distinct from ordering hints;
@@ -38,7 +38,7 @@ Missing target architecture pieces:
 ## Revised Impact Order
 
 1. Keep the exact proof acceptance boundary small and route-neutral.
-2. Replace route-local TT experiments with a shared proof/disproof table design; the next implementation slices should add explicit entry kinds, replacement policy, and proof/disproof counters behind the centralized exact proof-table boundary.
+2. Give the shared exact proof table a real replacement policy and a fixed memory bound. Sharing and entry kinds are done; bounded memory, bucket layout, and generation aging are not.
 3. Add a shallow fast exact route for mate-in-1 and cheap mate-in-2 wins, falling back to depth-first.
 4. Add native DFPN-first search with proof reconstruction through the exact verifier.
 5. Add defender-refutation and threat/mating-net routes as exact route implementations, not lookup replacements.
