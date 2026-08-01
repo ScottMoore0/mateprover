@@ -206,9 +206,16 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- Reach, as above: the shallow end of matetrack. This is a limitation of the
-  search, not of resources: mate-in-10 solve rate is unchanged from 8 to 32
-  threads and from 64 MB to unbounded memory.
+- Reach, as above: the shallow end of matetrack. **At mate-in-10** this is a
+  limitation of the search rather than of resources: the solve rate is unchanged
+  from 8 to 32 threads and from 64 MB to unbounded memory. That does not carry
+  down a depth. At mate-in-8 the engine is budget-limited, not capability-limited
+  -- 51/60 held-out positions at 15s, 56/60 at 60s and 60/60 at 300s -- so there,
+  time and memory do buy reach.
+- The `-M` budget is an entry-count ceiling computed from an estimated bytes per
+  entry, not a hard cap on process memory, and it excludes fixed overhead. Small
+  budgets overshoot proportionally most: a 64 MB request peaks near 91 MB
+  resident, while 512 MB and 2 GB requests stay under. Size it with headroom.
 - WinChest's special-mate variants are **implemented**, except one: `-C N`
   (ChecksOnly, all five bits), `-R N` (threat depth, both signs), `-K N`
   (defender king squares), `-P N` (defender pieces able to move) and `-X N`

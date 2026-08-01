@@ -82,7 +82,7 @@ void print_usage() {
 "\n"
 "Resources:\n"
 "  -M N                          table budget in MB, honoured as an entry\n"
-"                                ceiling; 0 means unbounded (default 64)\n"
+"                                ceiling; 0 means unbounded (default 256)\n"
 "  --threads N | auto            root-split worker threads (default 1;\n"
 "                                registry promotes 8). auto = min(cores,16):\n"
 "                                the split saturates above that, so extra\n"

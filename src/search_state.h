@@ -89,7 +89,10 @@ struct SearchConfig {
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
     // -M megabytes. Converted to an entry ceiling via EST_BYTES_PER_ENTRY.
-    std::size_t memory_mb = 64;
+    // 64 MB sat well below the knee: at mate-in-8 it evicts hard enough to cost
+    // throughput, and the budget's fixed overhead is proportionally worst there
+    // (a 64 MB request peaks near 91 MB RSS). See architecture 8l.
+    std::size_t memory_mb = 256;
 };
 
 struct PnDnFwd {

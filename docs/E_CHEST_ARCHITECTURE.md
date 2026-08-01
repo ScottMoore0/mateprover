@@ -1174,6 +1174,52 @@ the default build: attribution by nested timing is the only method here that has
 produced a trustworthy answer, and it should not have to be rebuilt from scratch
 next time.
 
+### 8l. Transposition Density Is Low, And The Memory Default Was Below The Knee
+
+8k closed constant-factor speed and pointed at node-count reduction. The first
+candidate there is the transposition table, whose effectiveness had never been
+measured. `--profile` already reported the counters.
+
+On the hard holdout position, single-threaded, 20s at `-M 512`: 9.1M nodes, 9.1M
+probes, **1.45M hits -- a 15.9% hit rate** -- 7.7M stores, the table 95% full
+with **4.9M evictions**. Two-thirds of stores evicted something, which looks like
+straightforward thrashing.
+
+It is not. Sweeping the budget:
+
+| budget | nodes in 20s | hit rate | full | evictions |
+|---|---|---|---|---|
+| 256 MB | 8.97M | 15.6% | 98% | 6.12M |
+| 512 MB | 9.12M | 15.9% | 95% | 4.89M |
+| 1 GB | 9.57M | 16.1% | 91% | 2.80M |
+| 2 GB | 10.49M | 16.6% | 76% | **0** |
+
+Eliminating eviction *entirely* moves the hit rate by one point. **The ~16% hit
+rate is intrinsic**: at these depths the search tree barely transposes, and 94%
+of the hits it does get are disproofs. No replacement policy, table sizing or
+sharing scheme can do much, because the entries are not being lost -- they are
+not being asked for. That closes the transposition table as a lever, and it is
+the same shape of answer as 8i and 8j: the cost is not where it looked.
+
+What memory does buy is throughput, by not doing eviction work: 17% more nodes
+at 2 GB than 256 MB. Held out at the operating point (32 threads, 15s) that is
+52/60 at 512 MB against **53/60 at 2 GB**, gaining one position and losing none.
+One position is normally noise, but here it has a mechanism behind it and a
+monotone curve, so it is reported as weak-positive rather than dismissed.
+
+Two consequences, both promoted. The default budget was **64 MB**, well below the
+knee of that curve for the problems this engine targets; it is now 256 MB.
+And the budget is an entry-count ceiling derived from an estimated bytes-per-entry,
+excluding fixed overhead, so it is not a hard cap on process memory: a 64 MB
+request peaks near **91 MB** resident, 42% over, while 512 MB and 2 GB requests
+stay under because the search does not fill them. Small budgets overshoot
+proportionally most. That is now stated in the README rather than left for a user
+to discover.
+
+The README's standing claim that resources do not buy reach was also corrected.
+It was true as measured -- at mate-in-10 -- and 8h had already shown it fails one
+depth down. It now says which depth it describes.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
