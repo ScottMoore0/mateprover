@@ -434,6 +434,34 @@ Implementation and validation:
 
 The manual also records that under restriction "it can not be guaranteed that there will be found any solution at all, or that a given solution is the best (i.e. shortest) one" -- which matches how E behaves: a restricted search may legitimately report nothing.
 
+### 7g. The Restriction Portfolio
+
+Implementing the restrictions turned out to buy something the unrestricted engine could not get on its own.
+
+**A restriction only removes attacker options, so any mate found under one is a real forced mate.** Restrictions are incomplete, never unsound. That makes a restricted search a *sound fast path* for the ordinary problem, not a gamble: if it finds a mate in N, a mate in N exists, and the certificate verifies exactly as any other.
+
+`--portfolio` spends the time budget across a sequence of configurations -- unrestricted first and largest, then the restrictions that solved the most problems the others could not -- and stops at the first proof. The winning entry is reported as `; via K3` so a caller knows a restriction was used and that the mate may not be the shortest.
+
+Measured on matetrack mate-in-8, 24 positions, at **equal total budget**:
+
+| configuration | 15 s | 45 s |
+|---|---:|---:|
+| unrestricted | 15/24 | 15/24 |
+| **portfolio** | 15/24 | **17/24** |
+
+At 45 s the portfolio solves two problems the unrestricted search cannot, proved via `K3` and `R1`. At 15 s it ties: the unrestricted slice is only 34% of the budget, losing two, and the restrictions gain two back.
+
+Note the unrestricted column: 15/24 at both 15 s and 45 s. That is the scaling cliff again -- tripling the budget solves nothing more -- which is precisely why a *different search* rather than *more of the same search* is what helps.
+
+This is the first change in this line to improve capability at fixed budget by something other than speed.
+
+Two defects were caught by the existing gates while building it, both worth recording:
+
+- the reporting `Search` was given the caller's configuration only on the failure path, so a portfolio run that *succeeded* reported with a default-constructed config and silently dropped `--emit-proof`. The shipped verifier caught it immediately by refusing output that should have carried certificates;
+- the help-coverage test caught `--portfolio` and `--no-portfolio` missing from `--help` before they could ship undocumented.
+
+All 15 mate-in-8 proofs from a portfolio run verify, including the two found under restriction.
+
 ### 7f. ChecksOnly Completed
 
 All five ChecksOnly bits are implemented:

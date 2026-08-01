@@ -75,6 +75,10 @@ struct SearchConfig {
     int threat_depth = 0;
     // Root mate depth, needed because WinChest caps ThreatDepth at depth - 2.
     int root_depth = 0;
+    // Try a sequence of restricted searches within the time budget, falling
+    // back to the unrestricted one. Sound because a restriction only removes
+    // attacker options: a mate found under one is a real forced mate.
+    bool portfolio = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

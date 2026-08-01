@@ -71,6 +71,11 @@ void print_usage() {
 "                                directly; better solve rate at a fixed\n"
 "                                budget, but not guaranteed shortest\n"
 "  --iterative-depth             default; prove \"the shortest mate is N\"\n"
+"  --portfolio                   try restricted searches within the time\n"
+"                                budget before giving up; a restriction only\n"
+"                                removes attacker options, so any mate found\n"
+"                                is real. Needs --time-limit\n"
+"  --no-portfolio                default; single unrestricted search\n"
 "\n"
 "Resources:\n"
 "  -M N                          table budget in MB, honoured as an entry\n"
@@ -352,6 +357,10 @@ int main(int argc, char** argv) {
             config.root_sequential_first = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
+        } else if (arg == "--portfolio") {
+            config.portfolio = true;
+        } else if (arg == "--no-portfolio") {
+            config.portfolio = false;
         } else if (arg == "--direct-depth") {
             config.direct_depth = true;
         } else if (arg == "--iterative-depth") {

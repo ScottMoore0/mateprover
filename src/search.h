@@ -1423,6 +1423,38 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n";
 }
 
+// One entry in the restriction portfolio.
+struct PortfolioEntry {
+    const char* name;
+    int checks_mask;
+    int king_squares;
+    int max_defender_moves;
+    int threat_depth;
+    double weight;      // share of the budget
+};
+
+// Ordered by measured marginal value on matetrack mate-in-8: the unrestricted
+// search is the most general and gets the largest slice, then the restrictions
+// that solved the most problems the others could not.
+//
+// This is sound, not a heuristic gamble. A restriction only removes attacker
+// options, so any mate it finds is a real forced mate, verifiable by the same
+// certificate checker. It is incomplete, which is why the unrestricted search
+// runs too rather than being replaced.
+const std::vector<PortfolioEntry>& restriction_portfolio() {
+    static const std::vector<PortfolioEntry> entries = {
+        {"unrestricted", 0, 0, 0, 0, 0.34},
+        {"K3",           0, 3, 0, 0, 0.16},
+        {"C2",           2, 0, 0, 0, 0.16},
+        {"K2",           0, 2, 0, 0, 0.10},
+        {"X4",           0, 0, 4, 0, 0.09},
+        {"R1",           0, 0, 0, 1, 0.06},
+        {"C1",           1, 0, 0, 0, 0.05},
+        {"X2",           0, 0, 2, 0, 0.04},
+    };
+    return entries;
+}
+
 void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config) {
     std::string line = trim(raw);
     if (line.empty()) {
@@ -1439,24 +1471,71 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         max_depth = 1;
     }
 
-    Search s;
-    static_cast<SearchConfig&>(s) = config;
-    s.attacker = b.stm;
-    s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
-    s.root_depth = max_depth; // ThreatDepth is capped relative to this
-    if (s.time_limit > 0.0) {
-        s.has_deadline = true;
-        s.deadline = std::chrono::steady_clock::now() +
-                     std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                         std::chrono::duration<double>(s.time_limit));
-    }
-    s.tt.capacity = entry_capacity_for_mb(s.memory_mb);
-    if (s.tt_reserve > 0) {
-        s.tt.map.reserve(s.tt_reserve);
-    }
-    auto start = std::chrono::steady_clock::now();
+    const auto start = std::chrono::steady_clock::now();
+    const bool use_portfolio = config.portfolio && config.time_limit > 0.0;
 
-    RouteResult route_result = run_route(s, b, max_depth);
+    // Each attempt gets a fresh Search: tables from a restricted run answer a
+    // different question and must not leak into the next attempt.
+    auto attempt = [&](const PortfolioEntry* entry, double seconds, Search& out) {
+        static_cast<SearchConfig&>(out) = config;
+        out.attacker = b.stm;
+        out.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+        out.root_depth = max_depth;
+        out.portfolio = false;
+        if (entry != nullptr) {
+            out.checks_mask = entry->checks_mask;
+            out.king_squares = entry->king_squares;
+            out.max_defender_moves = entry->max_defender_moves;
+            out.threat_depth = entry->threat_depth;
+        }
+        if (seconds > 0.0) {
+            out.has_deadline = true;
+            out.deadline = std::chrono::steady_clock::now() +
+                           std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                               std::chrono::duration<double>(seconds));
+        }
+        out.tt.capacity = entry_capacity_for_mb(out.memory_mb);
+        if (out.tt_reserve > 0) {
+            out.tt.map.reserve(out.tt_reserve);
+        }
+        return run_route(out, b, max_depth);
+    };
+
+    Search s;
+    // The reporting Search carries the caller's config from the start. It was
+    // previously assigned only on the failure path, so a portfolio run that
+    // succeeded reported with a default-constructed config and silently
+    // dropped --emit-proof.
+    static_cast<SearchConfig&>(s) = config;
+    RouteResult route_result;
+    const char* winning_entry = nullptr;
+
+    if (use_portfolio) {
+        const auto& entries = restriction_portfolio();
+        const auto deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                          std::chrono::duration<double>(config.time_limit));
+        for (const PortfolioEntry& entry : entries) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline) {
+                break;
+            }
+            const double remaining = std::chrono::duration<double>(deadline - now).count();
+            const double slice = std::min(remaining, config.time_limit * entry.weight);
+            Search attempt_search;
+            const RouteResult r = attempt(&entry, slice, attempt_search);
+            if (route_result_is_acceptable(r, max_depth)) {
+                route_result = r;
+                s.stats += attempt_search.stats;
+                s.timed_out = false;
+                winning_entry = entry.name;
+                break;
+            }
+            s.stats += attempt_search.stats;
+            s.timed_out = s.timed_out || attempt_search.timed_out;
+        }
+    } else {
+        route_result = attempt(nullptr, config.time_limit, s);
+    }
     const Proof& proof = route_result.proof;
     const bool accepted = route_result_is_acceptable(route_result, max_depth);
     if (!accepted && route_result.proof.ok) {
@@ -1475,6 +1554,11 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         if (s.emit_proof && !proof.cert.empty()) {
             std::cout << "; proof " << proof.cert;
         }
+    }
+    if (accepted && winning_entry != nullptr && std::string(winning_entry) != "unrestricted") {
+        // Say which restriction proved it: the mate is real but may not be the
+        // shortest, and the caller is entitled to know a restriction was used.
+        std::cout << "; via " << winning_entry;
     }
     if (!accepted && s.timed_out) {
         // Distinguish "gave up" from "proved there is no mate". Without this a

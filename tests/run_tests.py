@@ -456,6 +456,55 @@ def test_defender_restrictions(engine: Path, res: Results) -> None:
         res.check(f"{flag} {off} is off", n == baseline, f"{n} != {baseline}")
 
 
+def test_restriction_portfolio(engine: Path, res: Results) -> None:
+    """--portfolio must be sound, opt-in, and still emit verifiable proofs.
+
+    A restriction only removes attacker options, so a mate found under one is a
+    real forced mate. That makes the portfolio a sound fast path rather than a
+    gamble -- but only if the proof it returns still verifies, which is what is
+    checked here.
+    """
+    print("\n[portfolio] restricted searches are a sound fast path")
+
+    cases = load_epd(HERE / "mates.epd")
+    plain = solve(engine, cases, ["-M", "64", "--time-limit", "20"])
+    pf = solve(engine, cases, ["-M", "64", "--time-limit", "20", "--portfolio"])
+
+    res.check("portfolio solves at least as much",
+              sum(1 for l in pf if DM_RE.search(l)) >= sum(1 for l in plain if DM_RE.search(l)))
+
+    # Off by default: without the flag no line may claim a restriction was used.
+    res.check("portfolio is off by default",
+              all("; via " not in l for l in plain))
+
+    if not HAVE_CHESS:
+        res.skip("portfolio proof verification", "python-chess not installed")
+        return
+
+    # Every portfolio proof must replay legally and end in mate, including any
+    # found under a restriction.
+    proofs = solve(engine, cases, ["-M", "64", "--time-limit", "20",
+                                   "--portfolio", "--emit-proof"])
+    bad = 0
+    checked = 0
+    for (fen, _), line in zip(cases, proofs):
+        pv = PV_RE.search(line)
+        if not pv:
+            continue
+        checked += 1
+        board = chess.Board(fen + " 0 1")
+        ok = True
+        for token in pv.group(1).split():
+            move = chess.Move.from_uci(token)
+            if move not in board.legal_moves:
+                ok = False
+                break
+            board.push(move)
+        if not (ok and board.is_checkmate()):
+            bad += 1
+    res.check(f"all {checked} portfolio proofs replay to mate", bad == 0, f"{bad} bad")
+
+
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.
 
@@ -663,6 +712,7 @@ def main() -> int:
     test_help_documents_every_option(args.engine, res)
     test_checks_only_restriction(args.engine, res)
     test_defender_restrictions(args.engine, res)
+    test_restriction_portfolio(args.engine, res)
     test_shipped_verifier(args.engine, res)
     test_pv_and_certificates(args.engine, res)
 
