@@ -2784,10 +2784,11 @@ the buffers in input order. Measured on 40 mate-in-12 positions with a 5 s cap:
 | 4 | 40.9 s | 30/40 |
 | 8 | **30.4 s** | 29/40 |
 
-**2.4x throughput at width 8.** Not linear, and it should not be: each position
-already runs eight lanes, so width 8 asks for 64 threads on 32 cores. The gain
-comes from filling the gaps left when a lane finishes early, not from adding
-independent work.
+**2.4x throughput at width 8.** Not linear: each position already runs eight
+lanes, so the gain comes from filling gaps left when a lane finishes early rather
+than from adding independent work. (This section originally blamed
+oversubscription -- 64 threads on 32 cores. 34 tested that and found it worth
+about 3%, so it is not the explanation.)
 
 The solve count drifts down slightly, 31 to 29. That is the honest cost: under a
 *wall-clock* limit, positions sharing cores each get less work done, so a wider
@@ -2805,6 +2806,47 @@ Verified by comparing *verdicts* rather than whole lines: under
 runs, so a textual diff between widths would have shown a difference that has
 nothing to do with batching. Widths 1, 2 and 5 give the same depths, the same
 timeouts, against the same input lines.
+
+### 34. Two Budgets, Two Different Batch Trades
+
+33 made two claims in passing that were not tested. Both are now, and one was
+wrong.
+
+**Oversubscription is not why batching scales sub-linearly.** Width 8 runs eight
+positions of eight lanes each, 64 threads on 32 cores, which looked like the
+obvious culprit. Removing the inert root-split threads with `--single-thread`
+should then have helped substantially. It gives 28.5 s against 29.3 s and one
+extra position -- about 3%, inside noise. The sub-linearity is lane-length
+imbalance, not thread contention: a position finishes when its slowest lane does,
+and lanes differ.
+
+**Under a node budget the reach/throughput trade disappears entirely**, which 33
+asserted without checking. Forty mate-in-12 positions, 3M nodes each:
+
+| width | wall clock | solved | verdicts |
+|---|---|---|---|
+| 1 | 257.6 s | 33/40 | -- |
+| 4 | 166.6 s | 33/40 | identical |
+| 8 | **152.1 s** | **33/40** | identical |
+
+Identical verdict sequences at every width, and 1.7x throughput. So the two
+budget types give genuinely different batch behaviour:
+
+| budget | throughput at width 8 | reach | reproducible |
+|---|---|---|---|
+| `--time-limit` | 2.4x | drifts, 31 → 29 | no |
+| `--node-limit` | 1.7x | **unchanged** | yes |
+
+The reason is direct. A wall clock is a shared resource, so positions competing
+for cores each get less of it; a node budget is per-position and indifferent to
+what else is running. Whoever wants a corpus processed quickly and cares about
+the answers should use a node budget; whoever wants the most reach per second on
+one position should use a clock and leave the batch width alone.
+
+That also makes the batch test deterministic. It compared verdicts under a
+wall-clock limit, where a wider batch can legitimately lose a position for
+reasons unrelated to ordering -- a test that could fail without a defect. It now
+uses a node budget, where any difference is a real one.
 
 ## Promotion Rule
 

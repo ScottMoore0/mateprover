@@ -95,10 +95,15 @@ from work already done: there is no cross-position cache to warm. Restarting per
 position costs only process startup.
 
 It also means positions can be solved concurrently. `--parallel-positions N`
-solves N at a time and emits the results in input order, which raises batch
-throughput about 2.4x at N=8 on a 32-core machine. It is off by default because
-answers then arrive in batches rather than as they are produced, which is what
-service mode depends on.
+solves N at a time and emits the results in input order. It is off by default
+because answers then arrive in batches rather than as they are produced, which is
+what service mode depends on.
+
+Pair it with `--node-limit` rather than `--time-limit` for corpus work. A node
+budget is per-position, so batching costs nothing: eight at a time gives 1.7x
+throughput with **identical** answers. A wall clock is shared, so positions
+competing for cores each get less of it -- 2.4x throughput, but a few deep
+positions fall out (34).
 
 ## Other modes
 

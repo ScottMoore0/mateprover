@@ -1448,7 +1448,13 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
     stdin = "".join(f"{fen} bm #{dm};" + chr(10) for fen, dm in cases)
 
     def verdicts(width):
-        out = run(engine, ["-5", "--time-limit", "10", "--parallel-positions", str(width), "-"], stdin)
+        # A node budget rather than a clock: under a wall-clock limit, positions
+        # sharing cores each do slightly less work, so a wider batch can lose a
+        # position for reasons that have nothing to do with ordering. With a node
+        # budget the answers are identical at every width, which is the property
+        # worth pinning (34).
+        out = run(engine, ["-5", "--node-limit", "300000",
+                           "--parallel-positions", str(width), "-"], stdin)
         lines = [l for l in out.splitlines() if l.strip()]
         res.check(f"one line per position at width {width}", len(lines) == len(cases),
                   f"got {len(lines)} of {len(cases)}")
