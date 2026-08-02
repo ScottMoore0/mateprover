@@ -31,13 +31,30 @@ for this measurement, and never consulted during development (14):
 
 | measurement | result | 95% CI |
 |---|---|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **171/200 = 85.5%** | 80.0-89.7 |
-| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **54/60 = 90.0%** | 79.9-95.3 |
-| mate-in-10, same with the previous default route | 37/60 = 61.7% | 49.0-72.9 |
+| mate-in-8, default configuration, 15 s (200 positions) | **156/200 = 78.0%** | 71.8-83.2 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **58/60 = 96.7%** | 88.6-99.1 |
 | mate-in-12, same conditions (40 positions) | 33/40 = 82.5% | 68.0-91.3 |
 | mate-in-14, same conditions (40 positions) | 30/40 = 75.0% | 59.8-85.8 |
 | mate-in-16, same conditions (40 positions) | 28/40 = 70.0% | 54.6-81.9 |
-| mate-in-20, same conditions (40 positions) | 23/40 = 57.5% | 42.2-71.5 |
+| mate-in-20, same conditions (40 positions) | 22/40 = 55.0% | 39.8-69.3 |
+
+The mate-in-8, 10 and 20 rows were re-measured on sets re-minted from the pinned
+corpus, because the sets behind the previous figures could not be rebuilt by a
+reader and so could not be checked. The mate-in-8 and mate-in-10 sets draw only
+from positions no earlier set had used -- zero overlap with any of them -- so
+they are fresh evidence as well as reproducible. The mate-in-20 set cannot be:
+the corpus holds 45 mate-in-20 problems and 40 were already spent, so it reuses
+35 of them and is reproducible without being independent.
+
+The previous figures were 85.5% at mate-in-8, 90.0% at mate-in-10 and 57.5% at
+mate-in-20. Mate-in-10 and mate-in-20 moved within their intervals. **Mate-in-8
+did not: 85.5% sits outside the new 71.8-83.2 interval.** On a fresh draw of 200
+previously unused positions the engine solves 78.0%, and that is the figure to
+believe -- the same lesson as 14, arriving a second time from a different
+direction.
+
+Switching the default route to DFPN was worth 54/60 against 37/60 at mate-in-10
+when measured on the earlier set: seventeen positions gained, none lost.
 
 Every certificate at every depth verified independently. The decline with depth is
 gradual rather than a wall: this engine is not confined to the shallow end of

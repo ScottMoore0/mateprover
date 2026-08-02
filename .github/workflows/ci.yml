@@ -29,9 +29,9 @@ jobs:
             compiler: msvc
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -57,8 +57,8 @@ jobs:
     name: bounds-checked run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python -m pip install --upgrade "chess>=1.10"
@@ -78,7 +78,7 @@ jobs:
     name: c++20 and c++23
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compile under newer standards
         # Not a promise to support them, a canary: newer standards reject
         # constructs quietly tolerated by C++17, which is the cheapest available
@@ -91,7 +91,7 @@ jobs:
     name: cppcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install cppcheck
         run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Analyse
@@ -106,7 +106,7 @@ jobs:
     name: strict warnings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build with -Werror
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -pedantic -Werror -pthread \

@@ -82,6 +82,10 @@ def main():
     parser.add_argument("--name", required=True, help="file stem, written under benchmarks/")
     parser.add_argument("--seed", type=int, default=None,
                         help="defaults to the count, so a run is reproducible from the manifest")
+    parser.add_argument("--exclude-hashes", type=pathlib.Path, default=None, metavar="FILE",
+                        help="also exclude positions whose SHA-256 appears in FILE. Lets a "
+                             "set exclude everything previously seen without those earlier "
+                             "sets being present, or shipped")
     parser.add_argument("--exclude", action="append", default=None, metavar="SET.jsonl",
                         help="exclude exactly these sets rather than whatever is in "
                              "benchmarks/. Repeatable. Use the manifest's `excludes` "
@@ -99,14 +103,28 @@ def main():
         return 2
 
     used, excluded_names = already_used(args.exclude)
+
+    # A digest fingerprints a position without containing one, so a list of them
+    # can ship where the positions themselves cannot. That is what lets a fresh
+    # set exclude everything previously consulted and still be rebuildable by
+    # someone who holds none of the earlier sets.
+    excluded_hashes = set()
+    if args.exclude_hashes:
+        excluded_hashes = {line.strip() for line
+                           in args.exclude_hashes.read_text(encoding="utf-8").splitlines()
+                           if line.strip() and not line.startswith("#")}
     pool = []
     for line in args.corpus.read_text(encoding="utf-8", errors="replace").splitlines():
         found = re.search(r"bm #(-?\d+)", line)
         if not found or int(found.group(1)) != args.depth:
             continue
         fen4 = " ".join(line.split()[:4])
-        if fen4 not in used:
-            pool.append({"fen4": fen4, "mate": args.depth})
+        if fen4 in used:
+            continue
+        if excluded_hashes and hashlib.sha256(
+                fen4.encode("utf-8")).hexdigest() in excluded_hashes:
+            continue
+        pool.append({"fen4": fen4, "mate": args.depth})
 
     if len(pool) < args.count:
         print(f"only {len(pool)} unused mate-in-{args.depth} positions available, "
@@ -129,6 +147,7 @@ def main():
         "corpus": args.corpus.name,
         "pool_available": len(pool),
         "excludes": excluded_names,
+        "exclude_hashes": args.exclude_hashes.name if args.exclude_hashes else None,
         "sha256": hashlib.sha256(
             "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8")).hexdigest(),
         "status": "unused",

@@ -210,5 +210,122 @@
     "sha256": "7262a7d2ceeb981f935a3e07a788a50aa78e32a202356e732c12f8cc2d839d61",
     "excludes": [],
     "rebuildable": true
+  },
+  {
+    "name": "matetrack_d8_eval200_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 8,
+    "count": 200,
+    "seed": 8200,
+    "corpus": "matetrack.epd",
+    "pool_available": 960,
+    "excludes": [
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "sha256": "5c160b6532eec7a2d07d676fef2508cfe99381eb77ef07c9ce7bd06385bd127f",
+    "status": "spent",
+    "measured": "156/200 = 78.0% at 15s, default configuration (95% CI 71.8-83.2)",
+    "rebuildable": true,
+    "note": "drawn only from positions no earlier set had used: zero overlap with any of them"
+  },
+  {
+    "name": "matetrack_d10_eval60_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 10,
+    "count": 60,
+    "seed": 1060,
+    "corpus": "matetrack.epd",
+    "pool_available": 561,
+    "excludes": [
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_eval200_r2.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "sha256": "2077f2665d9e584ec7599f4531ee4890ccccd7b1334e69357973efd1ec59e509",
+    "status": "spent",
+    "measured": "58/60 = 96.7% at 30s, 32 threads, --direct-depth (95% CI 88.6-99.1)",
+    "rebuildable": true,
+    "note": "drawn only from positions no earlier set had used: zero overlap with any of them"
+  },
+  {
+    "name": "matetrack_d20_eval40_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 20,
+    "count": 40,
+    "seed": 2040,
+    "corpus": "matetrack.epd",
+    "pool_available": 45,
+    "excludes": [
+      "matetrack_d10_eval60_r2.jsonl",
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_eval200_r2.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "sha256": "228ac165464e37d596f577d6e8e40b555dd447302b72c86e288efa5d61426145",
+    "status": "spent",
+    "measured": "22/40 = 55.0% at 30s, 32 threads, --direct-depth (95% CI 39.8-69.3)",
+    "rebuildable": true,
+    "note": "the corpus holds only 45 mate-in-20 problems and 40 were already spent, so this set necessarily reuses 35 of them. Reproducible, but not independent evidence of the earlier figure."
+  },
+  {
+    "name": "matetrack_d8_eval200_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 8,
+    "count": 200,
+    "seed": 8200,
+    "corpus": "matetrack.epd",
+    "pool_available": 329,
+    "excludes": [
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "exclude_hashes": "used_positions.sha256",
+    "sha256": "5be9d1f48225d9200c59e9ce2e1cfb668046d3311caf87975d20ee600390a2f4",
+    "status": "spent",
+    "measured": "156/200 = 78.0% at 15s, default configuration (95% CI 71.8-83.2)",
+    "rebuildable": true,
+    "note": "drawn only from positions no earlier set had used: zero overlap with any of them"
+  },
+  {
+    "name": "matetrack_d10_eval60_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 10,
+    "count": 60,
+    "seed": 1060,
+    "corpus": "matetrack.epd",
+    "pool_available": 404,
+    "excludes": [
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_eval200_r2.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "exclude_hashes": "used_positions.sha256",
+    "sha256": "e9b88d0f79fee260e229d03211675e73f95793c122fca79a9c6aaf8380f96a3a",
+    "status": "spent",
+    "measured": "58/60 = 96.7% at 30s, 32 threads, --direct-depth (95% CI 88.6-99.1)",
+    "rebuildable": true,
+    "note": "drawn only from positions no earlier set had used: zero overlap with any of them"
+  },
+  {
+    "name": "matetrack_d20_eval40_r2.jsonl",
+    "minted": "2026-08-02",
+    "depth": 20,
+    "count": 40,
+    "seed": 2040,
+    "corpus": "matetrack.epd",
+    "pool_available": 45,
+    "excludes": [
+      "matetrack_d10_eval60_r2.jsonl",
+      "matetrack_d10_train24.jsonl",
+      "matetrack_d8_eval200_r2.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "exclude_hashes": null,
+    "sha256": "228ac165464e37d596f577d6e8e40b555dd447302b72c86e288efa5d61426145",
+    "status": "spent",
+    "measured": "22/40 = 55.0% at 30s, 32 threads, --direct-depth (95% CI 39.8-69.3)",
+    "rebuildable": true,
+    "note": "the corpus holds only 45 mate-in-20 problems and 40 were already spent, so this set necessarily reuses 35 of them. Reproducible, but not independent evidence of the earlier figure."
   }
 ]

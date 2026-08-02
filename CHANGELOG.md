@@ -30,7 +30,7 @@ outcomes it never conflates.
 **Capability.** Measured on evaluation positions used once and never consulted
 during development:
 
-- mate-in-8, default configuration: **85.5%** at 15 s (200 positions). Budget
+- mate-in-8, default configuration: **78.0%** at 15 s (200 positions). Budget
   scaling, measured under the previous default route: 80.0% at 15 s, 90.5% at
   60 s, 96.0% at 240 s.
 - mate-in-10, 30 s, 32 threads, `--direct-depth`: **90.0%** (60 positions), and
@@ -67,8 +67,12 @@ defect, not the algorithm -- its transposition key omitted the remaining depth, 
 it burned ten million nodes on a mate-in-2. Repaired -- and with two further
 fixes, preconditioning only the deepest iteration and dropping per-child work
 that computed a value already known -- it is now the **default route**. On freshly
-minted positions it solves 90.0% of mate-in-10 against the previous default's
+minted positions it solved 90.0% of mate-in-10 against the previous default's
 61.7%, gaining seventeen and losing none, and 85.5% against 83.5% at mate-in-8.
+(Those are the figures from the evaluation sets current at the time. The headline
+reach numbers above were later re-measured on re-minted sets; this route
+comparison is left as it was measured, on one set, which is what makes it a
+comparison.)
 
 `--node-limit N` gives a deterministic budget. Wall-clock limits made every
 comparison noisy at the scale of the effects being measured; a node cap gives the

@@ -47,13 +47,11 @@ A set is determined by its corpus *revision*, depth, count, seed **and the sets
 minted before it**, all recorded in `benchmarks/MANIFEST.json`, which also holds
 a `sha256` per set so a rebuild is verified rather than assumed.
 
-Six of the fourteen sets rebuild exactly, verified against their digests; eight
-do not and say so (`"rebuildable": false`), for four distinct reasons documented
-in `benchmarks/README.md`. Concretely: **the mate-in-12, 14 and 16 figures rest
-on sets you can rebuild and check; the mate-in-8, mate-in-10 and mate-in-20
-figures do not.** Those three are measurements that were made, not measurements
-you can repeat.
-`benchmarks/README.md` explains what is and is not reproducible.
+**Every figure quoted below rests on a set you can rebuild and verify against a
+recorded digest.** Older sets that could not be rebuilt were replaced rather than
+excused: they are still listed, marked `"rebuildable": false` with the reason, but
+nothing on this page depends on them. `benchmarks/README.md` explains what is and
+is not reproducible, and why two of the retired sets never could be.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
 
@@ -114,23 +112,32 @@ measured exactly once, and never consulted in between. Wilson 95% intervals:
 
 | problems | solve rate | 95% CI |
 |---|---:|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **85.5%** | 80.0–89.7 |
-| mate-in-10, 30 s, 32 threads, `--direct-depth` (60) | **90.0%** | 79.9–95.3 |
+| mate-in-8, default configuration, 15 s (200 positions) | **78.0%** | 71.8–83.2 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60) | **96.7%** | 88.6–99.1 |
 | mate-in-12, same conditions (40) | 82.5% | 68.0–91.3 |
 | mate-in-14, same conditions (40) | 75.0% | 59.8–85.8 |
 | mate-in-16, same conditions (40) | 70.0% | 54.6–81.9 |
-| mate-in-20, same conditions (40) | 57.5% | 42.2–71.5 |
+| mate-in-20, same conditions (40) | 55.0% | 39.8–69.3 |
 
-Budget scaling at mate-in-8: 80.0% at 15 s, 90.5% at 60 s, **96.0% at 240 s**.
+Every row rests on a set you can rebuild and check against a recorded digest.
+The mate-in-8, 10 and 20 sets were re-minted from the pinned corpus and measured
+once; the mate-in-8 and mate-in-10 sets are drawn only from positions no earlier
+set had used, so they are fresh evidence as well as reproducible.
 
-The mate-in-10 figure is 90.0% with the current default route against 61.7% with
-the previous one — a change of seventeen positions, gained and none lost.
+Budget scaling at mate-in-8, measured on a now-retired set: 80.0% at 15 s, 90.5%
+at 60 s, **96.0% at 240 s**. Sixteen times the budget converts four fifths into
+all but eight — the shape is what matters, and that set cannot be rebuilt.
+
+Switching the default route to DFPN was worth seventeen positions of sixty at
+mate-in-10, gained with none lost.
 
 **Read this honestly.** MateProver solves mate-in-5 and below essentially always,
 and mate-in-6/7 reliably in seconds. Deeper, there is no wall: the solve rate
-declines gradually and is still above half at mate-in-20. But the intervals above
-are wide, because the sets are small — mate-in-20's 57.5% is consistent with
-anything from 42% to 72%, and should be read as "roughly half", not as 57.5%.
+declines gradually and is still above half at mate-in-20. But the intervals are
+wide because the sets are small — mate-in-20's 55.0% is consistent with anything
+from 40% to 69%, and should be read as "roughly half", not as 55.0%. The
+mate-in-10 set is only sixty positions, so 96.7% likewise means "nearly all of a
+small sample", not a fourth significant figure.
 
 Against the reference implementation, same machine, positions, memory and
 30-second cap, both single-threaded: at mate-in-8 40/40 against 39/40; at
@@ -141,12 +148,38 @@ mate-in-10 the restriction portfolio — running several *soundly restricted*
 searches concurrently, any of whose proofs is a real proof — is worth **+15
 positions of 60, losing none**. Four times the time buys nothing there, and four
 times the memory buys nothing. At mate-in-8 the engine is budget-limited
-instead, which is why sixteen times the budget takes 80.0% to 96.0%.
+instead, which is why more time keeps converting there and more restriction
+lanes do not.
 
 `--direct-depth` proves "a mate within N" rather than "the shortest mate is N";
 it is not the default.
 
 ## Build
+
+### From a release
+
+Each release attaches a self-contained binary for Linux, macOS and Windows. It
+needs nothing else installed — `tools/verify_proof.py` needs python-chess, but
+the prover itself has no runtime dependencies.
+
+```
+# Linux / macOS: download the asset for your platform, then
+chmod +x mateprover-linux-x86_64
+./mateprover-linux-x86_64 --version
+echo "8/2Q5/R7/8/1k4K1/8/8/8 w - - dm 2" | ./mateprover-linux-x86_64 -
+```
+
+```
+# Windows
+.\mateprover-windows-x86_64.exe --version
+echo 8/2Q5/R7/8/1k4K1/8/8/8 w - - dm 2 | .\mateprover-windows-x86_64.exe -
+```
+
+macOS may quarantine a downloaded binary; `xattr -d com.apple.quarantine
+mateprover-macos-arm64` clears it. Every release asset is built by CI and must
+report a version matching its tag and solve a mate-in-2 before it is published.
+
+### From source
 
 C++17 and CMake 3.16+. No third-party libraries.
 

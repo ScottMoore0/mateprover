@@ -79,7 +79,32 @@ never reproduced. The two development sets were re-minted with seeds on
 2026-08-02 and their reference values re-measured; the numbers they had before
 described sets that no longer exist.
 
-## Evaluation sets — used once
+## The current evaluation sets
+
+| set | positions | depth | measured once |
+|---|---:|---|---|
+| `d8_eval200_r2` | 200 | mate in 8 | 78.0% |
+| `d10_eval60_r2` | 60 | mate in 10 | 96.7% |
+| `d20_eval40_r2` | 40 | mate in 20 | 55.0% |
+| `d12_eval40`, `d14_eval40`, `d16_eval40` | 40 each | 12 / 14 / 16 | 82.5% / 75.0% / 70.0% |
+
+All six rebuild exactly and verify against their recorded digests, so every reach
+figure this project publishes can be checked.
+
+The `_r2` sets replaced earlier ones that could not be rebuilt. `d8_eval200_r2`
+and `d10_eval60_r2` were drawn with `--exclude-hashes`, so they contain **only
+positions no earlier set had used** -- zero overlap with any of them, verified.
+`d20_eval40_r2` could not be: the corpus holds 45 mate-in-20 problems and 40 were
+already spent, so it reuses 35. Reproducible, but not independent of the figure
+it replaces.
+
+`used_positions.sha256` is what makes that possible. It lists the SHA-256 of
+every position any earlier set consumed. A digest fingerprints a position without
+containing one, so the file ships freely where the positions cannot -- and a
+fresh set can exclude everything already seen without needing, or redistributing,
+the sets that saw it.
+
+## Retired sets — kept in the manifest, relied on by nothing
 
 | set | positions | depth |
 |---|---:|---|
