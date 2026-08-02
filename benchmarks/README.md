@@ -31,6 +31,31 @@ set. On minting a name that already has one, the tool prints whether the rebuild
 matches, so a wrong corpus revision or a wrong exclusion list is reported rather
 than silently producing a different benchmark.
 
+**Six of the fourteen sets rebuild exactly; eight do not.** Every claim here was
+tested by rebuilding against the recorded digest, not assumed:
+
+| rebuilds | why the others do not |
+|---|---|
+| `d12_eval40`, `d14_eval40`, `d16_eval40`, `d16_dev40`, `d8_train60`, `d10_train24` | see below |
+
+- `d8_eval200`, `d10_eval60` — minted 2026-08-01, **before `mint_eval_set.py`
+  existed**, so the recorded seed does not reproduce them through it: measured,
+  40/200 and 7/60 overlap. Every position remains in the pinned corpus; the draw
+  is what is lost.
+- `d8_holdout60`, `d10_holdout24` — no seed was recorded.
+- `d20_eval40` — rebuilding reproduces **39 of 40**. Nothing about the recipe is
+  wrong; the corpus itself drifted between the draw and the pinned revision.
+  Direct evidence of the hazard the pin now prevents, from before it existed.
+- `d8_eval150_dfpn`, `d8_eval200_dfpn`, `d10_eval60_dfpn` — these rebuild
+  *exactly*, but only when their `excludes` are present, and those name sets
+  that are themselves unrebuildable. Reachable if you already hold the
+  predecessors; not reachable from the corpus alone.
+
+**What that means for the published figures.** The mate-in-12, 14 and 16 numbers
+(82.5%, 75.0%, 70.0%) rest on sets you can rebuild and check. The mate-in-8,
+mate-in-10 and mate-in-20 numbers (85.5%, 90.0%, 57.5%) rest on sets you cannot:
+they are measurements that were made, not measurements you can repeat.
+
 **Two evaluation sets cannot be rebuilt at all.** `d8_eval200` and `d10_eval60`
 were minted on 2026-08-01, before `mint_eval_set.py` existed, so the seed
 recorded against them does not reproduce them through it — measured, 40/200 and

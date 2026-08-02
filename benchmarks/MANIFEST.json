@@ -61,7 +61,14 @@
     "pool_available": 700,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "293cbac73d217754aadc6985a49f5657adcf2465c69665b5b6168f62fa4519ff"
+    "sha256": "293cbac73d217754aadc6985a49f5657adcf2465c69665b5b6168f62fa4519ff",
+    "excludes": [
+      "matetrack_d8_eval200.jsonl",
+      "matetrack_d8_holdout60.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "rebuildable": false,
+    "note": "rebuilds exactly, but only if its `excludes` are present -- and those include sets that are themselves unrebuildable, so it cannot be reached from the corpus alone."
   },
   {
     "name": "matetrack_d8_eval200_dfpn.jsonl",
@@ -73,7 +80,15 @@
     "pool_available": 550,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "8da21e4d5581d9c530d55311622fdcc8b05e3e48912363581b78d1b35fc80ad6"
+    "sha256": "8da21e4d5581d9c530d55311622fdcc8b05e3e48912363581b78d1b35fc80ad6",
+    "excludes": [
+      "matetrack_d8_eval150_dfpn.jsonl",
+      "matetrack_d8_eval200.jsonl",
+      "matetrack_d8_holdout60.jsonl",
+      "matetrack_d8_train60.jsonl"
+    ],
+    "rebuildable": false,
+    "note": "rebuilds exactly, but only if its `excludes` are present -- and those include sets that are themselves unrebuildable, so it cannot be reached from the corpus alone."
   },
   {
     "name": "matetrack_d10_eval60_dfpn.jsonl",
@@ -85,7 +100,14 @@
     "pool_available": 477,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "db5d623cdb4e83aea13b06dc500cf63ca2e5eead854ac620be01b63ab3d5afae"
+    "sha256": "db5d623cdb4e83aea13b06dc500cf63ca2e5eead854ac620be01b63ab3d5afae",
+    "excludes": [
+      "matetrack_d10_eval60.jsonl",
+      "matetrack_d10_holdout24.jsonl",
+      "matetrack_d10_train24.jsonl"
+    ],
+    "rebuildable": false,
+    "note": "rebuilds exactly, but only if its `excludes` are present -- and those include sets that are themselves unrebuildable, so it cannot be reached from the corpus alone."
   },
   {
     "name": "matetrack_d12_eval40.jsonl",
@@ -98,7 +120,8 @@
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "fa593106ce5e6c875c81b5516bf07ac2db8ed5fa519e9b173f9e828096c4aadf"
+    "sha256": "fa593106ce5e6c875c81b5516bf07ac2db8ed5fa519e9b173f9e828096c4aadf",
+    "excludes": []
   },
   {
     "name": "matetrack_d14_eval40.jsonl",
@@ -111,7 +134,8 @@
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "c174534506ca5fcc6b3646413a17ff75072f3205db01f21c85d91e308b94ae79"
+    "sha256": "c174534506ca5fcc6b3646413a17ff75072f3205db01f21c85d91e308b94ae79",
+    "excludes": []
   },
   {
     "name": "matetrack_d16_eval40.jsonl",
@@ -124,7 +148,8 @@
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "f533320f1e1b79518f45b8fdd60be726a08ed2ccbe414611a97b9bea36cccd93"
+    "sha256": "f533320f1e1b79518f45b8fdd60be726a08ed2ccbe414611a97b9bea36cccd93",
+    "excludes": []
   },
   {
     "name": "matetrack_d20_eval40.jsonl",
@@ -137,7 +162,9 @@
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "12042050112603b08da2660135b18dbe8118240a5be4c33072989ed9b0acaccf"
+    "sha256": "12042050112603b08da2660135b18dbe8118240a5be4c33072989ed9b0acaccf",
+    "rebuildable": false,
+    "note": "the pinned corpus differs from the one this was drawn from: rebuilding with its seed reproduces 39 of 40 positions. Direct evidence of the corpus drift the revision pin now prevents, from before the pin existed."
   },
   {
     "name": "matetrack_d16_dev40.jsonl",
@@ -149,7 +176,10 @@
     "pool_available": 61,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "sha256": "cf70f562725f6ded3d5f5243765a8ac03b52920749b5c0fd81635dfa33b1348c"
+    "sha256": "cf70f562725f6ded3d5f5243765a8ac03b52920749b5c0fd81635dfa33b1348c",
+    "excludes": [
+      "matetrack_d16_eval40.jsonl"
+    ]
   },
   {
     "name": "matetrack_d8_train60.jsonl",
@@ -162,7 +192,9 @@
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
     "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set",
-    "sha256": "083bac945ce95347588ef275fe3c5f31abef387acf756713cf3625992776e37f"
+    "sha256": "725d850d2c6031dcefdb8d996f3fc98c935a31978e0d364f87e3052fd03548a4",
+    "excludes": [],
+    "rebuildable": true
   },
   {
     "name": "matetrack_d10_train24.jsonl",
@@ -175,6 +207,8 @@
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
     "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set",
-    "sha256": "d116b6169cd5bdee33d27f7d79fe5a83ff091a6bef4e2982b7b4f9b5abb0f9c6"
+    "sha256": "7262a7d2ceeb981f935a3e07a788a50aa78e32a202356e732c12f8cc2d839d61",
+    "excludes": [],
+    "rebuildable": true
   }
 ]

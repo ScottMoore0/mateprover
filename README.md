@@ -47,10 +47,12 @@ A set is determined by its corpus *revision*, depth, count, seed **and the sets
 minted before it**, all recorded in `benchmarks/MANIFEST.json`, which also holds
 a `sha256` per set so a rebuild is verified rather than assumed.
 
-Four sets cannot be rebuilt and say so (`"rebuildable": false`). Two holdout sets
-predate seed recording; the two headline evaluation sets predate the minting tool
-itself, so their figures — 85.5% at mate-in-8 and 90.0% at mate-in-10 — are
-measurements that were made, not measurements you can repeat.
+Six of the fourteen sets rebuild exactly, verified against their digests; eight
+do not and say so (`"rebuildable": false`), for four distinct reasons documented
+in `benchmarks/README.md`. Concretely: **the mate-in-12, 14 and 16 figures rest
+on sets you can rebuild and check; the mate-in-8, mate-in-10 and mate-in-20
+figures do not.** Those three are measurements that were made, not measurements
+you can repeat.
 `benchmarks/README.md` explains what is and is not reproducible.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
