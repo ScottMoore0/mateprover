@@ -82,6 +82,25 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                                 (config.node_limit > 0 && config.portfolio_parallel));
     const char* winning_entry_name = nullptr;
 
+    // `-M` is a ceiling on every table alive at once, not on each one
+    // separately. Tables are held per portfolio lane and per batch position
+    // worker, so the per-table share is the total divided by both. Measured
+    // before this split: a stated 256 MB cost 615 MB with the default eight
+    // lanes, and 1994 MB at --parallel-positions 4 -- a flag wrong by 8x in
+    // the direction that ends a batch run with an allocation failure.
+    //
+    // 0 keeps its meaning of "unbounded", and a share never rounds to 0: a
+    // table with a one-entry ceiling would evict on every store.
+    const std::size_t memory_workers =
+        static_cast<std::size_t>(std::max(1, config.parallel_positions));
+    auto memory_share = [&](std::size_t consumers) -> std::size_t {
+        if (config.memory_mb == 0) {
+            return 0;
+        }
+        const std::size_t divisor = memory_workers * std::max<std::size_t>(1, consumers);
+        return std::max<std::size_t>(1, config.memory_mb / divisor);
+    };
+
     // Each attempt gets a fresh Search: tables from a restricted run answer a
     // different question and must not leak into the next attempt.
     auto attempt = [&](const PortfolioEntry* entry, double seconds, Search& out) {
@@ -102,6 +121,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                std::chrono::duration<double>(seconds));
         }
+        // One lane at a time on this path, so it shares only with the batch.
+        out.memory_mb = memory_share(1);
         out.tt.capacity = entry_capacity_for_mb(out.memory_mb);
         if (out.tt_reserve > 0) {
             out.tt.map.reserve(out.tt_reserve);
@@ -162,6 +183,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
             t.cancel = cancels.back().get();
+            t.memory_mb = memory_share(static_cast<std::size_t>(lanes));
             t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
             if (config.time_limit > 0.0) {
                 t.has_deadline = true;

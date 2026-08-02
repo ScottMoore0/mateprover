@@ -39,7 +39,11 @@ forging a certificate.
 
 **Interfaces.** Output format and proof format are specified. Defaults are the
 measured-best configuration, so a bare invocation performs like a tuned one.
-`--print-config` reports the effective settings for reproducibility. Input
+`--print-config` reports the effective settings for reproducibility. `-M` is
+the budget for every table alive at once, split across portfolio lanes and
+`--parallel-positions` workers; it previously applied per table, so a stated
+256 MB cost 1994 MB at four workers. Default raised 256 -> 2048 so the
+shipped per-lane share is unchanged. Input
 tolerates a leading UTF-8 BOM: Notepad and PowerShell's `Set-Content -Encoding
 utf8` both emit one, and without this the first position of such a file failed
 as `error input` while the rest of the file succeeded. `tools/verify_proof.py`

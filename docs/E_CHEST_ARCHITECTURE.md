@@ -3106,3 +3106,42 @@ No E search feature is promoted by intuition. A feature is promoted only after:
 3. no-mate controls remain clean;
 4. speed improves on the relevant frozen suite;
 5. regressions are documented and intentionally accepted or rejected.
+
+
+## 42. `-M` Was A Per-Table Budget Wearing A Total's Name
+
+Peak working set, all lanes driven to a full 20 s budget:
+
+| configuration | stated `-M` | measured peak |
+|---|---|---|
+| default, 8 lanes | 256 MB | 615 MB |
+| `--no-portfolio`, 1 lane | 256 MB | 217 MB |
+| default, 8 lanes | 64 MB | 232 MB |
+| 8 positions, `--parallel-positions 4` | 256 MB | **1994 MB** |
+
+The flag bounded each table, and tables are held per portfolio lane and per
+batch worker. So the default multiplied it by about 2.4x -- not the full 8x,
+because lanes are weighted and the restricted ones search less -- and
+`--parallel-positions` multiplied it again. A user asking for 256 MB across
+four workers got two gigabytes, and the error runs in the direction that ends a
+long batch with an allocation failure rather than a warning.
+
+`-M` is now the budget for every table alive at once, divided by lanes and
+workers. The default rises 256 -> 2048 so the default portfolio's per-lane
+share stays at exactly the 256 MB the tuning in 8l measured: the shipped
+configuration is unchanged, and the flag now means what it says. 1.0.0 is
+unreleased, so nothing depended on the old reading.
+
+After: default 609 MB (was 615, unchanged as designed); `-M 256` 120 MB;
+`--parallel-positions 4` at `-M 256` 533 MB, down from 1994.
+
+That last figure is over its stated budget, and the reason is worth stating
+rather than hiding: `-M` bounds table *entries*, not resident bytes. Thirty-two
+concurrent searches carry fixed per-search structure that no entry ceiling
+covers, and the allocator does not return freed pages between positions. The
+claim this change earns is that `-M` now scales the right way and is the right
+order of magnitude -- not that it is a hard RSS bound. `EST_BYTES_PER_ENTRY`
+carried that caveat already; it now applies to the aggregate too.
+
+A share is floored at 1 MB. A budget divided below one entry would evict on
+every store, which is slower than having no table at all.

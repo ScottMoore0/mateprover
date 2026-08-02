@@ -139,7 +139,13 @@ struct SearchConfig {
     // 64 MB sat well below the knee: at mate-in-8 it evicts hard enough to cost
     // throughput, and the budget's fixed overhead is proportionally worst there
     // (a 64 MB request peaks near 91 MB RSS). See architecture 8l.
-    std::size_t memory_mb = 256;
+    //
+    // This is the budget for every table alive at once, divided across the
+    // portfolio's lanes and the batch's position workers. 2048 rather than 256
+    // because the default portfolio runs eight lanes: the per-lane share stays
+    // at the 256 MB the tuning above measured, so the default is unchanged
+    // while `-M` now means what it says. See architecture 42.
+    std::size_t memory_mb = 2048;
 };
 
 struct PnDnFwd {

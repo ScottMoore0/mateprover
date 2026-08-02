@@ -799,6 +799,37 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
 
 
+def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
+    """`-M` covers every table alive at once, and dividing it must not reach 0.
+
+    It used to apply per table, so the default's eight portfolio lanes turned a
+    stated 256 MB into a measured 615 MB, and `--parallel-positions 4` into
+    1994 MB -- wrong by 8x in the direction that ends a batch run with an
+    allocation failure. Splitting it introduces the opposite hazard: a small
+    budget over many consumers rounding to a zero-entry ceiling, which would
+    evict on every store. The share is floored at 1 MB.
+    """
+    print("\n[memory] -M is a total and its share never rounds to zero")
+
+    pos = "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - - dm 2\n"
+    expected = DM_RE.findall(run(engine, ["--time-limit", "10", "-"], pos))
+
+    # 8 MB over four workers and eight lanes is 0.25 MB per table before the
+    # floor. It must still solve, not divide by zero or thrash to a halt.
+    tiny = run(engine, ["-M", "8", "--parallel-positions", "4",
+                        "--time-limit", "20", "-"], pos)
+    res.check("a budget smaller than its consumers still solves",
+              DM_RE.findall(tiny) == expected)
+
+    res.check("-M 0 still means unbounded",
+              DM_RE.findall(run(engine, ["-M", "0", "--time-limit", "10", "-"], pos)) == expected)
+
+    # The reported figure is the total the user asked for, not a share of it.
+    cfg = run(engine, ["--print-config", "-M", "512", "--time-limit", "10", "-"], pos)
+    res.check("--print-config reports the total, not the per-table share",
+              '"memory_mb":512' in cfg.replace(" ", ""))
+
+
 def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
     """A UTF-8 BOM must not swallow the first position.
 
@@ -1606,6 +1637,7 @@ def main() -> int:
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
+    test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
     test_output_format_conformance(args.engine, res)

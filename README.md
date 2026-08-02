@@ -81,7 +81,7 @@ Speed matters less than reach, so this is measured against
 [matetrack](https://github.com/vondele/matetrack), a public mate benchmark,
 rather than suites chosen by this project.
 
-Solve rate within a wall-clock budget, 8 threads, `-M 256`:
+Solve rate within a wall-clock budget, 8 threads, at the default table budget:
 
 | problems | 0.5 s | 2 s | 5 s |
 |---|---:|---:|---:|
