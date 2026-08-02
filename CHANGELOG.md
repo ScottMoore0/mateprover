@@ -18,8 +18,9 @@ outcomes it never conflates.
 **Capability.** Measured on evaluation positions used once and never consulted
 during development:
 
-- mate-in-8, default configuration: 80.0% at 15 s, 90.5% at 60 s, 96.0% at 240 s
-  (200 positions).
+- mate-in-8, default configuration: **85.5%** at 15 s (200 positions). Budget
+  scaling, measured under the previous default route: 80.0% at 15 s, 90.5% at
+  60 s, 96.0% at 240 s.
 - mate-in-10, 30 s, 32 threads, `--direct-depth`: 73.3% with the restriction
   portfolio against 48.3% without (60 positions).
 

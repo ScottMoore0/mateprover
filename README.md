@@ -105,16 +105,16 @@ used once and never consulted during development:
 
 | measurement | solved | 95% CI |
 |---|---|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **79.5%** | 73.4-84.5 |
+| mate-in-8, default configuration, 15 s (200 positions) | **85.5%** | 80.0-89.7 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **90.0%** | 79.9-95.3 |
 | mate-in-10, same with the previous default route | 61.7% | 49.0-72.9 |
 
 The last two lines are the point: at mate-in-10 the restriction portfolio is
 worth **+15 positions of 60, losing none**. Four times the time buys nothing
 there, and four times the memory buys nothing; only the portfolio buys reach.
-At mate-in-8 the opposite holds: the engine is budget-limited. On the same 200
-positions, 80.0% solve in 15 s, 90.5% in 60 s and **96.0% in 240 s**. Sixteen
-times the budget converts four fifths into all but eight.
+At mate-in-8 the engine is budget-limited: on a 200-position set measured under
+the previous default route, 80.0% solve in 15 s, 90.5% in 60 s and **96.0% in
+240 s**. Sixteen times the budget converts four fifths into all but eight.
 
 `--direct-depth` proves "a mate within N" rather than "the shortest mate is N";
 it is not the default.

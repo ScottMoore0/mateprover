@@ -31,7 +31,7 @@ for this measurement, and never consulted during development (14):
 
 | measurement | result | 95% CI |
 |---|---|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **159/200 = 79.5%** | 73.4-84.5 |
+| mate-in-8, default configuration, 15 s (200 positions) | **171/200 = 85.5%** | 80.0-89.7 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **54/60 = 90.0%** | 79.9-95.3 |
 | mate-in-10, same with the previous default route | 37/60 = 61.7% | 49.0-72.9 |
 
@@ -39,7 +39,10 @@ The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
 none** -- twenty-five points of solve rate from the one idea this engine has that
 is not a conventional search technique.
 
-**Mate-in-8 is budget-limited**, measured on the same 200 evaluation positions:
+**Mate-in-8 is budget-limited.** Measured on a different 200-position evaluation
+set, and **with the previous default route**, since it predates DFPN's promotion
+(29) -- the shape is the claim here, not the absolute numbers, which are now
+higher:
 
 | budget | solved | 95% CI |
 |---|---|---|
@@ -99,23 +102,16 @@ The last pair is the clearest statement of what the repaired DFPN route is worth
 where its cost is not being charged: four and a half times the reach at an equal
 node budget.
 
-### The fastest configuration is not the default
+### If you know the depth, say so
 
-`--route dfpn --direct-depth` solves **59/60** of a development set where the
-default configuration solves 52. DFPN was broken until recently -- its
-transposition key omitted the remaining depth, so it searched ten million nodes
-on a mate-in-2 (21) -- and with that fixed it is the strongest route this engine
-has, *provided* the depth is searched directly.
+The default proves "the shortest mate is N" by iterative deepening, which means
+searching every depth from 1. `--direct-depth` proves "a mate within N" by
+searching N directly. It gives up minimality and buys reach: on a development set
+the default configuration solves 52/60 where `--direct-depth` reaches 59/60.
 
-Under the default iterative-deepening mode the two routes are close. Measured
-once on 200 freshly minted positions in the shipped configuration, `--route dfpn`
-solves **85.5%** against the default route's 83.5%, gaining six positions and
-losing two (28). That is consistent with the development sets but not decisive,
-so the default is unchanged: choosing `--route dfpn` is not a risk, it is simply
-not a guarantee.
-
-If you know the depth and want reach rather than minimality, use both flags
-together.
+Both mate-in-10 figures above use it, which is why they are labelled. If you
+already know the mate distance -- from a problem's stipulation, or from an EPD
+token -- there is no reason to pay for rediscovering it.
 
 ## What was tried and rejected
 

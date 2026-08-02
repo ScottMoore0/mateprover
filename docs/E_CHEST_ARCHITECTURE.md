@@ -2645,6 +2645,47 @@ its evidence; the evidence was of a broken implementation, and nothing
 distinguished that from the idea except looking, which took a coverage
 measurement finding `dfpn.h` at 0% to prompt.
 
+### 30. What Promoting DFPN Invalidated
+
+Changing the default route makes every measurement taken under the old one a
+statement about a configuration the engine no longer has -- the failure mode this
+document has recorded three times already (8h, 8l, 8x). Two things needed
+checking straight away.
+
+**The published mate-in-8 headline was stale.** It read 79.5%, measured on an
+evaluation set under the previous default route. The shipped configuration's
+figure is the one 28 measured with `--route dfpn`, which is now simply the
+default: **85.5%** [80.0-89.7] on 200 fresh positions. README, RESULTS and the
+changelog now carry it.
+
+The budget curve (80.0% / 90.5% / 96.0% at 15 s / 60 s / 240 s) was **not**
+re-measured. It predates the promotion and is now labelled with the route it used.
+Re-running it costs about two hours and would not change what it is quoted for --
+that mate-in-8 is budget-limited, which is a claim about shape rather than about
+absolute solve rate.
+
+**The portfolio still earns its place.** This was the more interesting question:
+DFPN improves the search so much that it might have subsumed the restriction
+portfolio, which would have been a real simplification -- eight lanes, weighted
+thread allocation, and a table derived by set cover, all removable.
+
+| configuration | mate-10 (48 positions) | mate-8 (60 positions) |
+|---|---|---|
+| dfpn + portfolio (shipped) | **44/48** | **60/60** |
+| dfpn alone | 40/48 | 58/60 |
+| portfolio contributes | +4, costs 0 | +2, costs 0 |
+
+It does not subsume it. The two mechanisms are orthogonal in exactly the way the
+architecture predicts: DFPN changes *how* the tree is searched, the portfolio
+changes *which problem* is searched, and a restriction that makes a mate
+reachable at all is not something a better search order can substitute for. They
+stack, and neither costs the other anything.
+
+Worth noting the mate-in-8 development row: **60/60**. That set is exhausted as a
+discriminator for the shipped configuration -- it cannot show an improvement any
+more, only a regression. Its usefulness from here is as a canary, not a
+comparison.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
