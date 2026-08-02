@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -606,7 +607,11 @@ int main(int argc, char** argv) {
         const std::size_t width = std::min<std::size_t>(
             pending.size(), static_cast<std::size_t>(config.parallel_positions));
         std::vector<std::ostringstream> buffers(pending.size());
+        std::vector<char> done(pending.size(), 0);
         std::atomic<std::size_t> next{0};
+        std::mutex done_mutex;
+        std::condition_variable done_signal;
+
         auto worker = [&]() {
             for (;;) {
                 const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
@@ -614,25 +619,41 @@ int main(int argc, char** argv) {
                     return;
                 }
                 solve_line(pending[i], requested_depth, config, buffers[i]);
+                {
+                    std::lock_guard<std::mutex> lock(done_mutex);
+                    done[i] = 1;
+                }
+                done_signal.notify_all();
             }
         };
+
         std::vector<std::thread> pool;
-        pool.reserve(width - 1);
-        for (std::size_t w = 1; w < width; ++w) {
+        pool.reserve(width);
+        for (std::size_t w = 0; w < width; ++w) {
             try {
                 pool.emplace_back(worker);
             } catch (const std::system_error&) {
                 break;      // the OS refused a thread; the rest carry the load
             }
         }
-        worker();
+        if (pool.empty()) {
+            worker();       // no threads at all: solve here
+        }
+
+        // Emit in input order as each result becomes ready, rather than waiting
+        // for the whole chunk. A chunk holds four positions per worker so the
+        // queue has imbalance to absorb, which would otherwise mean 32 positions
+        // of silence at width 8 -- minutes, on a corpus of hard problems.
+        for (std::size_t i = 0; i < pending.size(); ++i) {
+            std::unique_lock<std::mutex> lock(done_mutex);
+            done_signal.wait(lock, [&]() { return done[i] != 0; });
+            lock.unlock();
+            std::cout << buffers[i].str();
+            std::cout.flush();
+        }
         for (std::thread& t : pool) {
             t.join();
         }
-        for (const std::ostringstream& b : buffers) {
-            std::cout << b.str();
-        }
-        std::cout.flush();
         pending.clear();
     };
 

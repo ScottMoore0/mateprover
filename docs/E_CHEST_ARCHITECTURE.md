@@ -2888,6 +2888,41 @@ test. What distinguished the last is that it was a property of code written two
 iterations earlier rather than of the machine -- the kind of cause that is easy to
 overlook precisely because it is the newest thing in the picture.
 
+### 36. Batch Results Stream Instead Of Arriving In Blocks
+
+35's work queue fixed the throughput but introduced a regression I had not
+flagged. To give the queue imbalance to absorb, chunks grew to four positions per
+worker -- 32 at width 8 -- and nothing was emitted until the whole chunk finished.
+On a corpus of hard problems that is minutes of silence, and worse than the
+barrier version it replaced, which at least emitted every 8.
+
+Results are now emitted **in input order as each becomes ready**, while workers
+carry on with later positions. A condition variable wakes the emitting thread
+when the next index in sequence completes.
+
+Measured on 40 mate-in-12 positions, width 8, 5 s each, timestamping arrivals:
+
+| version | first result | eighth | last |
+|---|---|---|---|
+| original barrier, chunk of 8 | 6.5 s | 6.5 s | 30.3 s |
+| **streaming work queue** | **2.7 s** | 6.9 s | **17.1 s** |
+
+First result 2.4x sooner, whole batch 1.8x sooner. The eighth arrives at about
+the same moment either way, which is the honest comparison: the barrier version
+delivers its first eight simultaneously, so it is only behind on the *first*
+result, and ahead of nothing.
+
+Streaming costs about 4% of throughput against emitting the chunk in one go
+(88.1 s against 84.4 s under a fixed node budget, same 32 solved). That is worth
+paying. A user watching a long corpus run needs to see it working, and the
+ordering contract -- results in input order, one line per input line -- is
+preserved either way, which the batch test checks at widths 1, 2 and 5.
+
+The general point is that the barrier in 35 and the chunk silence here are the
+same mistake in two forms: making the whole batch wait on its slowest member.
+Removing it for scheduling was worth 21% of throughput; removing it for output
+was worth 2.4x on the latency a user actually perceives.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
