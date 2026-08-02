@@ -2951,6 +2951,39 @@ different here is that the tool is the thing that catches such drift for readers
 so it was drifting in the one place that is supposed to be the check. A gate that
 compares a configuration against itself passes forever.
 
+### 38. Auditing For Comparisons That Compare Nothing
+
+37 found the reproduction tool comparing a route with itself, and found it by
+accident -- a quick-mode number looked wrong. That is not a detection method, and
+the same failure can hide anywhere a comparison names one side implicitly.
+
+`--print-config` reports the effective configuration, so the question "do these
+two runs actually differ?" is now answerable mechanically. `test_comparisons_
+actually_differ` checks that the three routes resolve to three distinct
+configurations, that every row of the reproduction tool's table differs from
+every other row -- reading the table by importing the tool rather than restating
+it, so the two cannot drift apart -- and that the flags 8n turned into defaults
+are now no-ops.
+
+Verified by reintroducing the exact bug 37 fixed: with the depth-first row's
+`--route` removed, the gate fails naming both colliding rows. It would have
+caught it.
+
+An audit of the benchmark registry found five more instances, all harmless and
+all the same shape. `chest_E_proof_hints_probe`, `keep_iter_tt`, `move_reserve`,
+`inplace_order` and `move_reserve_cap96` each pass a flag that 8n made the
+default, so each now runs the shipped configuration under a different name. They
+are historical records rather than live probes, so they are annotated rather than
+deleted -- but a reader comparing them against the promoted entry would otherwise
+be comparing a thing with itself and concluding the setting makes no difference,
+which is true only because it is already on.
+
+The general shape is worth naming, because this project has now hit it three
+times (8n, 37, here). **Defaults are load-bearing in comparisons.** Any
+measurement that says "with X" against "without X" is really saying "with X"
+against "whatever the default is", and the second half of that sentence changes
+without anyone editing the comparison.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

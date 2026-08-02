@@ -1481,6 +1481,54 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
               str(config.get("parallel_positions")))
 
 
+def test_comparisons_actually_differ(engine: Path, res: Results) -> None:
+    """Anything presented as a comparison must compare two different things.
+
+    The reproduction tool's "depth-first" rows once passed no --route and relied
+    on depth-first being the default. When dfpn was promoted they began running
+    dfpn, so the tool compared a route with itself and still printed the old
+    expectations beside it -- and passed (37). A gate that compares a
+    configuration against itself passes forever.
+
+    --print-config reports the effective configuration, so this is checkable
+    mechanically rather than by remembering which defaults have moved.
+    """
+    print("\n[audit] configurations presented as different are different")
+
+    def effective(args):
+        return run(engine, ["--print-config", *args], "").strip()
+
+    routes = {name: effective(["--route", name])
+              for name in ("depth-first", "dfpn", "shallow-fast")}
+    res.check("the three routes give three different configurations",
+              len(set(routes.values())) == 3,
+              "two routes resolve to the same configuration")
+
+    # Read the reproduction tool's table rather than re-describing it here: each
+    # row is quoted with its own expected result, so two identical rows would
+    # mean two of those results describe the same run.
+    spec = importlib.util.spec_from_file_location(
+        "reproduce_results", HERE.parent / "tools" / "reproduce_results.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+
+    configs = {}
+    for label, _suite, extra, _budget, _documented in tool.DETERMINISTIC:
+        configs[label] = effective(list(extra))
+    res.check("the deterministic table has entries to check", len(configs) >= 4,
+              str(len(configs)))
+    duplicates = sorted(a for a in configs if list(configs.values()).count(configs[a]) > 1)
+    res.check("every deterministic-table row is a distinct configuration",
+              not duplicates, "; ".join(duplicates[:3]))
+
+    # A flag that has become a default is no longer a comparison. Spot-check the
+    # ones 8n moved: passing them must be a no-op against the plain default.
+    plain = effective([])
+    for flag in ("--proof-hints", "--keep-iter-tt", "--inplace-order"):
+        res.check(f"{flag} is a default now, so passing it changes nothing",
+                  effective([flag]) == plain, f"{flag} still alters the configuration")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1515,6 +1563,7 @@ def main() -> int:
     test_version_is_single_sourced(args.engine, res)
     test_help_documents_every_option(args.engine, res)
     test_documented_defaults_are_real(args.engine, res)
+    test_comparisons_actually_differ(args.engine, res)
     test_checks_only_restriction(args.engine, res)
     test_defender_restrictions(args.engine, res)
     test_restriction_soundness_and_nesting(args.engine, res)
