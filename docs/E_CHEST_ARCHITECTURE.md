@@ -3305,3 +3305,58 @@ hard because the trees are big, it is hard because the search wanders in them.
 
 Ordering is where the remaining headroom is, and it is the last category with
 any.
+
+
+## 46. The Waste Is Per-Ply, Not At The Root
+
+45 found a 330-400x gap between nodes searched and nodes in the proof, with a
+tail past 13,000x, but a whole-search ratio cannot say *where* the search
+wanders. If the waste sat at the root -- losing first moves tried before the
+winning one -- root move ordering would be the fix and a small change. So the
+worst positions were descended: play the certificate's own first move and each
+defender reply, then re-measure the ratio on the resulting position at N-1.
+
+| parent | children, median |
+|---|---|
+| 2,288x | 1,278x |
+| 2,165x | 2,189x |
+| 1,038x | 996x |
+| 5,662x | 2,123x |
+| 5,129x | 3,191x |
+| 13,513x | 49.7x |
+
+**The ratio does not collapse when you descend.** Two plies down the subtree is
+enormously smaller but the inefficiency is the same order -- a median factor of
+about 1.6 per two plies. Each ply contributes its own roughly constant
+multiplier and the total is that multiplier compounded over the depth, which is
+what produces 400x at mate-16 without any single ply being at fault.
+
+So root ordering is not the fix, and neither is any localised change. There is
+no defect here to find; the search is uniformly, mildly unselective at every
+ply. This is suggestive rather than settled: most defender replies lead
+straight to mate and cannot be re-searched, so this is one or two children per
+position across seven positions.
+
+Compounding cuts both ways, and that is the useful half. A per-ply multiplier
+raised to the power of the depth means a *small* per-ply improvement is a large
+total one: trimming the per-ply factor from about 1.27 to 1.20 is roughly a
+3x node reduction over a mate-16 tree, which by 43 is +1.5 positions. Nothing
+else measured offers that, because nothing else compounds.
+
+Which names the one remaining experiment. In DFPN the per-ply selectivity signal
+is the proof and disproof number initialisation, and this engine uses the
+crudest form there is -- the move count:
+
+    AND node:  guess = {replies.size(), 1}
+    OR node:   guess = {1, moves.size()}
+
+A position with twelve legal replies and a position with twelve legal replies
+that are all forced king moves into a mating net look identical to this. Every
+other search decision -- which child to descend, when to stop -- is driven by
+these two numbers, so they are the per-ply multiplier. Heuristic initialisation
+from cheap domain features (king mobility, checking replies, whether the reply
+is forced) is the standard remedy in the df-pn literature and is not tried here.
+
+That is the last unexplored lever with a compounding payoff. If it fails, the
+performance work is finished and the remaining gap belongs to a different
+engine.
