@@ -9,7 +9,6 @@ useStlAlgorithm
 
 # `for (const auto& d : delta)` over a C array of int[2]. The suggested pointer
 # form is not clearer, and the reference form is already const.
-#
 # Deliberately not pinned to a line number. It was pinned to board.h:35, and
 # adding the per-file licence notice moved the code to line 50 and silently
 # stopped the suppression matching, failing CI for a finding that had already
