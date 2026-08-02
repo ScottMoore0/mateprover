@@ -307,6 +307,12 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
+- **Scope: directmates only.** MateProver proves "White to move mates in N" and
+  nothing else. Chest, the program it is measured against, also solves
+  stalemate, selfmate, self-stalemate, helpmate and help-stalemate problems.
+  On those five families MateProver has no answer at all, and the speed and
+  reach figures above say nothing about them. It is faster and deeper on one
+  problem type, not a replacement for a general problem solver.
 - Reach: see the table above. The two depths behave differently and the
   difference is measured, not assumed. At mate-in-8 the engine is
   budget-limited, so time buys reach. At mate-in-10 it is not: time and memory
@@ -327,10 +333,9 @@ immediately. Perft is a permanent gate for that reason.
   a constrained request never returns an unconstrained answer.
   `--allow-unimplemented` searches unrestricted instead. Chest 3.19 itself has
   none of these; they are WinChest extensions.
-- `-M` is an entry ceiling derived from an estimated bytes-per-entry, not a
-  hard RSS bound; a node-based container cannot give one.
-- A DFPN route exists behind `--route dfpn` but is slower than the default at
-  every depth measured, and is not recommended.
+- Beyond the frontier, more hardware does not help: parallelism is worth about
+  one extra position in forty per doubling, and root splitting nothing at all.
+  The remaining engineering headroom is under half a depth notch.
 
 ## Project context
 
