@@ -82,13 +82,26 @@ re-runs the measurements above and prints what it gets beside what is claimed.
 `benchmarks/`, and were held out from all tuning -- the portfolio was derived on
 a disjoint training set, and these were spent only on promotion decisions.
 
+### The fastest configuration is not the default
+
+`--route dfpn --direct-depth` solves **59/60** of a development set where the
+default configuration solves 52. DFPN was broken until recently -- its
+transposition key omitted the remaining depth, so it searched ten million nodes
+on a mate-in-2 (21) -- and with that fixed it is the strongest route this engine
+has, *provided* the depth is searched directly.
+
+It is not the default because the default proves "the shortest mate is N" by
+iterative deepening, and DFPN cannot carry work across depths: it loses by six on
+the same set in that mode (22). If you know the depth and want reach rather than
+minimality, use both flags together.
+
 ## What was tried and rejected
 
 Each of these was implemented or measured, not merely considered.
 
 | idea | result | section |
 |---|---|---|
-| native DFPN route | 0/24 at mate-in-8, even after fixing a flag that had made the comparison unfair | 8e |
+| native DFPN route **as the default** | rejected: 72.0% against depth-first's 78.0% on 150 fresh positions, because the default mode is iterative deepening | 21, 22 |
 | DFPN or shallow-fast as extra lanes | add nothing the portfolio does not already reach | 8e |
 | compound restrictions (`K2`+`R2` etc.) | +2 on training, **exactly zero** at the operating point | 8g |
 | bitboard board representation | removing 57% of `make_move` calls bought 4%; no concentrated hotspot exists | 8i, 8k |

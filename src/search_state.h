@@ -14,6 +14,19 @@ namespace echest {
 // individual flags.
 struct SearchConfig {
     Color attacker = WHITE;
+    // Depth-first remains the default route.
+    //
+    // DFPN was briefly promoted here. Fixing its transposition key (21) turned
+    // it from unusable into the stronger route *under --direct-depth*: 59/60
+    // against 52/60 at mate-in-8 on the development set. But the default mode
+    // is iterative deepening, and measured there on a freshly minted evaluation
+    // set of 150 positions, DFPN scores 72.0% against depth-first's 78.0%,
+    // gaining 4 positions and losing 13. Iterative deepening re-runs DFPN at
+    // every depth from 1, and with depth correctly in the key none of that work
+    // carries across depths.
+    //
+    // So `--route dfpn --direct-depth` is the strong configuration and the
+    // default is not it. See architecture 22.
     RouteKind route = RouteKind::DepthFirst;
     bool debug = false;
     bool emit_proof = false;

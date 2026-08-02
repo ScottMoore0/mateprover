@@ -2264,6 +2264,70 @@ it and recorded a confident conclusion. A measurement of a broken implementation
 is not a measurement of the idea it implements, and nothing distinguishes the two
 except looking.
 
+### 22. DFPN Promoted, Then Rejected By The Set Minted To Judge It
+
+21 fixed DFPN and deliberately left promotion undecided, on the grounds that a
+development set at one budget on one thread answers "worth pursuing" and not
+"should this be the default". The promotion was then run properly -- design on
+development sets, mint a fresh evaluation set, spend it once -- and the fresh set
+**rejected the change**.
+
+Design, on the mate-in-8 development set at 32 threads and 15 s **with
+`--direct-depth`**:
+
+| configuration | solved |
+|---|---|
+| depth-first + portfolio (the default) | 52/60 |
+| **dfpn + portfolio** | **59/60** |
+| dfpn alone | 57/60 |
+| depth-first alone | 43/60 |
+
+Mate-in-10 agreed: 22/24 against 18/24, four gained and none lost. DFPN composes
+with the portfolio rather than replacing it. On that basis DFPN was made the
+default route.
+
+Confirmation, on 150 freshly minted positions, run **once**, in the default
+configuration:
+
+| configuration | solved | 95% CI |
+|---|---|---|
+| previous default (depth-first) | 117/150 = 78.0% | 70.7-83.9 |
+| new default (dfpn) | 108/150 = 72.0% | 64.3-78.6 |
+
+Four gained, thirteen lost. **Reverted.**
+
+The design measurement did not answer the question the promotion asked of it,
+and the flaw was mine: every design run passed `--direct-depth`, which is *not*
+the default. Isolating it on the development set:
+
+| route | mode | solved |
+|---|---|---|
+| depth-first | iterative deepening (the default) | 51/60 |
+| dfpn | iterative deepening | 45/60 |
+| depth-first | `--direct-depth` | 52/60 |
+| **dfpn** | **`--direct-depth`** | **59/60** |
+
+DFPN wins by seven under `--direct-depth` and loses by six under iterative
+deepening. The mechanism is a direct consequence of 21's fix: iterative deepening
+re-runs the search at every depth from 1, and now that depth is correctly part of
+the DFPN key, nothing computed at one depth is reusable at the next. DFPN pays
+full price at every depth, and the exact route -- which keeps its table across
+depths -- does not.
+
+So the fix stands and the promotion does not. `--route dfpn --direct-depth` is
+now the strongest configuration this engine has, and it is documented as such;
+the default is unchanged because the default mode is iterative deepening, where
+DFPN is worse.
+
+Two things worth recording beyond the result. First, the protocol worked exactly
+as designed: a change that looked like a clear +7 on development data was caught
+by a set that had never been consulted, and caught *because* it was run in the
+shipped configuration rather than the one the design used. Second, that
+evaluation set is now spent on rejecting a change rather than confirming one,
+which is the correct use of it and the reason it existed -- the cost of my
+measuring the wrong configuration during design was 150 positions of evidence,
+not a shipped regression.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
