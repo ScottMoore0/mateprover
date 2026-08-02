@@ -17,7 +17,8 @@ constVariableReference:src/board.h:35
 # write through the range, so it concludes the parameter is only read. Making
 # it const would not compile, and if it somehow did the proof-hint ordering
 # would silently become a no-op.
-#
+# (An empty "#" line here is not a comment to every cppcheck version: older
+# parsers strip the # and read an empty suppression id, failing the whole file.)
 # Only reported by the CI runner's cppcheck, not by 2.18.0 locally, which is
 # why it appeared on the first run rather than during development.
 constParameterReference:src/ordering.h
