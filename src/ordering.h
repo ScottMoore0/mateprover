@@ -14,7 +14,9 @@ int static_move_terms(const Board& b, const Move& m) {
     int score = 0;
     if (b.sq[m.to] != '.' || m.ep) score += 10000;
     if (m.promo) score += 8000;
-    char p = std::tolower(static_cast<unsigned char>(b.sq[m.from]));
+    // tolower returns int; the cast makes the narrowing explicit rather than
+    // implicit. Safe for the ASCII piece letters this board stores.
+    const char p = static_cast<char>(std::tolower(static_cast<unsigned char>(b.sq[m.from])));
     if (p == 'q') score += 50;
     if (p == 'r') score += 40;
     if (p == 'b' || p == 'n') score += 30;

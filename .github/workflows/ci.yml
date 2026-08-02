@@ -52,6 +52,40 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
 
+  bounds-checked:
+    name: bounds-checked run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade "chess>=1.10"
+      - name: Build with libstdc++ debug containers
+        # The nearest thing to a sanitiser that is available everywhere:
+        # _GLIBCXX_ASSERTIONS bounds-checks std::array and std::vector
+        # operator[], and _GLIBCXX_DEBUG adds iterator validity checks. The
+        # search indexes a std::array<char, 64> with plain ints throughout, so
+        # this is the check that says those indices are in range on every path
+        # the suite exercises.
+        run: |
+          g++ -std=c++17 -O1 -g -D_GLIBCXX_DEBUG -D_GLIBCXX_ASSERTIONS               -Wall -Wextra -pedantic -pthread -o /tmp/echest_checked src/echest.cpp
+      - name: Run the full suite under bounds checking
+        run: python tests/run_tests.py --engine /tmp/echest_checked
+
+  future-standards:
+    name: c++20 and c++23
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile under newer standards
+        # Not a promise to support them, a canary: newer standards reject
+        # constructs quietly tolerated by C++17, which is the cheapest available
+        # approximation of a second front end.
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/echest.cpp
+          g++ -std=c++23 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/echest.cpp
+
   static-analysis:
     name: cppcheck
     runs-on: ubuntu-latest

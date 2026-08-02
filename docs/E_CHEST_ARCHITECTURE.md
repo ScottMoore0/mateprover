@@ -2158,6 +2158,50 @@ runs is where static analysis earns its keep, and it is exactly the code a
 reader of a published repository is most likely to read and least likely to
 trust.
 
+### 20. Substitutes For The Compilers And Sanitisers That Are Not Here
+
+19 left the standing risk unaddressed: one compiler, one platform, no sanitiser,
+and a CI matrix that has never run. Three substitutes are available without
+installing anything.
+
+**Bounds-checked containers.** `-D_GLIBCXX_ASSERTIONS` bounds-checks
+`std::array` and `std::vector` `operator[]`, and `-D_GLIBCXX_DEBUG` adds iterator
+validity checking. This matters more here than it would in most codebases: the
+search indexes a `std::array<char, 64>` with plain `int` values everywhere, and a
+stricter warning set reports **117 sign-conversions**, nearly all of that form.
+Whether those are safe is not a matter of argument -- it is a matter of whether
+any index ever leaves `[0, 64)`.
+
+The full suite passes **230/230 under bounds checking**. No out-of-range access,
+no invalid iterator, on any path the tests exercise. That is direct evidence, and
+it is why the 117 sign-conversions are being *declined* rather than fixed:
+rewriting them would be churn across the hottest code in the engine, carrying a
+real chance of introducing the very error the warning speculates about, for a
+risk the bounds-checked run says is not present.
+
+**A stricter warning set.** `-Wshadow -Wconversion -Wsign-conversion
+-Wold-style-cast -Wcast-qual -Wdouble-promotion -Wformat=2 -Wnull-dereference
+-Wredundant-decls -Wmissing-declarations` produces three groups: the 117
+sign-conversions above; 84 `-Wmissing-declarations`, which are an artefact of the
+unity build, where every function is defined in a header with no prior
+declaration; and exactly **one** `-Wconversion`, an implicit `int` to `char`
+narrowing of `std::tolower`'s result. That one is now an explicit cast -- the
+other four `tolower` sites already had one, so this was an inconsistency as much
+as a warning.
+
+**Newer standards.** C++20 and C++23 both compile clean with `-Werror`. Not a
+support promise; a canary. Newer standards reject constructs C++17 tolerates
+quietly, which is the cheapest approximation available of a second front end.
+
+All three are now CI jobs, so they run when the workflow does. The bounds-checked
+one is the valuable one, and it is worth being clear about what it does and does
+not establish: it proves those indices are in range on every path **the suite
+exercises**, which is a claim about test coverage as much as about the code.
+
+Verified behaviour-preserving as usual: with timing normalised, pre- and
+post-change binaries produce byte-identical output on the mate corpus including
+certificates.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
