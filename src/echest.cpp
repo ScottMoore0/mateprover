@@ -104,6 +104,10 @@ void print_usage() {
 "  --parallel-min-nodes N        run a depth sequentially until it exceeds\n"
 "                                N nodes, then split (default 500)\n"
 "  --no-parallel-gate            always split, never probe sequentially\n"
+"  --parallel-positions N        solve N positions from stdin at once, emitting\n"
+"                                results in input order (default 1). Uses the\n"
+"                                cores that per-position parallelism cannot;\n"
+"                                answers stop streaming as they are produced\n"
 "  --node-limit N                deterministic budget: stop after N nodes and\n"
 "                                report 'timeout', claiming nothing. Same\n"
 "                                answer on every run and machine, unlike\n"
@@ -410,6 +414,13 @@ int main(int argc, char** argv) {
             config.direct_depth = true;
         } else if (arg == "--iterative-depth") {
             config.direct_depth = false;
+        } else if (arg == "--parallel-positions") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--parallel-positions' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--parallel-positions' expects a number");
+            if (value < 1) return usage_error("option '--parallel-positions' expects at least 1");
+            config.parallel_positions = static_cast<int>(value);
         } else if (arg == "--node-limit") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--node-limit' requires a node count");
@@ -567,6 +578,47 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // Solve several positions at once, each into its own buffer, emitting the
+    // buffers in input order.
+    //
+    // Worth having because root-split parallelism inside one position now
+    // contributes nothing (architecture 32): the engine uses about one core per
+    // portfolio lane whatever --threads says, so on a larger machine most cores
+    // sit idle during a batch. Positions are independent -- no state crosses
+    // between them, which is gated -- so this is the one axis where more cores
+    // still buy throughput.
+    //
+    // Off by default: with one position in flight the output streams as it is
+    // produced, which is what makes the service mode work.
+    std::vector<std::string> pending;
+    auto flush_pending = [&]() {
+        if (pending.empty()) {
+            return;
+        }
+        std::vector<std::ostringstream> buffers(pending.size());
+        std::vector<std::thread> pool;
+        pool.reserve(pending.size() - 1);
+        auto solve_one = [&](std::size_t i) {
+            solve_line(pending[i], requested_depth, config, buffers[i]);
+        };
+        for (std::size_t i = 1; i < pending.size(); ++i) {
+            try {
+                pool.emplace_back(solve_one, i);
+            } catch (const std::system_error&) {
+                solve_one(i);   // the OS refused a thread; do it here instead
+            }
+        }
+        solve_one(0);
+        for (std::thread& t : pool) {
+            t.join();
+        }
+        for (const std::ostringstream& b : buffers) {
+            std::cout << b.str();
+        }
+        std::cout.flush();
+        pending.clear();
+    };
+
     if (read_stdin) {
         std::string line;
         while (std::getline(std::cin, line)) {
@@ -583,10 +635,16 @@ int main(int argc, char** argv) {
                 if (perft_divide) perft_divide_line(line, perft_depth); else perft_line(line, perft_depth);
             } else if (list_legal) {
                 list_legal_line(line);
+            } else if (config.parallel_positions > 1) {
+                pending.push_back(line);
+                if (pending.size() >= static_cast<std::size_t>(config.parallel_positions)) {
+                    flush_pending();
+                }
             } else {
                 solve_line(line, requested_depth, config);
             }
         }
+        flush_pending();
     } else {
         std::ostringstream buffer;
         buffer << std::cin.rdbuf();

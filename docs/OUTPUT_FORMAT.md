@@ -94,6 +94,12 @@ The consequence of the same property is that a long-lived process gains nothing
 from work already done: there is no cross-position cache to warm. Restarting per
 position costs only process startup.
 
+It also means positions can be solved concurrently. `--parallel-positions N`
+solves N at a time and emits the results in input order, which raises batch
+throughput about 2.4x at N=8 on a 32-core machine. It is off by default because
+answers then arrive in batches rather than as they are produced, which is what
+service mode depends on.
+
 ## Other modes
 
 `--perft N` emits one line per depth, and `--perft-divide N` emits `move count`

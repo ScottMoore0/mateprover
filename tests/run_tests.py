@@ -1430,6 +1430,51 @@ def test_node_limit_is_deterministic(engine: Path, res: Results) -> None:
     res.check("an ample node budget still solves", "dm 2" in solved, solved.strip()[:80])
 
 
+def test_parallel_positions(engine: Path, res: Results) -> None:
+    """Solving several positions at once must not change any answer or its place.
+
+    Root-split parallelism inside a position now contributes nothing (32), so on
+    a larger machine most cores are idle during a batch. Positions carry no state
+    between them -- gated by test_order_and_scheduling_independence -- so they can
+    be solved concurrently. The results must still appear in input order.
+
+    Note this compares verdicts, not whole lines: under --portfolio-parallel the
+    particular proof returned varies between runs of the same configuration, so
+    two identical invocations already differ textually.
+    """
+    print("\n[batch] positions solved concurrently keep their order")
+
+    cases = load_epd(HERE / "mates.epd") + load_epd(HERE / "nomate.epd")
+    stdin = "".join(f"{fen} bm #{dm};" + chr(10) for fen, dm in cases)
+
+    def verdicts(width):
+        out = run(engine, ["-5", "--time-limit", "10", "--parallel-positions", str(width), "-"], stdin)
+        lines = [l for l in out.splitlines() if l.strip()]
+        res.check(f"one line per position at width {width}", len(lines) == len(cases),
+                  f"got {len(lines)} of {len(cases)}")
+        marks = []
+        for line in lines:
+            found = DM_RE.search(line)
+            marks.append(found.group(1) if found else ("timeout" if "timeout" in line else "none"))
+        return marks, lines
+
+    sequential, seq_lines = verdicts(1)
+    for width in (2, 5):
+        concurrent, con_lines = verdicts(width)
+        res.check(f"width {width} gives the same verdicts, in the same order",
+                  concurrent == sequential,
+                  next((f"position {i}: {a} vs {b}"
+                        for i, (a, b) in enumerate(zip(sequential, concurrent)) if a != b), ""))
+        res.check(f"width {width} keeps each result on its own position",
+                  [l.split(";")[0] for l in con_lines] == [l.split(";")[0] for l in seq_lines],
+                  "positions came back against the wrong input lines")
+
+    # The default must remain 1, because streaming service mode depends on it.
+    config = json.loads(run(engine, ["--print-config"], ""))
+    res.check("parallel-positions defaults to 1", config.get("parallel_positions", 1) == 1,
+              str(config.get("parallel_positions")))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1473,6 +1518,7 @@ def main() -> int:
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_persistent_service_mode(args.engine, res)
+    test_parallel_positions(args.engine, res)
     test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
 

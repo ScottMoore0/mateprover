@@ -89,6 +89,9 @@ struct SearchConfig {
     //
     // Kept separate from node_budget, which the parallel cost gate sets and
     // clears for its own purposes and would otherwise wipe a user's limit.
+    // How many positions from stdin to solve concurrently. 1 keeps answers
+    // streaming as they are produced, which the service mode depends on.
+    int parallel_positions = 1;
     std::uint64_t node_limit = 0;
     double time_limit = 0.0;
     // Begin iterative deepening at the requested depth instead of 1. Only valid

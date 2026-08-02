@@ -217,6 +217,7 @@ void emit_config_json(const SearchConfig& c) {
     std::ostream& out = std::cout;
     out << "{\"route\":\"" << route_name(c.route) << "\"";
     out << ",\"threads\":" << c.threads;
+    out << ",\"parallel_positions\":" << c.parallel_positions;
     out << ",\"memory_mb\":" << c.memory_mb;
     out << ",\"time_limit\":" << c.time_limit;
     out << ",\"parallel_min_nodes\":" << c.parallel_min_nodes;

@@ -50,14 +50,21 @@ const std::vector<PortfolioEntry>& restriction_portfolio() {
     return entries;
 }
 
-void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config) {
+// Solve one position, writing the result line to `out`.
+//
+// The stream is a parameter so that several positions can be solved at once,
+// each into its own buffer, and the buffers emitted in input order. Writing
+// straight to std::cout would interleave them.
+void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config,
+                std::ostream& out) {
     std::string line = trim(raw);
     if (line.empty()) {
         return;
     }
     auto parsed = parse_fen4(line);
     if (!parsed) {
-        std::cout << line << "; acn 0; acs 0; error input;\n" << std::flush;
+        out << line << "; acn 0; acs 0; error input;\n";
+        out.flush();
         return;
     }
     Board b = *parsed;
@@ -292,24 +299,24 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     auto end = std::chrono::steady_clock::now();
     double seconds = std::chrono::duration<double>(end - start).count();
 
-    std::cout << fen4(b) << "; acn " << s.stats.nodes << "; acs " << seconds;
+    out << fen4(b) << "; acn " << s.stats.nodes << "; acs " << seconds;
     if (accepted) {
-        std::cout << "; bm " << move_uci(proof.pv.front())
+        out << "; bm " << move_uci(proof.pv.front())
                   << "; dm " << proved_depth
                   << "; pv " << pv_uci(proof.pv);
         if (s.emit_proof && !proof.cert.empty()) {
-            std::cout << "; proof " << proof.cert;
+            out << "; proof " << proof.cert;
         }
     }
     if (accepted && winning_entry != nullptr && std::string(winning_entry) != "unrestricted") {
         // Say which restriction proved it: the mate is real but may not be the
         // shortest, and the caller is entitled to know a restriction was used.
-        std::cout << "; via " << winning_entry;
+        out << "; via " << winning_entry;
     }
     if (!accepted && s.timed_out) {
         // Distinguish "gave up" from "proved there is no mate". Without this a
         // released tool would report the same thing for both.
-        std::cout << "; timeout";
+        out << "; timeout";
     }
     // Flush at the line boundary so the engine works as a persistent service:
     // a client that writes one position and waits gets its answer immediately.
@@ -320,12 +327,17 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // tweaks, and either would silently turn streaming answers into a batch that
     // appears only at exit. Being explicit costs one flush per position, against
     // a search costing at least microseconds.
-    std::cout << ";\n" << std::flush;
+    out << ";\n";
+    out.flush();
     if (s.profile) {
         emit_profile_line(b, s, requested_depth, proved_depth, seconds);
     }
 }
 
+// Convenience overload: solve straight to stdout.
+inline void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config) {
+    solve_line(raw, requested_depth, config, std::cout);
+}
 } // namespace echest
 
 #endif // ECHEST_SOLVE_H_INCLUDED

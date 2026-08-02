@@ -2766,6 +2766,46 @@ a large change to working code, and the case for keeping it is that it costs
 nothing and may matter on hardware or problems unlike these. But the
 documentation should not imply it buys anything here, and it now does not.
 
+### 33. Parallelism Across Positions
+
+32 established that root splitting inside a position contributes nothing: the
+engine uses about one core per portfolio lane whatever `--threads` says, so on a
+32-core machine most cores idle through a batch. The remaining axis is the one
+the architecture already guaranteed and never used -- positions are independent,
+with no state crossing between them (8v, 26).
+
+`--parallel-positions N` solves N at a time, each into its own buffer, and emits
+the buffers in input order. Measured on 40 mate-in-12 positions with a 5 s cap:
+
+| width | wall clock | solved |
+|---|---|---|
+| 1 | 74.1 s | 31/40 |
+| 2 | 59.8 s | 30/40 |
+| 4 | 40.9 s | 30/40 |
+| 8 | **30.4 s** | 29/40 |
+
+**2.4x throughput at width 8.** Not linear, and it should not be: each position
+already runs eight lanes, so width 8 asks for 64 threads on 32 cores. The gain
+comes from filling the gaps left when a lane finishes early, not from adding
+independent work.
+
+The solve count drifts down slightly, 31 to 29. That is the honest cost: under a
+*wall-clock* limit, positions sharing cores each get less work done, so a wider
+batch trades a little per-position reach for throughput. Under `--node-limit` the
+trade would not exist. Anyone running a corpus wants the throughput; anyone
+solving one position wants the reach, and gets it by leaving the default alone.
+
+Two contracts had to survive. Results appear in input order, so a caller can
+still match answers to inputs positionally. And the default stays at 1, because
+service mode depends on each answer streaming as it is produced (8w) -- batching
+by definition delays that.
+
+Verified by comparing *verdicts* rather than whole lines: under
+`--portfolio-parallel` the proof returned already varies between two identical
+runs, so a textual diff between widths would have shown a difference that has
+nothing to do with batching. Widths 1, 2 and 5 give the same depths, the same
+timeouts, against the same input lines.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
