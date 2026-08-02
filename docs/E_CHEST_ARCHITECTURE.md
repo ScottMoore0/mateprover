@@ -3245,3 +3245,63 @@ The measurement 42 rests on is unaffected -- an explicit `-M 256` still costs
 533 MB at four workers rather than 1994 -- and the default is now the tuned
 configuration by construction rather than by a benchmark that would have had to
 be re-run at every worker count.
+
+
+## 45. Two Ceilings: Tables Are Finished, Ordering Is Not
+
+43 established that every uniform improvement is worth about one position per
+doubling, and that this applies to node-count work exactly as it does to speed
+-- halving the nodes needed *is* doubling the budget. So the only things worth
+ranking are large multipliers. Two of them were measured directly.
+
+### Transposition rate: 1.25 to 1.38
+
+DFPN nodes visited over distinct positions stored, from the existing counters:
+
+| set | median | range |
+|---|---|---|
+| mate-10, 20 solved | 1.25 | 1.00 - 1.67 |
+| mate-16, 31 solved | 1.38 | 1.00 - 5.67 |
+
+The search visits about 1.3 nodes per distinct position. **There is almost no
+duplication left to harvest**, so every remaining table, DAG and sharing idea is
+capped at about 1.4x -- well under a single doubling, therefore under one
+position of forty. The exact table already reuses verdicts across depths: its
+key excludes depth and entries carry `min_proved` / `max_disproved` bounds, so
+the obvious cross-depth win was collected long ago.
+
+Table and memory work is finished. Not "low priority" -- finished.
+
+### Ordering ceiling: 330x to 400x
+
+The certificate *is* the proof tree: the attacker move chosen at each OR node
+and every legal defender reply at each AND node, recursively. A search that
+always tried the winning move first at every OR node would stop at the first
+success and never touch a losing sibling, so it would visit exactly that tree.
+Searched nodes over certificate nodes is therefore a true upper bound on what
+all ordering, hint and selectivity work could ever save.
+
+| set | median | mean | range |
+|---|---|---|---|
+| mate-10 | 330.8x | 860.1x | 3.0x - 7,121.8x |
+| mate-16 | 402.3x | 1,334.3x | 5.2x - 13,568.5x |
+
+Two orders of magnitude, against 1.4x for everything else measured. This is the
+only category in the engine that is not already near its floor.
+
+Three things temper it. The bound is an oracle: perfect ordering means knowing
+the winning move without searching for it, so no implementation approaches it --
+realistic ordering gains in search are single-digit multiples, and by 43 a 4x
+gain is two positions. The distribution is heavy-tailed, mean far above median,
+so a summary statistic hides most of the story. And the ratio is the ordinary
+inefficiency of proof search, not evidence of a defect.
+
+What the tail *does* say is where to look. At the good end the engine is within
+3-5x of the minimal proof and cannot be meaningfully improved; at the bad end it
+spends thirteen thousand nodes per proof node. Those are the frontier positions,
+and they are the same ones 16 found to be twelve times too large. The two
+findings are the same phenomenon seen from different sides: the frontier is not
+hard because the trees are big, it is hard because the search wanders in them.
+
+Ordering is where the remaining headroom is, and it is the last category with
+any.
