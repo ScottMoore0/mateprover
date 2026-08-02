@@ -138,7 +138,7 @@ machine and every run:
 | measurement (sequential, equal node budget) | solved |
 |---|---|
 | mate-8 dev set, depth-first, 2M nodes | 10/60 |
-| mate-8 dev set, dfpn, 2M nodes | 16/60 |
+| mate-8 dev set, dfpn, 2M nodes | 17/60 |
 | mate-10 dev set, depth-first, `--direct-depth`, 4M nodes | 4/24 |
 | **mate-10 dev set, dfpn, `--direct-depth`, 4M nodes** | **18/24** |
 

@@ -2923,6 +2923,34 @@ same mistake in two forms: making the whole batch wait on its slowest member.
 Removing it for scheduling was worth 21% of throughput; removing it for output
 was worth 2.4x on the latency a user actually perceives.
 
+### 37. The Reproduction Tool Had Stopped Comparing Anything
+
+`--deterministic` runs one position per subprocess. Under a node budget batching
+is free (34), so it should use `--parallel-positions`. Making that change cut the
+full run from about twenty minutes to **84 seconds**, and identical output at
+width 1 and width 8 confirmed the property holds where it is now relied upon.
+
+Doing it exposed two staleness bugs in the tool itself, both of the same kind:
+values that were correct when written and quietly stopped being so.
+
+**The comparison had collapsed.** Its "depth-first" rows passed no `--route` and
+relied on depth-first being the default. When DFPN was promoted (29) those rows
+silently began running dfpn, so the tool compared a route against itself while
+printing the old depth-first expectations beside it. The quick-mode numbers gave
+it away: the depth-first row had gone from 1/8 to 6/8, matching the dfpn row
+exactly. Every entry now names its route explicitly.
+
+**One expected value was stale in the other direction.** With the routes distinct
+again, mate-in-8 dfpn measures 17/60 against a documented 16/60. That is not a
+regression -- 27 cut DFPN's per-node cost by 82%, so at a *fixed node budget* it
+now reaches one position further. The reference value has been corrected upward.
+
+Both are the failure this document keeps recording: a number written down as a
+property of the engine when it was a property of the engine at a moment. What is
+different here is that the tool is the thing that catches such drift for readers,
+so it was drifting in the one place that is supposed to be the check. A gate that
+compares a configuration against itself passes forever.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
