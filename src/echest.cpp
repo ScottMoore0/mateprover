@@ -153,6 +153,13 @@ void print_usage() {
 "\n"
 "DFPN route (a preconditioner, never an output authority). Strong with\n"
 "--direct-depth, weaker than the default under iterative deepening:\n"
+"  --dfpn-final-depth-only | --dfpn-every-depth\n"
+"                                default: --dfpn-final-depth-only. Its work\n"
+"                                cannot carry across depths, so only the\n"
+"                                deepest iteration repays the cost\n"
+"  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
+"                                iterative deepening its work cannot carry\n"
+"                                across depths (default 1, no skipping)\n"
 "  --dfpn-sort | --dfpn-no-sort  sort moves at DFPN nodes (default: no)\n"
 "  --dfpn-epsilon-64 N           1+epsilon threshold widening, in 1/64ths\n"
 "  --dfpn-node-limit N           cap preconditioner nodes (0 = unlimited)\n"
@@ -413,6 +420,16 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--dfpn-epsilon-64' expects a number");
             config.dfpn_epsilon_64 = static_cast<int>(value);
+        } else if (arg == "--dfpn-final-depth-only") {
+            config.dfpn_final_depth_only = true;
+        } else if (arg == "--dfpn-every-depth") {
+            config.dfpn_final_depth_only = false;
+        } else if (arg == "--dfpn-min-depth") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--dfpn-min-depth' requires a depth");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--dfpn-min-depth' expects a number");
+            config.dfpn_min_depth = static_cast<int>(value);
         } else if (arg == "--dfpn-sort") {
             config.dfpn_sort = true;
         } else if (arg == "--dfpn-no-sort") {

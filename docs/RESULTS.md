@@ -91,9 +91,14 @@ on a mate-in-2 (21) -- and with that fixed it is the strongest route this engine
 has, *provided* the depth is searched directly.
 
 It is not the default because the default proves "the shortest mate is N" by
-iterative deepening, and DFPN cannot carry work across depths: it loses by six on
-the same set in that mode (22). If you know the depth and want reach rather than
-minimality, use both flags together.
+iterative deepening, where DFPN cannot carry work across depths (22). That has
+since been largely repaired: preconditioning only the deepest iteration, rather
+than every depth, takes `--route dfpn` from 45/60 to **53/60** under iterative
+deepening against the default route's 51/60 (23). The margin there is inside
+run-to-run variance, so the default is unchanged pending a fresh evaluation set.
+
+If you know the depth and want reach rather than minimality, use both flags
+together.
 
 ## What was tried and rejected
 

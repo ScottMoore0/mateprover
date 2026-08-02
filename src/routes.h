@@ -331,7 +331,11 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         // the whole search, and clearing  past it would restart a
         // search that has no time left.
         s.aborted = false;
-        dfpn_attacker(s, b, depth, DFPN_INF, DFPN_INF);
+        const bool precondition = depth >= s.dfpn_min_depth &&
+                                  (!s.dfpn_final_depth_only || depth >= max_depth);
+        if (precondition) {
+            dfpn_attacker(s, b, depth, DFPN_INF, DFPN_INF);
+        }
         s.stats.dfpn_table_size = s.dfpn_tt.size();
         if (s.timed_out) {
             break;

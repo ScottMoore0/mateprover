@@ -2328,6 +2328,53 @@ which is the correct use of it and the reason it existed -- the cost of my
 measuring the wrong configuration during design was 150 positions of evidence,
 not a shipped regression.
 
+### 23. Preconditioning Only The Deepest Iteration
+
+22 explained why DFPN loses under iterative deepening even though it wins under
+`--direct-depth`: the route runs every depth from 1, and since 21 put depth back
+into the DFPN key, nothing computed at one depth is reusable at the next. Every
+shallow pass is paid for in full and discarded, while the exact route's bounded
+table does carry information forward.
+
+That explanation predicts a fix. The shallow iterations are the ones the exact
+prover disposes of almost instantly by itself, so preconditioning them buys
+nothing and costs a full DFPN search each. Skipping them should recover DFPN's
+advantage without giving up minimality.
+
+Measured on the mate-in-8 development set, 15 s, default configuration otherwise:
+
+| configuration | solved |
+|---|---|
+| depth-first, iterative (the default route) | 51/60 |
+| dfpn, preconditioning every depth | 45/60 |
+| **dfpn, preconditioning only the deepest iteration** | **53/60** |
+
+An absolute threshold sweep located it: skipping below depth 5 or 7 changed
+almost nothing (46/60), and skipping everything below the requested depth gave
+53/60. The gain is not gradual -- it is entirely in the last iteration, exactly as
+the mechanism predicts.
+
+Promoted as the default behaviour of `--route dfpn`, expressed as **"only the
+final iteration"** rather than as the absolute depth that the sweep found. An
+absolute threshold tuned on a mate-in-8 corpus would silently disable
+preconditioning altogether for shallower requests; the relative form states the
+actual finding, which is about the last depth rather than about depth 8.
+`--dfpn-every-depth` restores the old behaviour.
+
+The scope is deliberately narrow. **The default route is unchanged** and the
+shipped default path is byte-identical, verified on the mate corpus with
+certificates, on perft and on the shallow-fast route. This improves a route a
+user must opt into, which is a lower bar than changing what everyone gets, and
+the evidence is a development set plus a mechanism -- appropriate for that bar and
+not for a higher one.
+
+Whether DFPN should now *become* the default is a real question and is left open:
+53/60 against 51/60 is inside the run-to-run variance seen across this session
+(the same depth-first configuration measured 49, 51 and 52 on three occasions).
+Answering it needs a freshly minted evaluation set, and 22 spent one on exactly
+this question two iterations ago. That is the cost of having measured the wrong
+configuration then, and it is not a reason to lower the bar now.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

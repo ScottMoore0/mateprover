@@ -59,6 +59,21 @@ struct SearchConfig {
     int root_sequential_first = 0;
     // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
     // working instead of bouncing straight back. Expressed in 1/64ths.
+    // Precondition only the deepest iteration.
+    //
+    // Under iterative deepening the route runs every depth from 1, and DFPN
+    // cannot carry work across depths because depth is part of its key (21, 22).
+    // Every shallow pass is therefore paid for in full and thrown away, while
+    // the exact prover disposes of those depths almost instantly by itself.
+    // Preconditioning only the final depth measured 53/60 against 45/60 for
+    // preconditioning every depth, and 49/60 for the depth-first route (23).
+    //
+    // Expressed as "the last iteration" rather than an absolute depth so it does
+    // not depend on the problem depth: an absolute threshold tuned on mate-in-8
+    // would silently disable preconditioning for shallower requests.
+    bool dfpn_final_depth_only = true;
+    // Absolute floor, retained for experiments. 1 means no floor.
+    int dfpn_min_depth = 1;
     int dfpn_epsilon_64 = 0;
     bool dfpn_sort = false;
     // Wall-clock budget in seconds. 0 means unlimited.
