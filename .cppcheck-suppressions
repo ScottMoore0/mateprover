@@ -9,7 +9,12 @@ useStlAlgorithm
 
 # `for (const auto& d : delta)` over a C array of int[2]. The suggested pointer
 # form is not clearer, and the reference form is already const.
-constVariableReference:src/board.h:35
+#
+# Deliberately not pinned to a line number. It was pinned to board.h:35, and
+# adding the per-file licence notice moved the code to line 50 and silently
+# stopped the suppression matching, failing CI for a finding that had already
+# been declined. A file-scoped suppression survives edits above it.
+constVariableReference:src/board.h
 
 # `move_to_front(std::vector<Move>&, const Move&)` genuinely mutates its
 # argument: on a hit it calls std::rotate(begin, begin+i, begin+i+1), which
