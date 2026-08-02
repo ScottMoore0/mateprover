@@ -82,6 +82,23 @@ re-runs the measurements above and prints what it gets beside what is claimed.
 `benchmarks/`, and were held out from all tuning -- the portfolio was derived on
 a disjoint training set, and these were spent only on promotion decisions.
 
+`--deterministic` runs a different comparison: sequential, with node budgets
+instead of a clock, on the development sets. The numbers are lower, because the
+configuration is one thread with no portfolio, and they are **not** comparable to
+the figures above. What they are is exactly reproducible -- the same on every
+machine and every run:
+
+| measurement (sequential, equal node budget) | solved |
+|---|---|
+| mate-8 dev set, depth-first, 2M nodes | 10/60 |
+| mate-8 dev set, dfpn, 2M nodes | 16/60 |
+| mate-10 dev set, depth-first, `--direct-depth`, 4M nodes | 4/24 |
+| **mate-10 dev set, dfpn, `--direct-depth`, 4M nodes** | **18/24** |
+
+The last pair is the clearest statement of what the repaired DFPN route is worth
+where its cost is not being charged: four and a half times the reach at an equal
+node budget.
+
 ### The fastest configuration is not the default
 
 `--route dfpn --direct-depth` solves **59/60** of a development set where the

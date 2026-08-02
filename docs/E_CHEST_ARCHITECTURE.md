@@ -2471,6 +2471,38 @@ Also corrected: `CHANGELOG.md` still listed DFPN under "not included", as
 and is exactly the sort of stale claim the fresh-measurement discipline exists to
 catch. It now says what the route is and why it is not the default.
 
+### 26. Reproduction That Does Not Depend On The Reader's Machine
+
+`tools/reproduce_results.py` let a reader check the published figures, but only
+approximately: it used wall-clock budgets, so the numbers depend on the machine,
+its load, and luck. This project has measured the size of that: one configuration
+scored 49, 51, 52 and 53 of 60 on the same hardware in the same session. A reader
+seeing 74% where the document says 79.5% could not tell whether the engine or
+their laptop was the difference.
+
+`--deterministic` uses the node budgets from 24 instead. It measures a different
+configuration -- sequential, no portfolio, since the parallel portfolio's node
+totals vary as lanes race -- and says so, because the numbers are lower and not
+comparable to the headline figures:
+
+| measurement (sequential, equal node budget) | solved |
+|---|---|
+| mate-8 dev set, depth-first, 2M nodes | 10/60 |
+| mate-8 dev set, dfpn, 2M nodes | 16/60 |
+| mate-10 dev set, depth-first, `--direct-depth`, 4M nodes | 4/24 |
+| **mate-10 dev set, dfpn, `--direct-depth`, 4M nodes** | **18/24** |
+
+It deliberately uses the **development** sets. Reproduction is not a promotion
+decision, so it consumes no evidence: a reader can run it as often as they like
+without spending anything, which is the opposite of what the evaluation sets are
+for. Using those here would have burned a set on a check that decides nothing.
+
+The last row is worth noting on its own. At an equal node budget the repaired
+DFPN route reaches four and a half times as many mate-in-10 positions as the
+default route. That is the cleanest available statement of what 21's one-argument
+fix was worth, and it is invisible in wall-clock measurement because 25 showed a
+DFPN node costs about three times an exact one.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

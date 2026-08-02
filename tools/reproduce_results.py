@@ -24,22 +24,43 @@ SUITES = HERE.parent / "benchmarks"
 DM = re.compile(r"\bdm \d+")
 
 
-def measure(engine, positions, args, budget):
+def measure(engine, positions, args, budget, deterministic=False):
     solved = 0
     for row in positions:
+        limit = ["--node-limit", str(budget)] if deterministic else ["--time-limit", str(budget)]
         result = subprocess.run(
-            [str(engine), "-5", "-z", str(row["mate"]), "--time-limit", str(budget), *args, "-"],
+            [str(engine), "-5", "-z", str(row["mate"]), *limit, *args, "-"],
             input=(row["fen4"] + "\n").encode(),
-            capture_output=True, timeout=budget * 8 + 120)
+            capture_output=True, timeout=1800 if deterministic else budget * 8 + 120)
         if DM.search(result.stdout.decode()):
             solved += 1
     return solved
+
+
+# Sequential and node-budgeted, so identical on every machine. This measures a
+# different configuration from the headline figures -- one thread, no portfolio --
+# so the numbers are lower and are not comparable to them. What they are is
+# exactly reproducible: a wall-clock run of the same engine varies by several
+# positions between runs on one machine, which is the size of most of the
+# effects this project measures.
+DETERMINISTIC = [
+    ("mate-8 dev set, depth-first, 2M nodes", "matetrack_d8_train60.jsonl", [], 2000000, "10/60"),
+    ("mate-8 dev set, dfpn, 2M nodes", "matetrack_d8_train60.jsonl",
+     ["--route", "dfpn"], 2000000, "16/60"),
+    ("mate-10 dev set, depth-first, 4M nodes", "matetrack_d10_train24.jsonl",
+     ["--direct-depth"], 4000000, "4/24"),
+    ("mate-10 dev set, dfpn, 4M nodes", "matetrack_d10_train24.jsonl",
+     ["--direct-depth", "--route", "dfpn"], 4000000, "18/24"),
+]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--engine", type=pathlib.Path, required=True)
+    parser.add_argument("--deterministic", action="store_true",
+                        help="node budgets instead of wall clock: slower, lower numbers, "
+                             "and identical on every machine")
     parser.add_argument("--quick", action="store_true",
                         help="a third of the positions and a third of the budget; "
                              "indicative only, and not comparable to the documented figures")
@@ -65,6 +86,18 @@ def main():
          ["-M", "2048", "--threads", "32", "--direct-depth", "--no-portfolio"], 30 // scale,
          "29/60 = 48.3%"),
     ]
+
+    if args.deterministic:
+        print("DETERMINISTIC MODE: sequential, node-budgeted.")
+        print("Identical on every machine, and NOT comparable to the wall-clock "
+              "figures -- a different configuration.\n")
+        print(f"{'measurement':<44} {'measured':>10}   {'documented':>12}")
+        for label, suite, extra, budget, documented in DETERMINISTIC:
+            rows = load(suite)
+            got = measure(args.engine, rows, ["--single-thread", "--no-portfolio", *extra],
+                          budget // (3 if args.quick else 1), deterministic=True)
+            print(f"{label:<44} {f'{got}/{len(rows)}':>10}   {documented:>12}", flush=True)
+        return 0
 
     if args.quick:
         print("QUICK MODE: reduced positions and budget. Indicative only.\n")
