@@ -3021,6 +3021,36 @@ worth most of the runtime. At 0.3% of nodes at mate-in-10 there is nothing there
 to eliminate -- the exact pass is already almost free, because DFPN hands it a
 proof structure that verifies immediately.
 
+### 40. Threshold Widening Does Not Help Here (measured, not promoted)
+
+39 established that DFPN is 86-99% of the work, so anything that cuts its node
+count attacks nearly all of the runtime. The cheapest such lever was already
+implemented and switched off: `--dfpn-epsilon-64` widens the child thresholds by
+1+epsilon, a standard df-pn technique whose purpose is to stop the search
+oscillating between siblings and re-expanding the same subtrees.
+
+Forty mate-in-16 positions at a fixed 4M-node budget, so only search quality
+varies:
+
+| epsilon (64ths) | solved |
+|---|---|
+| 0 (off, the default) | 24/40 |
+| 8 | 25/40 |
+| 16 | 24/40 |
+| 32 | 24/40 |
+| 64 (double) | 22/40 |
+
+One position at epsilon 8, nothing at 16 or 32, and two positions lost at 64.
+A single position on forty is not a result. Rejected; the default stays off.
+
+The likely reason it does not pay here is 27. Threshold widening exists to reduce
+*re-expansion*, and this DFPN barely re-expands: 35 measured the selection loop
+running 149,379 times across 149,380 node entries, essentially once per entry.
+A technique that reduces repeated visits has little to work on when there are
+almost no repeated visits. What that also says is that the remaining node count
+is not waste to be squeezed out -- it is the search actually exploring, which is a
+harder thing to improve.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
