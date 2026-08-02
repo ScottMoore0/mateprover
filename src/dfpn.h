@@ -71,6 +71,12 @@ bool dfpn_budget_exhausted(const Search& s) {
     return s.dfpn_node_limit != 0 && s.stats.dfpn_nodes >= s.dfpn_node_limit;
 }
 
+// Is this node already in the table? Distinguishes absent from stored-as-{1,1},
+// which dfpn_lookup cannot, because a miss returns the default {1, 1}.
+bool dfpn_seen(const Search& s, const TTKey& key) {
+    return s.dfpn_tt.find(key) != s.dfpn_tt.end();
+}
+
 PnDn dfpn_lookup(Search& s, const TTKey& key) {
     auto it = s.dfpn_tt.find(key);
     return it == s.dfpn_tt.end() ? PnDn{} : it->second;
@@ -113,6 +119,28 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         dfpn_store(s, key, v);
         dfpn_publish(s, b, depth, 'D', v);
         return v;
+    }
+
+    // On a first visit every child is unvisited, so every lookup would return
+    // the default {1, 1} and this AND node's value is exactly (N, 1). Measured:
+    // the selection loop below runs once per entry almost always (149,379
+    // iterations across 149,380 entries), so the children were being built,
+    // keyed and probed -- 24 of each per node -- to compute a number already
+    // known. When that value already exceeds a threshold the node returns
+    // without descending, and none of that work was ever needed.
+    //
+    // A transposed child could genuinely be known, so this is an estimate
+    // rather than a lookup. That is sound: the proof numbers only steer the
+    // search, and every verdict still comes from the exact prover.
+    if (!dfpn_seen(s, key)) {
+        const PnDn guess{static_cast<std::uint32_t>(
+                             std::min<std::size_t>(replies.size(), DFPN_INF)),
+                         1};
+        if (guess.pn >= thpn || guess.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, guess);
+            dfpn_publish(s, b, depth, 'D', guess);
+            return guess;
+        }
     }
 
     // Child boards and keys are built once per node visit, not once per
@@ -200,24 +228,18 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         return v;
     }
 
-    // Immediate-mate scan, reusing the child boards that the selection loop
-    // below also needs, so each child is built exactly once per node visit.
-    std::vector<Board> child_boards;
-    child_boards.reserve(moves.size());
-    for (const Move& m : moves) {
-        child_boards.push_back(make_move(b, m));
-    }
-    // A move that does not give check cannot be mate, and the fused generator
-    // already computed that bit, so most children never need the full
-    // checkmate test.
+    // Immediate-mate scan. Only moves that give check can mate, and the fused
+    // generator already computed that bit, so the child board is built inside
+    // the test rather than for every move up front: at ~0.6 tests per node,
+    // pre-building all of them meant ~24 make_move calls to examine one.
     const bool mate_shortcut = scored && s.score_checks && !s.score_mates;
     for (std::size_t i = 0; i < moves.size(); ++i) {
-        const Board& nb = child_boards[i];
         const Move& m = moves[i];
         if (mate_shortcut && m.score < 50000) {
             continue;
         }
         ++s.stats.dfpn_mate_tests;
+        const Board nb = make_move(b, m);
         if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
             const PnDn v{0, DFPN_INF};
             dfpn_store(s, key, v);
@@ -235,10 +257,26 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         return v;
     }
 
+    // As on the defender side: a first visit has every child unvisited, so this
+    // OR node's value is exactly (1, N) and building the children to discover
+    // that is wasted. See the comment there for why estimating is sound.
+    if (!dfpn_seen(s, key)) {
+        const PnDn guess{1, static_cast<std::uint32_t>(
+                                std::min<std::size_t>(moves.size(), DFPN_INF))};
+        if (guess.pn >= thpn || guess.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, guess);
+            dfpn_publish(s, b, depth, 'A', guess);
+            return guess;
+        }
+    }
+
+    std::vector<Board> child_boards;
     std::vector<TTKey> child_keys;
+    child_boards.reserve(moves.size());
     child_keys.reserve(moves.size());
-    for (const Board& nb : child_boards) {
-        child_keys.push_back(tt_key(nb, depth - 1, 'D', s.attacker));
+    for (const Move& m : moves) {
+        child_boards.push_back(make_move(b, m));
+        child_keys.push_back(tt_key(child_boards.back(), depth - 1, 'D', s.attacker));
     }
 
     for (;;) {

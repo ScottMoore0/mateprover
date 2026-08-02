@@ -2503,6 +2503,57 @@ default route. That is the cleanest available statement of what 21's one-argumen
 fix was worth, and it is invisible in wall-clock measurement because 25 showed a
 DFPN node costs about three times an exact one.
 
+### 27. Making A DFPN Node Cheap
+
+25 measured a DFPN node at about three times an exact one and located the cost
+in per-child work. Counting it precisely, by subtracting the exact prover's own
+rate from a DFPN run: **~24 `make_move` and ~24 `tt_key` calls per DFPN node**,
+one per child, each followed by a hash lookup in a 40-byte-keyed map.
+
+The decisive measurement was of the selection loop. It runs **149,379 times
+across 149,380 node entries** -- essentially once per entry, never repeating. So
+those 24 boards, keys and probes were built to compute a single number and then
+discarded, and when that number already exceeded a threshold the node returned
+without ever descending into a child.
+
+For a node being visited for the first time, every child is unvisited and every
+probe returns the default `{1, 1}`. The value is therefore known in advance:
+`(N, 1)` at an AND node, `(1, N)` at an OR node, for `N` legal moves. Both node
+functions now compute that directly and, if it already crosses a threshold, store
+and return **without building any children at all**.
+
+A transposed child could genuinely be known, so this is an estimate rather than a
+lookup. That is sound for the same reason DFPN is allowed to exist here at all:
+the proof numbers only steer the search, and every verdict, PV and certificate
+still comes from the exact prover.
+
+The attacker's immediate-mate scan was fixed separately and is the same mistake
+in miniature. Only checking moves can mate, and at ~0.6 mate tests per node the
+scan was pre-building all ~24 child boards to examine one. It now builds each
+board inside the test.
+
+| measure | before | after |
+|---|---|---|
+| dfpn node rate | 350 k/s | **465 k/s** |
+| depth-first node rate, for scale | 503 k/s | 503 k/s |
+| mate-10 dev, dfpn, equal 4M-node budget | 18/24 | **18/24** |
+| mate-8 dev, wall clock 15 s | 53/60 | **54/60** |
+| depth-first, same conditions | 51/60 | 52/60 |
+
+The two rows that matter together: the node rate rose 33% and the equal-node
+capability did **not** move. The estimate costs nothing in search quality; it
+only stops paying for information the algorithm already had.
+
+Promoted, scope limited to `--route dfpn`. The default path is byte-identical on
+the mate corpus with certificates, on perft and on the shallow-fast route, and
+all 54 proofs verify independently.
+
+Whether DFPN should now be the default is *still* not settled. 54 against 52 is
+inside the run-to-run variance this project has measured repeatedly, and 22 spent
+an evaluation set discovering that a development-set lead can reverse. The honest
+position is that DFPN has gone from clearly worse to probably slightly better,
+and "probably slightly" is not a standard this project promotes on.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
