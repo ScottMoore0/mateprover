@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Self-contained test suite for the echest directmate prover.
+"""Self-contained test suite for the mateprover directmate prover.
 
 The core tests deliberately have no third-party dependencies so they run
 anywhere CMake/CTest does. If `python-chess` happens to be installed, an extra
@@ -8,7 +8,7 @@ replayed for legality and checked to end in real checkmate, and every emitted
 proof certificate is verified to enumerate exactly the legal defender replies.
 
 Usage:
-    python run_tests.py --engine /path/to/echest
+    python run_tests.py --engine /path/to/mateprover
 """
 
 from __future__ import annotations
@@ -285,7 +285,7 @@ def test_cli_contract(engine: Path, res: Results) -> None:
     res.check("--help exits 0 and lists options", code == 0 and "--threads" in out,
               f"exit={code}")
     code, out = run_raw(["--version"])
-    res.check("--version exits 0", code == 0 and "echest" in out, f"exit={code}")
+    res.check("--version exits 0", code == 0 and "mateprover" in out, f"exit={code}")
 
     # The escape hatch must still work, for harness compatibility.
     code, out = run_raw(["-R", "2", "--allow-unimplemented", "-z", "1", "-"],
@@ -566,7 +566,7 @@ def test_restriction_portfolio(engine: Path, res: Results) -> None:
 def test_shipped_verifier(engine: Path, res: Results) -> None:
     """The shipped certificate verifier must accept real proofs and reject fakes.
 
-    echest's headline claim is that a mate is a proof rather than a search
+    mateprover's headline claim is that a mate is a proof rather than a search
     result, so `tools/verify_proof.py` is the tool that makes the claim
     checkable by someone who does not trust the engine. A verifier that accepts
     everything would make the claim worthless, so it is tested adversarially
@@ -686,7 +686,7 @@ def test_help_documents_every_option(engine: Path, res: Results) -> None:
     """
     print("\n[docs] --help covers every accepted option")
 
-    source = HERE.parent / "src" / "echest.cpp"
+    source = HERE.parent / "src" / "mateprover.cpp"
     if not source.exists():
         res.skip("help coverage", "source not alongside tests")
         return
@@ -777,7 +777,7 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     Both halves of this were broken. The engine inferred a depth only from the
     matetrack `#N` spelling, not the `dm N` spelling its own corpora and its own
     output use, and it reported "error input" for the corpus's comment lines.
-    Together that meant `echest - < tests/mates.epd` searched nothing and
+    Together that meant `mateprover - < tests/mates.epd` searched nothing and
     printed an error for every comment.
     """
     print("\n[corpus] the shipped corpus pipes in cleanly")
@@ -878,7 +878,7 @@ def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
 def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
     """Documentation must not point at files the published tree does not contain.
 
-    The docs were written while chest-e was a subdirectory of a larger private
+    The docs were written while mateprover was a subdirectory of a larger private
     workspace, so several of them referenced the benchmark harness alongside it.
     Extracted for publication, those became instructions to run scripts that are
     not there -- including one telling the reader to verify proofs with a script
@@ -1375,15 +1375,15 @@ def test_version_is_single_sourced(engine: Path, res: Results) -> None:
     print("\n[release] the version has one source of truth")
 
     root = HERE.parent
-    source = (root / "src" / "echest.cpp").read_text(encoding="utf-8")
-    declared = re.search(r'#define ECHEST_VERSION "([^"]+)"', source)
+    source = (root / "src" / "mateprover.cpp").read_text(encoding="utf-8")
+    declared = re.search(r'#define MATEPROVER_VERSION "([^"]+)"', source)
     res.check("the source declares a version", declared is not None)
     if not declared:
         return
 
     reported = run(engine, ["--version"], "").strip()
     res.check("--version matches the source declaration",
-              reported == f"echest {declared.group(1)}",
+              reported == f"mateprover {declared.group(1)}",
               f"{reported!r} vs source {declared.group(1)!r}")
 
     banner = run(engine, ["--help"], "").splitlines()[0]

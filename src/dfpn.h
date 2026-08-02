@@ -1,12 +1,12 @@
 // dfpn.h -- Native DFPN preconditioner. A preconditioner only, never an output authority.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_DFPN_H_INCLUDED
-#define ECHEST_DFPN_H_INCLUDED
+#ifndef MATEPROVER_DFPN_H_INCLUDED
+#define MATEPROVER_DFPN_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // ---------------------------------------------------------------------------
 // Native DFPN (depth-first proof-number search)
@@ -333,6 +333,6 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     }
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_DFPN_H_INCLUDED
+#endif // MATEPROVER_DFPN_H_INCLUDED

@@ -1,12 +1,12 @@
 // types.h -- Core value types: colours, moves, boards, proofs, statistics, table keys.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_TYPES_H_INCLUDED
-#define ECHEST_TYPES_H_INCLUDED
+#ifndef MATEPROVER_TYPES_H_INCLUDED
+#define MATEPROVER_TYPES_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 
 enum Color { WHITE = 0, BLACK = 1 };
@@ -300,6 +300,6 @@ struct TTEntry {
     }
 };
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_TYPES_H_INCLUDED
+#endif // MATEPROVER_TYPES_H_INCLUDED

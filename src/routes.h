@@ -1,12 +1,12 @@
 // routes.h -- Route implementations and the single guard that decides whether a route result may be reported.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_ROUTES_H_INCLUDED
-#define ECHEST_ROUTES_H_INCLUDED
+#ifndef MATEPROVER_ROUTES_H_INCLUDED
+#define MATEPROVER_ROUTES_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_depth, int max_depth) {
     RouteResult result;
@@ -374,6 +374,6 @@ bool route_result_is_acceptable(const RouteResult& result, int max_depth) {
     return result.proved_depth == pv_depth && result.proved_depth > 0 && result.proved_depth <= max_depth;
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_ROUTES_H_INCLUDED
+#endif // MATEPROVER_ROUTES_H_INCLUDED

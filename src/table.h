@@ -1,12 +1,12 @@
 // table.h -- Bounded and shared proof tables, and the memory-budget conversion.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_TABLE_H_INCLUDED
-#define ECHEST_TABLE_H_INCLUDED
+#ifndef MATEPROVER_TABLE_H_INCLUDED
+#define MATEPROVER_TABLE_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // A memo of exact verdicts with a bounded entry count.
 //
@@ -214,6 +214,6 @@ inline std::size_t entry_capacity_for_mb(std::size_t megabytes) {
     return (megabytes * 1024u * 1024u) / EST_BYTES_PER_ENTRY;
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_TABLE_H_INCLUDED
+#endif // MATEPROVER_TABLE_H_INCLUDED

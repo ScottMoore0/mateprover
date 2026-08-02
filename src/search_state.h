@@ -1,12 +1,12 @@
 // search_state.h -- Search configuration, per-search mutable state, and cancellation.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_SEARCH_STATE_H_INCLUDED
-#define ECHEST_SEARCH_STATE_H_INCLUDED
+#ifndef MATEPROVER_SEARCH_STATE_H_INCLUDED
+#define MATEPROVER_SEARCH_STATE_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // All tunable search options. This is the single value passed from the CLI to
 // the search, and is also what each worker copies when a search is split
@@ -338,6 +338,6 @@ int square_of(int file, int rank) {
     return rank * 8 + file;
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_SEARCH_STATE_H_INCLUDED
+#endif // MATEPROVER_SEARCH_STATE_H_INCLUDED

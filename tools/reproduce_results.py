@@ -5,8 +5,8 @@ The numbers in the documentation are worth exactly as much as a reader's ability
 to check them, so this runs the same measurements on the same held-out positions
 and prints what it gets beside what is claimed.
 
-    python tools/reproduce_results.py --engine build/echest
-    python tools/reproduce_results.py --engine build/echest --quick
+    python tools/reproduce_results.py --engine build/mateprover
+    python tools/reproduce_results.py --engine build/mateprover --quick
 
 Expect the full run to take on the order of half an hour: unsolved positions
 consume their whole budget, which is the point of a budgeted measurement.

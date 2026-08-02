@@ -1,21 +1,21 @@
-# echest
+# MateProver
 
 An exact directmate prover that emits **machine-checkable proof certificates**.
 
-Given a position and a depth N, echest either proves a forced mate in N and
+Given a position and a depth N, mateprover either proves a forced mate in N and
 emits a proof an independent checker can verify, or reports that it found none.
 It does not estimate, search heuristically for a likely mate, or return a score
 — every reported mate is a complete AND/OR proof in which every legal defender
 reply is refuted.
 
 ```
-$ echo "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" | echest -z 2 -
+$ echo "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" | mateprover -z 2 -
 2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -; acn 43; acs 0.0002; bm h5a5; dm 2; pv h5a5 d8d7 e3f5;
 ```
 
 ## What makes it different
 
-Most engines reporting `mate in N` are reporting a search result. echest
+Most engines reporting `mate in N` are reporting a search result. mateprover
 reports a **proof**, and with `--emit-proof` it hands you the whole thing:
 
 ```
@@ -30,11 +30,11 @@ The checker ships with the engine, so the claim is yours to verify rather than
 mine to assert:
 
 ```
-echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
+mateprover --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
 The reach figures above are reproducible: the held-out positions ship in
-`benchmarks/`, and `python tools/reproduce_results.py --engine build/echest`
+`benchmarks/`, and `python tools/reproduce_results.py --engine build/mateprover`
 re-runs the measurements and prints them beside the documented values.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
@@ -99,7 +99,7 @@ mate is N":
 Ranges reflect run-to-run variation for problems sitting near the budget
 boundary.
 
-**Read this honestly:** echest solves mate-in-5 and below essentially always and
+**Read this honestly:** mateprover solves mate-in-5 and below essentially always and
 mate-in-6/7 reliably in seconds. Deeper, the numbers come from evaluation sets
 used once and never consulted during development. There is no wall -- the solve
 rate declines gradually and is still above half at mate-in-20:
@@ -139,7 +139,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-The binary lands at `build/echest` (`.exe` on Windows).
+The binary lands at `build/mateprover` (`.exe` on Windows).
 
 Verified on Linux/GCC 13 and Windows/MinGW-w64 GCC 15; macOS/Clang and
 Windows/MSVC are configured in CI. Builds clean under
@@ -154,7 +154,7 @@ ctest --test-dir build --output-on-failure
 or directly:
 
 ```
-python tests/run_tests.py --engine build/echest
+python tests/run_tests.py --engine build/mateprover
 ```
 
 135 checks covering:
@@ -185,15 +185,15 @@ The core tests have no third-party dependency.
 ## Usage
 
 ```
-echest [options] -            read EPD/FEN lines from stdin
-echest [options] < file       read a single position from stdin
-echest --help                 full option list
+mateprover [options] -            read EPD/FEN lines from stdin
+mateprover [options] < file       read a single position from stdin
+mateprover --help                 full option list
 ```
 
 Input is a FEN (the first four fields are enough). The mate depth comes from
 `-z N`, or is inferred from a `#N` token in an EPD line.
 
-echest can also be kept running as a service: feed it positions one at a time on
+mateprover can also be kept running as a service: feed it positions one at a time on
 stdin and each answer is flushed as soon as it is ready. Answers never depend on
 order or batching, so a long-lived process and a fresh one give identical
 results.
@@ -284,9 +284,9 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Project context
 
-echest is a from-scratch implementation. Other mate solvers are used as
+mateprover is a from-scratch implementation. Other mate solvers are used as
 behavioural oracles and differential references in testing; no code from any
 of them is used here.
 
-`docs/E_CHEST_ARCHITECTURE.md` records the design and, in more detail than is
+`docs/ARCHITECTURE.md` records the design and, in more detail than is
 usual, the optimisations that were measured and **rejected** — including why.

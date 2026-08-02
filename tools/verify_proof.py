@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Independently verify echest proof certificates.
+"""Independently verify mateprover proof certificates.
 
-echest's central claim is that a reported mate is a *proof*, not a search
+mateprover's central claim is that a reported mate is a *proof*, not a search
 result. This checker is what makes that claim testable by someone who does not
 trust the engine: it re-derives every legal move itself, using python-chess,
 and accepts a certificate only if every step holds.
@@ -20,7 +20,7 @@ implies.
 
 Usage:
 
-    echest --emit-proof -z 5 - < positions.epd | python verify_proof.py
+    mateprover --emit-proof -z 5 - < positions.epd | python verify_proof.py
     python verify_proof.py engine_output.txt
 
 Exit status is 0 only if every certificate and PV in the input verified.

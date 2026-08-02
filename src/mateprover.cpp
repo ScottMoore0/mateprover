@@ -1,4 +1,4 @@
-// E Chest initial exact directmate prover.
+// MateProver initial exact directmate prover.
 //
 // This is a conservative first checkpoint for the E rewrite line. It favors
 // auditable correctness over final performance. Later E milestones should
@@ -48,7 +48,7 @@
 #include "report.h"
 #include "solve.h"
 
-using namespace echest;
+using namespace mateprover;
 
 
 // Ceiling applied to `--threads auto`. See the comment at its use site: root
@@ -60,19 +60,19 @@ constexpr int AUTO_THREAD_CAP = 16;
 // a direct g++ build of the same source fell back to "0.1.0-dev". Two builds of
 // identical code reported different versions, and neither string said which was
 // which.
-#define ECHEST_VERSION "1.0.0"
+#define MATEPROVER_VERSION "1.0.0"
 
 void print_version() {
-    std::cout << "echest " << ECHEST_VERSION << "\n";
+    std::cout << "mateprover " << MATEPROVER_VERSION << "\n";
 }
 
 void print_usage() {
     std::cout <<
-"echest " ECHEST_VERSION " - exact directmate prover with machine-checkable proofs\n"
+"mateprover " MATEPROVER_VERSION " - exact directmate prover with machine-checkable proofs\n"
 "\n"
 "Usage:\n"
-"  echest [options] -            read EPD/FEN lines from stdin\n"
-"  echest [options] < file       read a single position from stdin\n"
+"  mateprover [options] -            read EPD/FEN lines from stdin\n"
+"  mateprover [options] < file       read a single position from stdin\n"
 "\n"
 "Problem:\n"
 "  -z N                          requested mate depth. Without it the depth is\n"
@@ -139,7 +139,7 @@ void print_usage() {
 "  --perft N                     perft counts for depths 1..N\n"
 "  --perft-divide N              per-root-move perft breakdown at depth N\n"
 "\n"
-"Search tuning (all preserve exactness; see docs/E_CHEST_ARCHITECTURE.md):\n"
+"Search tuning (all preserve exactness; see docs/ARCHITECTURE.md):\n"
 "  --proof-hints | --no-proof-hints\n"
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
@@ -239,8 +239,8 @@ int main(int argc, char** argv) {
     }
 
     auto usage_error = [](const std::string& message) {
-        std::cerr << "echest: " << message << "\n"
-                  << "Try 'echest --help' for usage.\n";
+        std::cerr << "mateprover: " << message << "\n"
+                  << "Try 'mateprover --help' for usage.\n";
         return 2;
     };
 

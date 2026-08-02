@@ -1,8 +1,8 @@
-# E Chest Architecture
+# MateProver Architecture
 
 ## Purpose
 
-E Chest is a from-scratch exact directmate prover designed to exceed the current D line in core single-position speed, hard-position proof speed, and batch/service throughput while reducing the chance of proof errors.
+MateProver is a from-scratch exact directmate prover designed to exceed the current D line in core single-position speed, hard-position proof speed, and batch/service throughput while reducing the chance of proof errors.
 
 The current D line wins mostly through orchestration: batching, route selection, memory sizing, load balancing, and worker fanout. E aims to improve the core prover itself and then regain or exceed D's orchestration advantages.
 
@@ -768,7 +768,7 @@ Final E should use:
 
 Current E checkpoint:
 
-- `chest-e\build.ps1` uses the linker no-timestamp option so repeated builds from identical source produce a stable executable hash for benchmark registry pinning.
+- `mateprover\build.ps1` uses the linker no-timestamp option so repeated builds from identical source produce a stable executable hash for benchmark registry pinning.
 
 ### 10b. Input Validation And A Castling Bug It Uncovered
 
@@ -786,7 +786,7 @@ Thirteen illegal-position checks and four castling checks are now part of the su
 
 ### 11. Verification Harness
 
-A certificate format is only worth having if someone other than the engine can check it. `chest-e/tools/verify_proof.py` ships with the prover for that reason: it reads engine output, re-derives every legal move with python-chess, and never consults the engine.
+A certificate format is only worth having if someone other than the engine can check it. `mateprover/tools/verify_proof.py` ships with the prover for that reason: it reads engine output, re-derives every legal move with python-chess, and never consults the engine.
 
 It accepts a certificate only when the attacker move is legal at each node, a leaf marked `mate` really is checkmate, a defender node lists **exactly** the legal replies, and every listed reply has a valid sub-proof. It independently replays the reported PV and checks its length against the reported depth.
 
@@ -1377,7 +1377,7 @@ seconds:
 
 | invocation | solved |
 |---|---|
-| `echest -z 8 --time-limit 15 -` | 26/60 |
+| `mateprover -z 8 --time-limit 15 -` | 26/60 |
 | the promoted incantation | 52/60 |
 
 **Exactly half.** A reader following the Usage section got half the engine, and
@@ -1425,7 +1425,7 @@ have caught, because every gate fed the engine input the engine had generated:
 
 **Depth was inferred only from `#N`.** That is the matetrack spelling. This
 repository's own corpora use `dm N` -- `tests/mates.epd` is literally documented
-as `<fen4> ; dm <depth>` -- and so does echest's own output. Piping the shipped
+as `<fen4> ; dm <depth>` -- and so does mateprover's own output. Piping the shipped
 corpus in searched nothing at all, silently, because a missing depth is not an
 error. Both spellings are now accepted, which also makes a run's output valid
 input to another run.
@@ -1436,7 +1436,7 @@ character is `#` are now skipped; a FEN cannot begin with `#`, so this cannot
 mask a real position.
 
 Together these meant the single most natural invocation a new user would try --
-`echest - < tests/mates.epd` -- printed two errors and solved nothing. Both are
+`mateprover - < tests/mates.epd` -- printed two errors and solved nothing. Both are
 now pinned by `test_corpus_ergonomics`, including the round-trip property, and
 the suite is at 140 checks.
 
@@ -1467,12 +1467,12 @@ empty directory and running the documented build:
 
 The build path a reader is told to follow works, and the CI workflow's exact
 sequence reproduces locally. (The workflow itself still cannot run: GitHub reads
-workflows only from a repository root, and it sits at `chest-e/.github/` awaiting
+workflows only from a repository root, and it sits at `mateprover/.github/` awaiting
 extraction. That is deliberate and documented, but it does mean CI is staged
 rather than active.)
 
 What extraction *did* break was documentation. The docs were written while
-chest-e was a subdirectory beside a private benchmark harness, and several
+mateprover was a subdirectory beside a private benchmark harness, and several
 referenced it:
 
 - two places, including the status document, told the reader that certificates
@@ -2085,7 +2085,7 @@ is a different engine, not an increment to this one.
 ### 18. Two Builds, Two Versions
 
 `CMakeLists.txt` declared `VERSION 0.1.0` and passed it to the compiler, while
-`src/echest.cpp` carried `#define ECHEST_VERSION "0.1.0-dev"` as a fallback for
+`src/mateprover.cpp` carried `#define MATEPROVER_VERSION "0.1.0-dev"` as a fallback for
 builds that did not define it. Both build paths are supported and documented, so
 the same source reported **0.1.0** or **0.1.0-dev** depending on how it was
 compiled, and neither string said which. A version in a bug report identified the
@@ -2118,7 +2118,7 @@ which is the failure that actually happens.
 Every correctness claim so far rests on the engine's own behaviour: tests,
 certificates, differential runs. All of it is one compiler's view of one
 platform. The CI matrix names clang, MSVC, Linux and macOS, and **none of them
-has ever compiled this code** -- the workflow sits at `chest-e/.github/` and
+has ever compiled this code** -- the workflow sits at `mateprover/.github/` and
 GitHub reads workflows only from a repository root, so CI is staged, not active.
 No second compiler or sanitiser is available here either.
 
@@ -2708,7 +2708,7 @@ previously suggested.
 **Against Chest 3.19**, the program this one reimplements, on the same machine,
 positions, memory and time cap:
 
-| depth | Chest 3.19 | echest, one thread | echest, default |
+| depth | Chest 3.19 | mateprover, one thread | mateprover, default |
 |---|---|---|---|
 | mate-8 | 39/40, 4.3 s | 40/40, 1.0 s | 40/40, 1.2 s |
 | mate-10 | 17/40, 21.2 s | 37/40, 3.3 s | 37/40, 3.3 s |

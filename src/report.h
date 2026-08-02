@@ -1,12 +1,12 @@
 // report.h -- Perft, profile counters, and the line-oriented output helpers.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_REPORT_H_INCLUDED
-#define ECHEST_REPORT_H_INCLUDED
+#ifndef MATEPROVER_REPORT_H_INCLUDED
+#define MATEPROVER_REPORT_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // Perft: count leaf nodes of the legal move tree to a fixed depth.
 //
@@ -84,7 +84,7 @@ void perft_line(const std::string& raw, int depth) {
 //
 // Two spellings are accepted. `#N` is the matetrack/EPD convention. `dm N` is
 // the convention this repository's own corpora use (tests/mates.epd is written
-// `<fen4> ; dm <depth>`) and is also the form echest itself prints, so a run's
+// `<fen4> ; dm <depth>`) and is also the form mateprover itself prints, so a run's
 // output can be fed straight back in. Only `#N` was recognised before, which
 // meant piping the shipped corpus into the engine silently searched nothing.
 int infer_mate_depth(const std::string& line) {
@@ -135,7 +135,7 @@ std::string pv_uci(const std::vector<Move>& pv) {
 
 void emit_profile_line(const Board& b, const Search& s, int requested_depth, int proved_depth, double seconds) {
     const Stats& st = s.stats;
-    std::cerr << "% e_profile {"
+    std::cerr << "% mateprover_profile {"
               << "\"fen\":" << json_quote(fen4(b))
               << ",\"route\":" << json_quote(route_name(s.route))
               << ",\"requested_depth\":" << requested_depth
@@ -269,6 +269,6 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n" << std::flush;
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_REPORT_H_INCLUDED
+#endif // MATEPROVER_REPORT_H_INCLUDED

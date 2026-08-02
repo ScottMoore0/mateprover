@@ -37,7 +37,7 @@
 #include "movegen.h"
 #include "ordering.h"
 
-using namespace echest;
+using namespace mateprover;
 
 int main(int argc, char** argv) {
     std::vector<Board> boards;

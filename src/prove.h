@@ -1,12 +1,12 @@
 // prove.h -- The exact AND/OR proof kernel: attacker and defender nodes, threat probes, and attacker restrictions.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_PROVE_H_INCLUDED
-#define ECHEST_PROVE_H_INCLUDED
+#ifndef MATEPROVER_PROVE_H_INCLUDED
+#define MATEPROVER_PROVE_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
@@ -403,6 +403,6 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     return {};
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_PROVE_H_INCLUDED
+#endif // MATEPROVER_PROVE_H_INCLUDED

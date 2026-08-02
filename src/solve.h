@@ -1,12 +1,12 @@
 // solve.h -- The restriction portfolio and the per-position driver.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_SOLVE_H_INCLUDED
-#define ECHEST_SOLVE_H_INCLUDED
+#ifndef MATEPROVER_SOLVE_H_INCLUDED
+#define MATEPROVER_SOLVE_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // One entry in the restriction portfolio.
 struct PortfolioEntry {
@@ -364,6 +364,6 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
 inline void solve_line(const std::string& raw, int requested_depth, const SearchConfig& config) {
     solve_line(raw, requested_depth, config, std::cout);
 }
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_SOLVE_H_INCLUDED
+#endif // MATEPROVER_SOLVE_H_INCLUDED

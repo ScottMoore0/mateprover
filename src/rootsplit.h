@@ -1,12 +1,12 @@
 // rootsplit.h -- Root-split parallel search and the worker coordination it needs.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_ROOTSPLIT_H_INCLUDED
-#define ECHEST_ROOTSPLIT_H_INCLUDED
+#ifndef MATEPROVER_ROOTSPLIT_H_INCLUDED
+#define MATEPROVER_ROOTSPLIT_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // One worker's coordination slot. `current_root` is the root move index the
 // worker is presently proving; `cancel` is the flag its Search polls.
@@ -247,6 +247,6 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     return false;
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_ROOTSPLIT_H_INCLUDED
+#endif // MATEPROVER_ROOTSPLIT_H_INCLUDED

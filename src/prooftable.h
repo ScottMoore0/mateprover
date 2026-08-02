@@ -1,12 +1,12 @@
 // prooftable.h -- Centralised exact proof-table probe and store.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_PROOFTABLE_H_INCLUDED
-#define ECHEST_PROOFTABLE_H_INCLUDED
+#ifndef MATEPROVER_PROOFTABLE_H_INCLUDED
+#define MATEPROVER_PROOFTABLE_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // Probe for a verdict at `depth`. The key excludes depth; the entry's bounds
 // decide whether what is stored answers this particular question.
@@ -59,6 +59,6 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
 
 
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_PROOFTABLE_H_INCLUDED
+#endif // MATEPROVER_PROOFTABLE_H_INCLUDED

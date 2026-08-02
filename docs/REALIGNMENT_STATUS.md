@@ -1,11 +1,11 @@
-# E Chest Realignment Status
+# MateProver Realignment Status
 
 ## Current Status
 
 **Configuration note (2026-08-01).** Everything measured as a win now ships as a
 default rather than behind a flag: all cores up to 16, the search tunings, a
 256 MB table, and the restriction portfolio whenever `--time-limit` is given.
-A bare `echest -z 8 --time-limit 15 -` previously solved half of what the tuned
+A bare `mateprover -z 8 --time-limit 15 -` previously solved half of what the tuned
 invocation did; it now matches it. Each default has an opt-out. See architecture
 sections 8n and 8l.
 

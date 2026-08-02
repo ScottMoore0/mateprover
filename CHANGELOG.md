@@ -1,7 +1,7 @@
 # Changelog
 
 Versions follow [semantic versioning](https://semver.org). The version lives in
-`src/echest.cpp`; `CMakeLists.txt` parses it from there so the two cannot drift.
+`src/mateprover.cpp`; `CMakeLists.txt` parses it from there so the two cannot drift.
 
 The two external contracts carry their own version numbers, documented in
 `docs/OUTPUT_FORMAT.md` and `docs/PROOF_FORMAT.md`. Fields may be *added* to
@@ -9,6 +9,18 @@ either without a major bump; the meaning of an existing field will not change
 without one.
 
 ## 1.0.0 — unreleased
+
+Published as **MateProver**. The project was developed under the working name
+"E Chest" because it began as a reimplementation line measured against Heiner
+Marxen's Chest, which it is still benchmarked against below. That name was never
+suitable for release: it borrows the identity of a separate program that this
+one publishes head-to-head results against. `mateprover` names what the tool is
+— a prover, not a solver — which is the distinction the certificates make real.
+
+One wire-format token moved with the name: the `--profile` diagnostic line is
+prefixed `% mateprover_profile` rather than `% e_profile`. Nothing had been
+released, so no consumer existed to break; the position, PV, `dm`/`acn`/`acs`
+and certificate formats are untouched.
 
 First complete version. Exact directmate prover: given a position and a depth,
 it either proves a forced mate and emits a machine-checkable certificate, or
@@ -65,5 +77,5 @@ same answer on every run and machine.
 **Not included.** Endgame tablebases (measured: they would reach 1% of proof
 nodes, and near the leaves where the subtree beneath is already almost free) and
 a bitboard rewrite (measured: no concentrated hotspot to justify it). Each is
-recorded with its numbers in `docs/E_CHEST_ARCHITECTURE.md` rather than left as
+recorded with its numbers in `docs/ARCHITECTURE.md` rather than left as
 an implied roadmap.

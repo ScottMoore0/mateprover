@@ -4,7 +4,7 @@ The architecture document records every finding in the order it was made. This
 one states the argument: what this engine's capability actually comes from, what
 was measured and rejected, and how far to trust any of it.
 
-Section numbers below point into `E_CHEST_ARCHITECTURE.md`.
+Section numbers below point into `ARCHITECTURE.md`.
 
 ## The short version
 
@@ -49,31 +49,31 @@ looked past mate-in-10 (31).
 The program this one reimplements. Same machine, same positions, same 2 GB table,
 same 30-second cap, both single-threaded for the fair comparison:
 
-| depth | Chest 3.19 | echest, one thread | echest, shipped default |
+| depth | Chest 3.19 | mateprover, one thread | mateprover, shipped default |
 |---|---|---|---|
 | mate-8 | 39/40, mean 4.3 s | **40/40, mean 1.0 s** | 40/40, mean 1.2 s |
 | mate-10 | 17/40, mean 21.2 s | **37/40, mean 3.3 s** | 37/40, mean 3.3 s |
 | mate-12 | 8/40, mean 26.3 s | **33/40, mean 6.4 s** | 33/40, mean 6.4 s |
 
-At mate-in-8 the two are close in reach and echest is about four times faster. The
-gap widens with depth: at mate-in-12 echest solves four times as many positions.
+At mate-in-8 the two are close in reach and mateprover is about four times faster. The
+gap widens with depth: at mate-in-12 mateprover solves four times as many positions.
 Mean times are censored by the 30-second cap, so they understate the speed
 difference wherever Chest times out.
 
 On the positions **both** engines solve -- the fair way to compare speed, since it
 excludes everything Chest cannot do at all and therefore understates the gap:
 
-| depth | paired positions | time, Chest → echest | nodes, Chest → echest |
+| depth | paired positions | time, Chest → mateprover | nodes, Chest → mateprover |
 |---|---|---|---|
 | mate-8 | 39 | 3.61 s → 1.02 s (3.6x mean, 20x median) | 5.20M → 0.74M (7.1x mean, 25x median) |
 | mate-10 | 17 | 9.40 s → 0.60 s (15.8x mean, 16x median) | 17.30M → 0.44M (39.8x mean, 38x median) |
 
 Mean and median differ because a few slow positions dominate the mean; the median
 is the typical case. Nodes-to-proof is the hardware-independent measure, and it
-is where the difference is largest: at mate-in-10 echest proves the same mates
+is where the difference is largest: at mate-in-10 mateprover proves the same mates
 having examined about 2.5% of the positions Chest examines.
 
-Two things that comparison does not capture. echest emits a machine-checkable
+Two things that comparison does not capture. mateprover emits a machine-checkable
 certificate for every proof and Chest does not, so the results are not merely
 faster but independently checkable. And the parallel columns are nearly identical
 to the single-thread ones because these positions resolve in seconds -- threads
@@ -121,7 +121,7 @@ was used.
 The held-out position sets ship with the engine, and
 
 ```
-python tools/reproduce_results.py --engine build/echest
+python tools/reproduce_results.py --engine build/mateprover
 ```
 
 re-runs the measurements above and prints what it gets beside what is claimed.

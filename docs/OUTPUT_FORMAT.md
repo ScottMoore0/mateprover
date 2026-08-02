@@ -1,4 +1,4 @@
-# echest Output Format
+# mateprover Output Format
 
 Version 1. One line of stdout per input line, in input order. This document
 specifies what a consumer may rely on.
@@ -123,7 +123,7 @@ pairs followed by `total <count>`:
 <original line>; legal_count 0; error input;
 ```
 
-`--profile` writes one `% e_profile {json}` line per position to **stderr**.
+`--profile` writes one `% mateprover_profile {json}` line per position to **stderr**.
 Those counters are diagnostics, not a stable interface, and may change without
 a version bump. Everything on stdout is covered by this document.
 

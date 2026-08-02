@@ -1,12 +1,12 @@
 // ordering.h -- Move-ordering scores and the ordered move-list generators.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_ORDERING_H_INCLUDED
-#define ECHEST_ORDERING_H_INCLUDED
+#ifndef MATEPROVER_ORDERING_H_INCLUDED
+#define MATEPROVER_ORDERING_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 // Move-ordering terms that need no child board: capture, promotion, and moving
 // piece. Shared by the fused and split scoring paths so the two cannot drift.
@@ -328,6 +328,6 @@ bool should_order(const Search& s, std::size_t move_count) {
     return move_count >= std::max<std::size_t>(2, s.order_min_size);
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_ORDERING_H_INCLUDED
+#endif // MATEPROVER_ORDERING_H_INCLUDED

@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 $env:TMP = $Tmp
 $env:TEMP = $Tmp
 
-$Out = Join-Path $Build "echest.exe"
-g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra -pedantic -pthread "-Wl,--no-insert-timestamp" -o $Out (Join-Path $Root "src\echest.cpp")
+$Out = Join-Path $Build "mateprover.exe"
+g++ -std=c++17 -O3 -DNDEBUG -Wall -Wextra -pedantic -pthread "-Wl,--no-insert-timestamp" -o $Out (Join-Path $Root "src\mateprover.cpp")
 
 Write-Host $Out

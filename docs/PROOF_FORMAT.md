@@ -1,4 +1,4 @@
-# echest Proof Certificate Format
+# mateprover Proof Certificate Format
 
 Version 1. This document specifies the certificate emitted by `--emit-proof`
 precisely enough to write an independent verifier without reading the engine.
@@ -95,7 +95,7 @@ python-chess, in about 210 lines. It reads engine output on stdin and exits
 non-zero if any certificate fails:
 
 ```
-echest --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py -
+mateprover --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py -
 ```
 
 It is deliberately a separate program from the engine, sharing no code with it,

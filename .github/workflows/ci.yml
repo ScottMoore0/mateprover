@@ -1,8 +1,9 @@
 name: CI
 
-# Note: this workflow lives under chest-e/ so that it is already in place when
-# the prover is extracted into its own repository. GitHub only reads workflows
-# from the repository root, so it does not run while chest-e is a subdirectory.
+# This workflow runs from the repository root. It was written while the prover
+# was still a subdirectory of a larger workspace, where GitHub would not read it;
+# extracting the tree into its own repository is what puts it into effect, so
+# the first push here is also the first time any of it has executed.
 
 on:
   push:
@@ -69,9 +70,9 @@ jobs:
         # this is the check that says those indices are in range on every path
         # the suite exercises.
         run: |
-          g++ -std=c++17 -O1 -g -D_GLIBCXX_DEBUG -D_GLIBCXX_ASSERTIONS               -Wall -Wextra -pedantic -pthread -o /tmp/echest_checked src/echest.cpp
+          g++ -std=c++17 -O1 -g -D_GLIBCXX_DEBUG -D_GLIBCXX_ASSERTIONS               -Wall -Wextra -pedantic -pthread -o /tmp/mateprover_checked src/mateprover.cpp
       - name: Run the full suite under bounds checking
-        run: python tests/run_tests.py --engine /tmp/echest_checked
+        run: python tests/run_tests.py --engine /tmp/mateprover_checked
 
   future-standards:
     name: c++20 and c++23
@@ -83,8 +84,8 @@ jobs:
         # constructs quietly tolerated by C++17, which is the cheapest available
         # approximation of a second front end.
         run: |
-          g++ -std=c++20 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/echest.cpp
-          g++ -std=c++23 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/echest.cpp
+          g++ -std=c++20 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/mateprover.cpp
+          g++ -std=c++23 -O2 -Wall -Wextra -pedantic -Werror -pthread -fsyntax-only src/mateprover.cpp
 
   static-analysis:
     name: cppcheck
@@ -99,7 +100,7 @@ jobs:
         # reasons; anything else is a finding to act on, so the run must be
         # silent. --error-exitcode makes a finding fail the job.
         run: |
-          cppcheck --enable=warning,performance,portability,style                    --std=c++17 --check-level=exhaustive                    --suppressions-list=.cppcheck-suppressions                    --error-exitcode=1 --quiet src/echest.cpp
+          cppcheck --enable=warning,performance,portability,style                    --std=c++17 --check-level=exhaustive                    --suppressions-list=.cppcheck-suppressions                    --error-exitcode=1 --quiet src/mateprover.cpp
 
   warnings-are-errors:
     name: strict warnings
@@ -109,5 +110,5 @@ jobs:
       - name: Build with -Werror
         run: |
           g++ -std=c++17 -O2 -Wall -Wextra -pedantic -Werror -pthread \
-              -o /tmp/echest src/echest.cpp
-          echo "" | /tmp/echest --perft 4
+              -o /tmp/mateprover src/mateprover.cpp
+          echo "" | /tmp/mateprover --perft 4

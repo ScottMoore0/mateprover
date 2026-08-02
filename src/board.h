@@ -1,12 +1,12 @@
 // board.h -- Board geometry, attack tables, FEN parsing and formatting, attack queries.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_BOARD_H_INCLUDED
-#define ECHEST_BOARD_H_INCLUDED
+#ifndef MATEPROVER_BOARD_H_INCLUDED
+#define MATEPROVER_BOARD_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 struct SquareList {
     std::array<int, 8> sq{};
@@ -453,6 +453,6 @@ void add_move(MoveList& moves, int from, int to, char promo = 0, bool castle = f
     moves.push_back(m);
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_BOARD_H_INCLUDED
+#endif // MATEPROVER_BOARD_H_INCLUDED

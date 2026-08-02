@@ -1,12 +1,12 @@
 // movegen.h -- Pseudo-legal generation, make_move, legality, and occupancy-plane queries.
 //
 // Part of a header-based split of a single translation unit. The modules are
-// included in order by echest.cpp; see docs/E_CHEST_ARCHITECTURE.md.
+// included in order by mateprover.cpp; see docs/ARCHITECTURE.md.
 
-#ifndef ECHEST_MOVEGEN_H_INCLUDED
-#define ECHEST_MOVEGEN_H_INCLUDED
+#ifndef MATEPROVER_MOVEGEN_H_INCLUDED
+#define MATEPROVER_MOVEGEN_H_INCLUDED
 
-namespace echest {
+namespace mateprover {
 
 template <typename MoveSink>
 void gen_pseudo(const Board& b, MoveSink& moves) {
@@ -352,6 +352,6 @@ bool move_gives_check_fast(const Board& b, const Move& m) {
     return attacked_on_planes(pl.occ, pl.by_color, pl.by_type, enemy_king, b.stm);
 }
 
-} // namespace echest
+} // namespace mateprover
 
-#endif // ECHEST_MOVEGEN_H_INCLUDED
+#endif // MATEPROVER_MOVEGEN_H_INCLUDED
