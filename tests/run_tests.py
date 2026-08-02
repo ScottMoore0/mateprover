@@ -1666,7 +1666,11 @@ def main() -> int:
     # number beside it. Counting this check itself is deliberate: adding a
     # check should force the claim to be updated.
     print("\n[docs] the advertised check count is the real one")
-    docs = (HERE.parent / "CHANGELOG.md", HERE.parent / "docs" / "RESULTS.md")
+    # README included from the start would have caught "135 checks" surviving
+    # to 299. It was left out of the first version of this guard, and the file
+    # most readers see first was the one file not checked.
+    docs = (HERE.parent / "CHANGELOG.md", HERE.parent / "docs" / "RESULTS.md",
+            HERE.parent / "README.md")
     claimed = res.passed + len(docs) + len(res.failed)
     for doc in docs:
         text = doc.read_text(encoding="utf-8")

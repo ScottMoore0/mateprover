@@ -9,8 +9,8 @@ It does not estimate, search heuristically for a likely mate, or return a score
 reply is refuted.
 
 ```
-$ echo "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" | mateprover -z 2 -
-2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -; acn 43; acs 0.0002; bm h5a5; dm 2; pv h5a5 d8d7 e3f5;
+$ echo "8/2Q5/R7/8/1k4K1/8/8/8 w - -" | mateprover -z 2 -
+8/2Q5/R7/8/1k4K1/8/8/8 w - -; acn 99; acs 0.000272; bm a6b6; dm 2; pv a6b6 b4a3 c7a7;
 ```
 
 ## What makes it different
@@ -19,7 +19,7 @@ Most engines reporting `mate in N` are reporting a search result. mateprover
 reports a **proof**, and with `--emit-proof` it hands you the whole thing:
 
 ```
-proof {"a":"h5a5","d":[{"r":"d8d7","p":{"a":"e3f5","mate":true}}, ...]}
+proof {"a":"a6b6","d":[{"r":"b4a3","p":{"a":"c7a7","mate":true}}, ...]}
 ```
 
 Every attacker node carries one proof move. Every defender node enumerates
@@ -33,9 +33,12 @@ mine to assert:
 mateprover --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
-The reach figures above are reproducible: the held-out positions ship in
-`benchmarks/`, and `python tools/reproduce_results.py --engine build/mateprover`
-re-runs the measurements and prints them beside the documented values.
+The reach figures are reproducible, with one step of setup: the position sets are
+**not** distributed, but every set is fully determined by its corpus, depth,
+count and seed, and `benchmarks/MANIFEST.json` records all four. Rebuild them
+with `tools/mint_eval_set.py`, then `python tools/reproduce_results.py --engine
+build/mateprover` re-runs the measurements and prints them beside the documented
+values. `benchmarks/README.md` has the details.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
 
@@ -52,9 +55,9 @@ The certificate format is specified in [docs/PROOF_FORMAT.md](docs/PROOF_FORMAT.
 precisely enough to write an independent verifier without reading the engine.
 That is the point of it: the claim should not rest on trusting the prover.
 
-It re-derives every legal move itself with python-chess and never consults the
-engine, so it catches a certificate that omits an inconvenient defence, marks a
-non-mating leaf as mate, or overstates the depth. The test suite exercises
+`tools/verify_proof.py` re-derives every legal move itself and never consults
+the engine, so it catches a certificate that omits an inconvenient defence,
+marks a non-mating leaf as mate, or overstates the depth. The test suite exercises
 exactly those forgeries against it.
 
 That property drives the design: an optimisation is acceptable only if the
@@ -65,15 +68,25 @@ history were rejected for failing that bar rather than for being slow.
 
 Measured on a 32-core Windows host, GCC 15, `-O3`.
 
-Single-threaded throughput on a 40-position hard suite: **659k nodes/sec**.
+Single-threaded throughput is strongly position-dependent — **0.7M to 1.7M
+nodes/sec** on hard positions, depending on how much of the tree is spent in the
+preconditioner. A single headline figure would be misleading, and node rate is
+the wrong thing to optimise anyway: this project measured that **halving the
+nodes needed is worth about one extra position in forty**, the same as doubling
+the speed (`docs/ARCHITECTURE.md` §43).
 
-Speed relative to the same suites earlier in development, with identical
-answers and identical node counts:
+The comparison worth making is against an established mate solver, run as the
+reference implementation under matched conditions — same machine, positions,
+memory and time cap, both single-threaded. On positions solved by both:
 
-| | speedup |
-|---|---:|
-| sequential (efficiency only) | 1.44x |
-| default (8 threads) | 2.93x |
+| | time | nodes |
+|---|---|---|
+| mate-8 (39 positions) | 3.6x mean, **20x median** | 7.1x mean, 25x median |
+| mate-10 (17 positions) | 15.8x mean, **16x median** | 39.8x mean, 38x median |
+
+Mean and median differ because a few slow positions dominate the mean. Full
+methodology, the reference implementation's identity and version, and the
+solve-rate comparison are in `docs/RESULTS.md`.
 
 ## Capability
 
@@ -81,54 +94,42 @@ Speed matters less than reach, so this is measured against
 [matetrack](https://github.com/vondele/matetrack), a public mate benchmark,
 rather than suites chosen by this project.
 
-Solve rate within a wall-clock budget, 8 threads, at the default table budget:
+Solve rate on evaluation sets that were minted before the work they judge,
+measured exactly once, and never consulted in between. Wilson 95% intervals:
 
-| problems | 0.5 s | 2 s | 5 s |
-|---|---:|---:|---:|
-| mate-in-8 (24 sampled) | 5/24 | 6–7/24 | 10–11/24 |
-| mate-in-10 (20 sampled) | 0/20 | 0/20 | 2/20 |
+| problems | solve rate | 95% CI |
+|---|---:|---|
+| mate-in-8, default configuration, 15 s (200 positions) | **85.5%** | 80.0–89.7 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60) | **90.0%** | 79.9–95.3 |
+| mate-in-12, same conditions (40) | 82.5% | 68.0–91.3 |
+| mate-in-14, same conditions (40) | 75.0% | 59.8–85.8 |
+| mate-in-16, same conditions (40) | 70.0% | 54.6–81.9 |
+| mate-in-20, same conditions (40) | 57.5% | 42.2–71.5 |
 
-With `--direct-depth`, which proves "a mate within N" instead of "the shortest
-mate is N":
+Budget scaling at mate-in-8: 80.0% at 15 s, 90.5% at 60 s, **96.0% at 240 s**.
 
-| problems | 2 s | 5 s |
-|---|---:|---:|
-| mate-in-8 | 9/24 | 12/24 |
-| mate-in-10 | 3/20 | 3/20 |
+The mate-in-10 figure is 90.0% with the current default route against 61.7% with
+the previous one — a change of seventeen positions, gained and none lost.
 
-Ranges reflect run-to-run variation for problems sitting near the budget
-boundary.
+**Read this honestly.** MateProver solves mate-in-5 and below essentially always,
+and mate-in-6/7 reliably in seconds. Deeper, there is no wall: the solve rate
+declines gradually and is still above half at mate-in-20. But the intervals above
+are wide, because the sets are small — mate-in-20's 57.5% is consistent with
+anything from 42% to 72%, and should be read as "roughly half", not as 57.5%.
 
-**Read this honestly:** mateprover solves mate-in-5 and below essentially always and
-mate-in-6/7 reliably in seconds. Deeper, the numbers come from evaluation sets
-used once and never consulted during development. There is no wall -- the solve
-rate declines gradually and is still above half at mate-in-20:
+Against the reference implementation, same machine, positions, memory and
+30-second cap, both single-threaded: at mate-in-8 40/40 against 39/40; at
+mate-in-10 37/40 against 17/40; at mate-in-12 33/40 against 8/40.
 
-| measurement | solved | 95% CI |
-|---|---|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **85.5%** | 80.0-89.7 |
-| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **90.0%** | 79.9-95.3 |
-| mate-in-10, same with the previous default route | 61.7% | 49.0-72.9 |
-| mate-in-12, same conditions (40 positions) | 82.5% | 68.0-91.3 |
-| mate-in-14, same conditions (40 positions) | 75.0% | 59.8-85.8 |
-| mate-in-16, same conditions (40 positions) | 70.0% | 54.6-81.9 |
-| mate-in-20, same conditions (40 positions) | 57.5% | 42.2-71.5 |
-
-Against **Chest 3.19**, the program this reimplements, on the same machine,
-positions, memory and 30-second cap, both single-threaded: at mate-in-8 39/40
-against 40/40 and about four times faster; at mate-in-10 17/40 against 37/40; at
-mate-in-12 8/40 against 33/40. See [docs/RESULTS.md](docs/RESULTS.md).
-
-The last two lines are the point: at mate-in-10 the restriction portfolio is
-worth **+15 positions of 60, losing none**. Four times the time buys nothing
-there, and four times the memory buys nothing; only the portfolio buys reach.
-At mate-in-8 the engine is budget-limited: on a 200-position set measured under
-the previous default route, 80.0% solve in 15 s, 90.5% in 60 s and **96.0% in
-240 s**. Sixteen times the budget converts four fifths into all but eight.
+Where the reach comes from is worth stating plainly, because it is not speed. At
+mate-in-10 the restriction portfolio — running several *soundly restricted*
+searches concurrently, any of whose proofs is a real proof — is worth **+15
+positions of 60, losing none**. Four times the time buys nothing there, and four
+times the memory buys nothing. At mate-in-8 the engine is budget-limited
+instead, which is why sixteen times the budget takes 80.0% to 96.0%.
 
 `--direct-depth` proves "a mate within N" rather than "the shortest mate is N";
 it is not the default.
-express, not what it is given.
 
 ## Build
 
@@ -141,8 +142,9 @@ cmake --build build -j
 
 The binary lands at `build/mateprover` (`.exe` on Windows).
 
-Verified on Linux/GCC 13 and Windows/MinGW-w64 GCC 15; macOS/Clang and
-Windows/MSVC are configured in CI. Builds clean under
+Built and tested in CI on Linux/GCC, Linux/Clang, macOS/Clang and
+Windows/MSVC, plus Windows/MinGW-w64 GCC 15 locally. CI additionally runs a
+bounds-checked build, a C++20/23 forward-compatibility check, cppcheck, and
 `-Wall -Wextra -pedantic -Werror`.
 
 ## Test
@@ -157,7 +159,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-135 checks covering:
+300 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
