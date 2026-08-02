@@ -193,7 +193,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 while (i < prev && !best_index.compare_exchange_weak(prev, i, std::memory_order_acq_rel)) {
                 }
                 const int best = best_index.load(std::memory_order_acquire);
-                for (auto& other : slots) {
+                for (const auto& other : slots) {
                     if (other->current_root.load(std::memory_order_acquire) > best) {
                         other->cancel.store(true, std::memory_order_release);
                     }

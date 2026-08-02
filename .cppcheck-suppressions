@@ -1,0 +1,12 @@
+# Findings deliberately declined, with reasons. Anything not listed here is a
+# finding to act on: the analyser run should be silent.
+
+# Raw loops in the search's hot paths are deliberate. The suggested algorithms
+# express the same work, but these loops carry early exits and side effects that
+# the algorithm forms obscure, and this code is measured, not guessed at
+# (architecture 8k measured where node time actually goes).
+useStlAlgorithm
+
+# `for (const auto& d : delta)` over a C array of int[2]. The suggested pointer
+# form is not clearer, and the reference form is already const.
+constVariableReference:src/board.h:35

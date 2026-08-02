@@ -2113,6 +2113,51 @@ That last check is the one worth having. The first three catch drift between
 files; the fourth catches a version bumped without anyone saying what changed,
 which is the failure that actually happens.
 
+### 19. An Independent Opinion On The Source
+
+Every correctness claim so far rests on the engine's own behaviour: tests,
+certificates, differential runs. All of it is one compiler's view of one
+platform. The CI matrix names clang, MSVC, Linux and macOS, and **none of them
+has ever compiled this code** -- the workflow sits at `chest-e/.github/` and
+GitHub reads workflows only from a repository root, so CI is staged, not active.
+No second compiler or sanitiser is available here either.
+
+What is available is `cppcheck`, which is a genuinely different analysis rather
+than another opinion from the same front end. At `warning`, `performance` and
+`portability` it reports **nothing** across all thirteen modules. At `style`,
+exhaustive analysis found twenty items, of which two were worth acting on:
+
+**Two dead conditions in the DFPN threshold logic.** `knownConditionTrueFalse` on
+`thpn >= here.pn` and `thdn >= here.dn`. Both are correct findings. The function
+returns early when `here.pn >= thpn`, so by the time the ternary is evaluated the
+condition cannot be false and the `: 0` branch is unreachable. Harmless, but
+actively misleading: the guard implies the subtraction below it could underflow,
+when the control flow above has already made that impossible. Replaced with the
+direct expression and a comment stating the invariant.
+
+**Three const-correctness slips**, all trivial and all applied.
+
+The rest were `useStlAlgorithm` suggestions -- replace a raw loop with
+`std::any_of` and similar. Declined: these loops sit in the search's hot paths,
+carry early exits and side effects that the algorithm forms obscure, and 8k
+measured where node time actually goes rather than guessing. Declining is
+recorded in `.cppcheck-suppressions` with the reason, so the analyser run is
+silent and any *new* finding is a real one.
+
+Verified behaviour-preserving the way a refactor should be: with timing
+normalised away, the pre-change and post-change binaries produce byte-identical
+output on the mate corpus for the default route, the DFPN route and the
+shallow-fast route. The DFPN comparison needed the shallow subset -- DFPN is slow
+enough on the deeper entries to exceed a ten-minute tool budget, which is itself
+consistent with 8e rejecting it.
+
+The finding worth keeping is that the analyser's substantive hits were both in
+`dfpn.h` -- the one module that is unpromoted, unused by default, and therefore
+the least exercised by every other gate in this project. Code that no test path
+runs is where static analysis earns its keep, and it is exactly the code a
+reader of a published repository is most likely to read and least likely to
+trust.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

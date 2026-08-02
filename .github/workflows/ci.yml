@@ -52,6 +52,21 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
 
+  static-analysis:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Analyse
+        # An independent opinion, not a second run of the compiler's. Findings
+        # deliberately declined are listed in .cppcheck-suppressions with
+        # reasons; anything else is a finding to act on, so the run must be
+        # silent. --error-exitcode makes a finding fail the job.
+        run: |
+          cppcheck --enable=warning,performance,portability,style                    --std=c++17 --check-level=exhaustive                    --suppressions-list=.cppcheck-suppressions                    --error-exitcode=1 --quiet src/echest.cpp
+
   warnings-are-errors:
     name: strict warnings
     runs-on: ubuntu-latest

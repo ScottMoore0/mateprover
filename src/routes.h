@@ -61,7 +61,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
         }
         if (!s.keep_iter_tt) {
             s.tt.clear();
-            for (auto& ws : workers) {
+            for (const auto& ws : workers) {
                 ws->tt.clear();
             }
             if (shared_table) {

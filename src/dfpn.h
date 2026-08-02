@@ -67,7 +67,7 @@ std::vector<Move> dfpn_moves(Search& s, const Board& b, bool& scored) {
     return legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
 }
 
-bool dfpn_budget_exhausted(Search& s) {
+bool dfpn_budget_exhausted(const Search& s) {
     return s.dfpn_node_limit != 0 && s.stats.dfpn_nodes >= s.dfpn_node_limit;
 }
 
@@ -153,9 +153,12 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             dfpn_publish(s, b, depth, 'D', here);
             return here;
         }
-        const std::uint32_t child_thpn =
-            thpn >= here.pn ? std::min<std::uint32_t>(DFPN_INF, thpn - here.pn + dfpn_lookup(s, child_keys[best]).pn)
-                            : 0;
+        // thpn > here.pn here: the early return above fired if it were not, so
+        // the subtraction cannot underflow. It used to be guarded by a ternary
+        // whose false branch was unreachable, which implied a risk that the
+        // control flow had already excluded.
+        const std::uint32_t child_thpn = std::min<std::uint32_t>(
+            DFPN_INF, thpn - here.pn + dfpn_lookup(s, child_keys[best]).pn);
         std::uint32_t child_thdn =
             std::min<std::uint32_t>(thdn, second_dn == DFPN_INF ? DFPN_INF : second_dn + 1);
         if (s.dfpn_epsilon_64 > 0 && child_thdn < DFPN_INF) {
@@ -269,9 +272,9 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             child_thpn = std::min<std::uint32_t>(thpn, static_cast<std::uint32_t>(
                 std::min<std::uint64_t>(widened, DFPN_INF)));
         }
-        const std::uint32_t child_thdn =
-            thdn >= here.dn ? std::min<std::uint32_t>(DFPN_INF, thdn - here.dn + dfpn_lookup(s, child_keys[best]).dn)
-                            : 0;
+        // thdn > here.dn, for the same reason as child_thpn above.
+        const std::uint32_t child_thdn = std::min<std::uint32_t>(
+            DFPN_INF, thdn - here.dn + dfpn_lookup(s, child_keys[best]).dn);
         dfpn_defender(s, child_boards[best], depth - 1, child_thpn, child_thdn);
     }
 }
