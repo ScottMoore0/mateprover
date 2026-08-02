@@ -1,0 +1,92 @@
+name: Release
+
+# Builds a binary for each supported platform when a version tag is pushed and
+# attaches them to the GitHub release.
+#
+# The version itself is not set here. It lives in src/mateprover.cpp, CMake
+# parses it from there, and this workflow checks the tag against what the built
+# binary reports. A tag that disagrees with the source fails the build rather
+# than publishing a binary whose --version contradicts its own filename.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: mateprover-linux-x86_64
+            binary: build/mateprover
+          - os: macos-latest
+            asset: mateprover-macos-arm64
+            binary: build/mateprover
+          - os: windows-latest
+            asset: mateprover-windows-x86_64.exe
+            binary: build/Release/mateprover.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Check the binary agrees with the tag
+        shell: bash
+        run: |
+          reported=$(${{ matrix.binary }} --version | awk '{print $2}')
+          tag="${GITHUB_REF_NAME#v}"
+          echo "binary reports $reported, tag says $tag"
+          if [ -n "$tag" ] && [ "$reported" != "$tag" ]; then
+            echo "::error::version mismatch: binary $reported, tag $tag"
+            exit 1
+          fi
+
+      - name: Smoke-test the artifact
+        shell: bash
+        # A release binary that cannot solve a mate-in-2 should not be published.
+        run: |
+          out=$(echo "8/2Q5/R7/8/1k4K1/8/8/8 w - - dm 2" | ${{ matrix.binary }} -)
+          echo "$out"
+          echo "$out" | grep -q "dm 2" || { echo "::error::did not solve"; exit 1; }
+
+      - name: Stage the asset
+        shell: bash
+        run: cp "${{ matrix.binary }}" "${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  publish:
+    name: attach to release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: Attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See CHANGELOG.md for what this version is and what it measured." \
+            dist/* || gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

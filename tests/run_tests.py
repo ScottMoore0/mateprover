@@ -1666,6 +1666,20 @@ def main() -> int:
     # number beside it. Counting this check itself is deliberate: adding a
     # check should force the claim to be updated.
     print("\n[docs] the advertised check count is the real one")
+    # The architecture index silently fell 45 sections behind -- it stopped being
+    # updated around section 13 while the document reached 47, so the half of it
+    # carrying most of the measurements was unreachable from its own contents.
+    # A 3,400-line document is only usable through its index.
+    print("\n[docs] the architecture index lists every section")
+    arch = (HERE.parent / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8").split("\n")
+    top = next(i for i, l in enumerate(arch) if l.startswith("## Contents"))
+    stop = next(i for i in range(top + 1, len(arch)) if arch[i].startswith("## "))
+    listed = set(re.findall(r"\[(\d+[a-z]?)\.", "\n".join(arch[top:stop])))
+    written = set(m.group(1) for m in
+                  (re.match(r"^#{3,4} (\d+[a-z]?)\. ", l) for l in arch) if m)
+    res.check("every numbered section appears in the index",
+              written <= listed, f"missing {sorted(written - listed)}")
+
     # README included from the start would have caught "135 checks" surviving
     # to 299. It was left out of the first version of this guard, and the file
     # most readers see first was the one file not checked.

@@ -19,6 +19,20 @@ appear, and the numbers are stable: they are cited across commit messages
 and by each other, so they are never renumbered. This index is the way to
 navigate them.
 
+This document is a measurement log as much as an architecture description.
+Most sections record something that was tried, measured, and then promoted
+or rejected -- the rejections are kept deliberately, because the reason a
+plausible optimisation did not work is usually worth more than the ones that
+did. If you are reading it for the first time:
+
+- **What the engine is and why it is exact** -- sections 1 to 5.
+- **Where the capability actually comes from** -- 7g (the restriction
+  portfolio) and 29 (promoting DFPN), which between them account for most of
+  the reach.
+- **What is measured out and will not repay more work** -- 16, 17, 30 to 32,
+  and 41 to 47.
+- **How a change is allowed to ship** -- the Promotion Rule at the end.
+
 - [1. Exact Proof Kernel](#1-exact-proof-kernel)
 - [2. Modern Board And Move Engine](#2-modern-board-and-move-engine)
 - [2b. Move Generation Gate: Perft](#2b-move-generation-gate-perft)
@@ -65,7 +79,51 @@ navigate them.
 - [8m. The Defender Side Is Already Tight, And Refutation Hints Cost More Than They Save](#8m-the-defender-side-is-already-tight-and-refutation-hints-cost-more-than-they-save)
 - [8n. The Shipped Defaults Were The Untuned Ones (promoted)](#8n-the-shipped-defaults-were-the-untuned-ones-promoted)
 - [8o. The Corpus Did Not Round-Trip, And The Registry Measured A Dead Configuration](#8o-the-corpus-did-not-round-trip-and-the-registry-measured-a-dead-configuration)
-
+- [8p. The Published Tree, Checked As Published](#8p-the-published-tree-checked-as-published)
+- [8q. Specifying The Certificate Found A Hole In The Verifier](#8q-specifying-the-certificate-found-a-hole-in-the-verifier)
+- [8r. Specifying The Output Line Found A Regression I Had Introduced](#8r-specifying-the-output-line-found-a-regression-i-had-introduced)
+- [8s. Documented Defaults, Checked Against Real Ones](#8s-documented-defaults-checked-against-real-ones)
+- [8t. Stress-Testing The Abort Invariant Found A Crash](#8t-stress-testing-the-abort-invariant-found-a-crash)
+- [8u. The Property The Portfolio Actually Rests On](#8u-the-property-the-portfolio-actually-rests-on)
+- [8v. Order Independence Gated; The Lowest-Index Rule Is Unobservable](#8v-order-independence-gated-the-lowest-index-rule-is-unobservable)
+- [8w. Persistent Service Mode Already Existed, By Accident](#8w-persistent-service-mode-already-existed-by-accident)
+- [8x. Mate-In-10 Re-Measured: 3/20 Was Obsolete, It Is Now 18/24](#8x-mate-in-10-re-measured-320-was-obsolete-it-is-now-1824)
+- [8y. Lane Strength Is Depth-Dependent; The Lane Set Is Not](#8y-lane-strength-is-depth-dependent-the-lane-set-is-not)
+- [8z. A Record Is Not An Argument](#8z-a-record-is-not-an-argument)
+- [14. Held-Out Sets Decay Into Development Sets](#14-held-out-sets-decay-into-development-sets)
+- [15. The Mate-In-8 Budget Curve, On Fresh Positions](#15-the-mate-in-8-budget-curve-on-fresh-positions)
+- [16. The Frontier Has No Structure To Exploit](#16-the-frontier-has-no-structure-to-exploit)
+- [17. Tablebase Termination Would Reach One Percent Of The Wrong Nodes](#17-tablebase-termination-would-reach-one-percent-of-the-wrong-nodes)
+- [18. Two Builds, Two Versions](#18-two-builds-two-versions)
+- [19. An Independent Opinion On The Source](#19-an-independent-opinion-on-the-source)
+- [20. Substitutes For The Compilers And Sanitisers That Are Not Here](#20-substitutes-for-the-compilers-and-sanitisers-that-are-not-here)
+- [21. Coverage Measurement Found DFPN Was Broken, Not Slow](#21-coverage-measurement-found-dfpn-was-broken-not-slow)
+- [22. DFPN Promoted, Then Rejected By The Set Minted To Judge It](#22-dfpn-promoted-then-rejected-by-the-set-minted-to-judge-it)
+- [23. Preconditioning Only The Deepest Iteration](#23-preconditioning-only-the-deepest-iteration)
+- [24. A Deterministic Budget, And What It Says About DFPN](#24-a-deterministic-budget-and-what-it-says-about-dfpn)
+- [25. Where A DFPN Node's Cost Goes, And What That Implies](#25-where-a-dfpn-nodes-cost-goes-and-what-that-implies)
+- [26. Reproduction That Does Not Depend On The Reader's Machine](#26-reproduction-that-does-not-depend-on-the-readers-machine)
+- [27. Making A DFPN Node Cheap](#27-making-a-dfpn-node-cheap)
+- [28. The DFPN Question, Settled As Far As The Evidence Allows](#28-the-dfpn-question-settled-as-far-as-the-evidence-allows)
+- [29. DFPN Promoted: Decisive At Mate-In-10](#29-dfpn-promoted-decisive-at-mate-in-10)
+- [30. What Promoting DFPN Invalidated](#30-what-promoting-dfpn-invalidated)
+- [31. How Deep It Actually Goes, And How It Compares](#31-how-deep-it-actually-goes-and-how-it-compares)
+- [32. Root-Split Parallelism Now Contributes Nothing](#32-root-split-parallelism-now-contributes-nothing)
+- [33. Parallelism Across Positions](#33-parallelism-across-positions)
+- [34. Two Budgets, Two Different Batch Trades](#34-two-budgets-two-different-batch-trades)
+- [35. The Third Explanation Was The Right One](#35-the-third-explanation-was-the-right-one)
+- [36. Batch Results Stream Instead Of Arriving In Blocks](#36-batch-results-stream-instead-of-arriving-in-blocks)
+- [37. The Reproduction Tool Had Stopped Comparing Anything](#37-the-reproduction-tool-had-stopped-comparing-anything)
+- [38. Auditing For Comparisons That Compare Nothing](#38-auditing-for-comparisons-that-compare-nothing)
+- [39. Memory Is Still Not A Lever, And The Work Has Moved Into DFPN](#39-memory-is-still-not-a-lever-and-the-work-has-moved-into-dfpn)
+- [40. Threshold Widening Does Not Help Here (measured, not promoted)](#40-threshold-widening-does-not-help-here-measured-not-promoted)
+- [41. Bounding Parallel DFPN Before Building It](#41-bounding-parallel-dfpn-before-building-it)
+- [42. `-M` Was A Per-Table Budget Wearing A Total's Name](#42--m-was-a-per-table-budget-wearing-a-totals-name)
+- [43. What A Speedup Is Worth, And Root Splitting Under DFPN](#43-what-a-speedup-is-worth-and-root-splitting-under-dfpn)
+- [44. The Default Budget Is Per Table, Not A Split Total](#44-the-default-budget-is-per-table-not-a-split-total)
+- [45. Two Ceilings: Tables Are Finished, Ordering Is Not](#45-two-ceilings-tables-are-finished-ordering-is-not)
+- [46. The Waste Is Per-Ply, Not At The Root](#46-the-waste-is-per-ply-not-at-the-root)
+- [47. Heuristic Proof-Number Initialisation: Tried And Rejected](#47-heuristic-proof-number-initialisation-tried-and-rejected)
 
 ## Impact-Ordered Architecture
 
@@ -3110,7 +3168,7 @@ No E search feature is promoted by intuition. A feature is promoted only after:
 5. regressions are documented and intentionally accepted or rejected.
 
 
-## 42. `-M` Was A Per-Table Budget Wearing A Total's Name
+### 42. `-M` Was A Per-Table Budget Wearing A Total's Name
 
 Peak working set, all lanes driven to a full 20 s budget:
 
@@ -3149,7 +3207,7 @@ A share is floored at 1 MB. A budget divided below one entry would evict on
 every store, which is slower than having no table at all.
 
 
-## 43. What A Speedup Is Worth, And Root Splitting Under DFPN
+### 43. What A Speedup Is Worth, And Root Splitting Under DFPN
 
 41 rejected the portfolio form of parallel DFPN and left the shared-tree form
 open, with an estimate of two to four weeks. Two cheap measurements price that
@@ -3218,7 +3276,7 @@ times too large -- needs roughly three and a half doublings just to pull one
 notch of depth into range.
 
 
-## 44. The Default Budget Is Per Table, Not A Split Total
+### 44. The Default Budget Is Per Table, Not A Split Total
 
 42 made `-M` a total and raised the default 256 -> 2048 so that the default
 portfolio's eight lanes would still see 256 MB each. That reasoning holds only
@@ -3249,7 +3307,7 @@ configuration by construction rather than by a benchmark that would have had to
 be re-run at every worker count.
 
 
-## 45. Two Ceilings: Tables Are Finished, Ordering Is Not
+### 45. Two Ceilings: Tables Are Finished, Ordering Is Not
 
 43 established that every uniform improvement is worth about one position per
 doubling, and that this applies to node-count work exactly as it does to speed
@@ -3309,7 +3367,7 @@ Ordering is where the remaining headroom is, and it is the last category with
 any.
 
 
-## 46. The Waste Is Per-Ply, Not At The Root
+### 46. The Waste Is Per-Ply, Not At The Root
 
 45 found a 330-400x gap between nodes searched and nodes in the proof, with a
 tail past 13,000x, but a whole-search ratio cannot say *where* the search
@@ -3364,7 +3422,7 @@ performance work is finished and the remaining gap belongs to a different
 engine.
 
 
-## 47. Heuristic Proof-Number Initialisation: Tried And Rejected
+### 47. Heuristic Proof-Number Initialisation: Tried And Rejected
 
 46 identified DFPN's proof-number initialisation as the last lever with a
 compounding payoff, and named the obvious first heuristic: the move count cannot

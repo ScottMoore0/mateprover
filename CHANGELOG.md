@@ -8,7 +8,7 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## 1.0.0 — unreleased
+## 1.0.0 — 2026-08-02
 
 Published as **MateProver**. The project was developed under the working name
 "E Chest" because it began as a reimplementation line measured against Heiner
@@ -44,7 +44,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 300 automated checks cover perft against
+sharing no code with the engine. 301 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
