@@ -8,7 +8,10 @@
     "corpus": "matetrack.epd",
     "status": "spent",
     "measured": "159/200 = 79.5% at 15s default; budget curve 80.0% at 15s, 90.5% at 60s, 96.0% at 240s",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "e8671147a6193ba7a7a435e40f63521b25e6966a6d5639f17d4b0c3cb2022ee9",
+    "rebuildable": false,
+    "note": "minted 2026-08-01, before tools/mint_eval_set.py existed, so the recorded seed does not reproduce it through that tool: verified, 40/200 and 7/60 overlap. The positions all remain in the pinned corpus; the draw cannot be reconstructed."
   },
   {
     "name": "matetrack_d10_eval60.jsonl",
@@ -19,7 +22,10 @@
     "corpus": "matetrack.epd",
     "status": "spent",
     "measured": "44/60 = 73.3% with portfolio, 29/60 = 48.3% without, 30s",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "1115fe9382ea87a3451a556959ea8ed0374f299866775bc7422270897bad04d1",
+    "rebuildable": false,
+    "note": "minted 2026-08-01, before tools/mint_eval_set.py existed, so the recorded seed does not reproduce it through that tool: verified, 40/200 and 7/60 overlap. The positions all remain in the pinned corpus; the draw cannot be reconstructed."
   },
   {
     "name": "matetrack_d8_holdout60.jsonl",
@@ -30,7 +36,8 @@
     "status": "development",
     "note": "no seed was recorded when this set was minted, so it can be resampled but not reproduced exactly",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "rebuildable": false
+    "rebuildable": false,
+    "sha256": "0285f8ca2d4d75d193ad6febc533f9f5ff5ae66218f7efd82e132050cd201d7f"
   },
   {
     "name": "matetrack_d10_holdout24.jsonl",
@@ -41,7 +48,8 @@
     "status": "development",
     "note": "no seed was recorded when this set was minted, so it can be resampled but not reproduced exactly",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "rebuildable": false
+    "rebuildable": false,
+    "sha256": "428ea1cb619582bc5652bbcb91c8f84f728d0b6df746d65db3085b2c46458695"
   },
   {
     "name": "matetrack_d8_eval150_dfpn.jsonl",
@@ -52,7 +60,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 700,
     "status": "unused",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "293cbac73d217754aadc6985a49f5657adcf2465c69665b5b6168f62fa4519ff"
   },
   {
     "name": "matetrack_d8_eval200_dfpn.jsonl",
@@ -63,7 +72,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 550,
     "status": "unused",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "8da21e4d5581d9c530d55311622fdcc8b05e3e48912363581b78d1b35fc80ad6"
   },
   {
     "name": "matetrack_d10_eval60_dfpn.jsonl",
@@ -74,7 +84,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 477,
     "status": "unused",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "db5d623cdb4e83aea13b06dc500cf63ca2e5eead854ac620be01b63ab3d5afae"
   },
   {
     "name": "matetrack_d12_eval40.jsonl",
@@ -86,7 +97,8 @@
     "pool_available": 332,
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "fa593106ce5e6c875c81b5516bf07ac2db8ed5fa519e9b173f9e828096c4aadf"
   },
   {
     "name": "matetrack_d14_eval40.jsonl",
@@ -98,7 +110,8 @@
     "pool_available": 148,
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "c174534506ca5fcc6b3646413a17ff75072f3205db01f21c85d91e308b94ae79"
   },
   {
     "name": "matetrack_d16_eval40.jsonl",
@@ -110,7 +123,8 @@
     "pool_available": 101,
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "f533320f1e1b79518f45b8fdd60be726a08ed2ccbe414611a97b9bea36cccd93"
   },
   {
     "name": "matetrack_d20_eval40.jsonl",
@@ -122,7 +136,8 @@
     "pool_available": 44,
     "status": "spent",
     "measured": "reach at depth, 30s shipped configuration (31)",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "12042050112603b08da2660135b18dbe8118240a5be4c33072989ed9b0acaccf"
   },
   {
     "name": "matetrack_d16_dev40.jsonl",
@@ -133,7 +148,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 61,
     "status": "unused",
-    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "sha256": "cf70f562725f6ded3d5f5243765a8ac03b52920749b5c0fd81635dfa33b1348c"
   },
   {
     "name": "matetrack_d8_train60.jsonl",
@@ -145,7 +161,8 @@
     "pool_available": 1020,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set"
+    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set",
+    "sha256": "083bac945ce95347588ef275fe3c5f31abef387acf756713cf3625992776e37f"
   },
   {
     "name": "matetrack_d10_train24.jsonl",
@@ -157,6 +174,7 @@
     "pool_available": 585,
     "status": "unused",
     "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
-    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set"
+    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set",
+    "sha256": "d116b6169cd5bdee33d27f7d79fe5a83ff091a6bef4e2982b7b4f9b5abb0f9c6"
   }
 ]

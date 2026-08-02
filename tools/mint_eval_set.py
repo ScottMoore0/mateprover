@@ -26,6 +26,7 @@ mate-tracking benchmark this project draws from.
 
 import argparse
 import datetime
+import hashlib
 import json
 import pathlib
 import random
@@ -37,16 +38,39 @@ BENCH = HERE.parent / "benchmarks"
 MANIFEST = BENCH / "MANIFEST.json"
 
 
-def already_used():
+def positions_in(paths):
     seen = set()
-    for path in sorted(BENCH.glob("*.jsonl")):
-        for line in path.read_text().splitlines():
+    for path in sorted(paths):
+        for line in pathlib.Path(path).read_text().splitlines():
             line = line.strip()
             if line.startswith("{"):
                 fen = json.loads(line).get("fen4")
                 if fen:
                     seen.add(fen)
     return seen
+
+
+def already_used(explicit):
+    """Positions to exclude, and the names they came from.
+
+    Exclusion used to be read implicitly from whatever happened to be sitting in
+    benchmarks/. That made a set depend on directory state rather than on its
+    recorded parameters, and the dependence is decisive rather than marginal:
+    rebuilding d16_dev40 with its sibling present reproduces it exactly, and
+    without the sibling gives a set sharing NOT ONE position of forty.
+
+    So the sets used are recorded in the manifest, and `--exclude` states them
+    explicitly on a rebuild. The directory scan remains the default because it
+    is the right behaviour when minting something new.
+    """
+    if explicit is not None:
+        paths = [BENCH / name for name in explicit]
+        missing = [p.name for p in paths if not p.exists()]
+        if missing:
+            raise SystemExit(f"--exclude names sets that are not present: {missing}")
+        return positions_in(paths), sorted(p.name for p in paths)
+    paths = sorted(BENCH.glob("*.jsonl"))
+    return positions_in(paths), sorted(p.name for p in paths)
 
 
 def main():
@@ -58,6 +82,10 @@ def main():
     parser.add_argument("--name", required=True, help="file stem, written under benchmarks/")
     parser.add_argument("--seed", type=int, default=None,
                         help="defaults to the count, so a run is reproducible from the manifest")
+    parser.add_argument("--exclude", action="append", default=None, metavar="SET.jsonl",
+                        help="exclude exactly these sets rather than whatever is in "
+                             "benchmarks/. Repeatable. Use the manifest's `excludes` "
+                             "list to rebuild a recorded set faithfully")
     args = parser.parse_args()
 
     if not args.corpus.exists():
@@ -70,7 +98,7 @@ def main():
               f"first time it is measured, so it is never regenerated", file=sys.stderr)
         return 2
 
-    used = already_used()
+    used, excluded_names = already_used(args.exclude)
     pool = []
     for line in args.corpus.read_text(encoding="utf-8", errors="replace").splitlines():
         found = re.search(r"bm #(-?\d+)", line)
@@ -100,6 +128,9 @@ def main():
         "seed": seed,
         "corpus": args.corpus.name,
         "pool_available": len(pool),
+        "excludes": excluded_names,
+        "sha256": hashlib.sha256(
+            "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8")).hexdigest(),
         "status": "unused",
     }
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else []
@@ -108,7 +139,21 @@ def main():
 
     print(f"minted {target.name}: {len(rows)} positions at mate-in-{args.depth}, "
           f"drawn from {len(pool)} unused")
-    print("excluded every position already present in benchmarks/")
+    print(f"excluded {len(used)} positions from {len(excluded_names)} set(s): "
+          f"{', '.join(excluded_names) or 'none'}")
+
+    # If the manifest already records a digest under this name, the rebuild can
+    # be checked rather than trusted. This is what makes a set reproducible in
+    # practice: not that the recipe looks complete, but that the result matches.
+    for previous in manifest[:-1]:
+        if previous.get("name") == target.name and previous.get("sha256"):
+            if previous["sha256"] == entry["sha256"]:
+                print("MATCHES the digest recorded for this name: rebuild is faithful")
+            else:
+                print("WARNING: does NOT match the digest recorded for this name.\n"
+                      "         Check --exclude and the corpus revision "
+                      "(tools/fetch_corpus.py pins one).")
+            break
     print()
     print("This set is now evidence. Measure it once, after the work it judges is")
     print("finished, and mark it spent in MANIFEST.json. Consulting it during")

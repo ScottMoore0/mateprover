@@ -43,11 +43,15 @@ python tools/mint_eval_set.py ...     # arguments from benchmarks/MANIFEST.json
 python tools/reproduce_results.py --engine build/mateprover
 ```
 
-A set is determined by its corpus *revision*, depth, count and seed;
-`benchmarks/MANIFEST.json` records all four, and the fetch is pinned because
-the corpus is maintained and drifts. Two early holdout sets predate the
-seed-recording discipline and are marked `rebuildable: false` — they can be
-resampled but not reproduced exactly. `benchmarks/README.md` has the details.
+A set is determined by its corpus *revision*, depth, count, seed **and the sets
+minted before it**, all recorded in `benchmarks/MANIFEST.json`, which also holds
+a `sha256` per set so a rebuild is verified rather than assumed.
+
+Four sets cannot be rebuilt and say so (`"rebuildable": false`). Two holdout sets
+predate seed recording; the two headline evaluation sets predate the minting tool
+itself, so their figures — 85.5% at mate-in-8 and 90.0% at mate-in-10 — are
+measurements that were made, not measurements you can repeat.
+`benchmarks/README.md` explains what is and is not reproducible.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
 

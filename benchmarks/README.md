@@ -19,12 +19,34 @@ Rebuild any set in two steps:
 taking the arguments from `MANIFEST.json`. One JSON object per line: `fen4` is
 the position, `mate` the true mate distance.
 
+**Rebuild in manifest order, and pass `--exclude`.** Each set excludes the
+positions already used by sets minted before it, so a set depends on which
+others existed when it was drawn. That dependence is decisive, not marginal:
+rebuilding `d16_dev40` with its sibling present reproduces it exactly, and
+without the sibling produces a set sharing **not one position of forty**. Each
+manifest entry now records an `excludes` list; pass those names to `--exclude`.
+
+**Every rebuild is checked, not trusted.** Each entry records a `sha256` of the
+set. On minting a name that already has one, the tool prints whether the rebuild
+matches, so a wrong corpus revision or a wrong exclusion list is reported rather
+than silently producing a different benchmark.
+
+**Two evaluation sets cannot be rebuilt at all.** `d8_eval200` and `d10_eval60`
+were minted on 2026-08-01, before `mint_eval_set.py` existed, so the seed
+recorded against them does not reproduce them through it — measured, 40/200 and
+7/60 overlap. Every one of their positions is still in the pinned corpus; the
+draw is what is lost. They are marked `"rebuildable": false`, and the figures
+they produced (85.5% at mate-in-8, 90.0% at mate-in-10) should be read as
+measurements that were made rather than measurements you can repeat. The two
+holdout sets are unrebuildable for the older reason: no seed was recorded.
+
 **The corpus revision is part of the recipe.** The upstream corpus is
 maintained -- illegal positions removed, wrong mate values corrected -- so the
 same seed against a later revision draws a *different* set, silently.
 `fetch_corpus.py` therefore pins a commit and verifies a SHA-256, and
-`MANIFEST.json` records `corpus_commit` alongside the seed. A set is
-reproducible as (revision, depth, count, seed), not as (depth, count, seed).
+`MANIFEST.json` records `corpus_commit` alongside the seed. Taken together with
+the exclusion rule above, a set is reproducible as (revision, depth, count, seed,
+excludes) -- and the recorded digest is what tells you whether you got it right.
 
 Two early sets, `d8_holdout60` and `d10_holdout24`, predate that discipline and
 carry `"rebuildable": false`: no seed was recorded, so they can be resampled but
