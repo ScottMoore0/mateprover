@@ -1643,6 +1643,21 @@ def main() -> int:
     test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
 
+    # Last, because it needs the final tally. Two documents advertise how many
+    # checks there are, and both had drifted to 224 while the suite stood at
+    # 285 -- the kind of stale number that makes a reader discount every other
+    # number beside it. Counting this check itself is deliberate: adding a
+    # check should force the claim to be updated.
+    print("\n[docs] the advertised check count is the real one")
+    docs = (HERE.parent / "CHANGELOG.md", HERE.parent / "docs" / "RESULTS.md")
+    claimed = res.passed + len(docs) + len(res.failed)
+    for doc in docs:
+        text = doc.read_text(encoding="utf-8")
+        stated = re.search(r"(\d+) automated checks", text)
+        res.check(f"{doc.name} states the current check count",
+                  stated is not None and int(stated.group(1)) == claimed,
+                  f"states {stated.group(1) if stated else 'nothing'}, suite has {claimed}")
+
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
     for failure in res.failed:
         print(f"  FAILED: {failure}")

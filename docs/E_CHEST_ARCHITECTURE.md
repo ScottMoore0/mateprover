@@ -3145,3 +3145,72 @@ carried that caveat already; it now applies to the aggregate too.
 
 A share is floored at 1 MB. A budget divided below one entry would evict on
 every store, which is slower than having no table at all.
+
+
+## 43. What A Speedup Is Worth, And Root Splitting Under DFPN
+
+41 rejected the portfolio form of parallel DFPN and left the shared-tree form
+open, with an estimate of two to four weeks. Two cheap measurements price that
+estimate before anyone spends it.
+
+### The speedup-to-solves curve
+
+A parallel search does not think better, it thinks more, so a perfect Kx
+speedup is a K-times larger node budget in the same wall clock. Node budgets
+are deterministic where wall clock is not. 40 mate-16 development positions,
+single-threaded, no portfolio, `--direct-depth`:
+
+| speedup | budget | solved | gain |
+|---|---|---|---|
+| 1x | 2,000,000 | 22/40 | -- |
+| 2x | 4,000,000 | 24/40 | +2 |
+| 4x | 8,000,000 | 24/40 | +2 |
+| 8x | 16,000,000 | 25/40 | +3 |
+| 16x | 32,000,000 | 26/40 | +4 |
+
+**Four doublings buy four positions: about one position per doubling of
+speed.** The curve is logarithmic, which is what an exponentially growing tree
+implies -- and it reads as an upper bound, because real parallel search
+duplicates work and K threads deliver less than K times the useful nodes.
+
+This prices every remaining parallelism proposal. Shared-tree df-pn at a
+realistic 2-5x buys **+1 to +2 positions of forty** for two to four weeks. The
+restriction portfolio already delivers +5 to +6 and is already built. Where
+DFPN is 86% of the work, Amdahl caps the total speedup at 7.1x however many
+threads are thrown at it -- under three doublings, so under +3 positions, at
+infinite hardware.
+
+It also explains 41's result rather than merely agreeing with it. The
+six-variant oracle scored 25/40 at the 2M budget; a single variant needs 16M --
+three doublings -- to reach the same 25. The entire diversity ceiling of a
+six-way portfolio is worth about a 8x speedup. Two very different experiments
+agree on the exchange rate between cores and positions, which is the useful
+thing to know about this search.
+
+### Root splitting under DFPN
+
+Root splitting was measured inert (32) under the depth-first route, and never
+re-measured after DFPN became the default. Same 40 positions, 20 s cap, no
+portfolio, 1 thread against 8:
+
+| | solved | paired total | speedup |
+|---|---|---|---|
+| run 1 | 24/40 both | 18.60 s vs 19.30 s | 0.96x |
+| run 2 | 24/40 both | 20.30 s vs 19.44 s | 1.04x |
+
+Median per position 0.99x and 1.03x; ranges 0.89-1.02x and 0.94-1.18x. Two runs
+straddling 1.0 is the answer: **eight threads change nothing, and the effect is
+smaller than the run-to-run noise.** Not one extra position either.
+
+The reason is the same one 32 gave, and DFPN does not change it. Root splitting
+divides the attacker's first moves between threads, but a proof needs *every*
+sibling refuted, so the whole set must be searched regardless -- there is no
+early cut-off for the split to exploit. The threads finish the same total work
+in the same total time.
+
+Both rows of the parallelism backlog are now measured rather than estimated.
+The honest summary is that this engine's remaining problem is tree size, and
+parallelism is a poor instrument against it: a doubling of hardware buys a
+single position, while the 16 finding -- unreached positions are about twelve
+times too large -- needs roughly three and a half doublings just to pull one
+notch of depth into range.

@@ -204,7 +204,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 224 automated checks, including perft, negative controls, restriction
+- 287 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than
@@ -244,13 +244,30 @@ tablebase reaches **1.01%** of proof nodes and the full 18 TB 7-man set reaches
 where the subtree beneath them is already almost free. The value of an
 early-termination oracle is set by where its hits land, not how many there are.
 
-Parallelising the DFPN search itself is the largest remaining lever by resource
-argument -- it is 86-99% of the work and a single position uses about a quarter of
-a 32-core machine. The cheap form of it is measured and rejected: six
-differently-tuned DFPN searches solve nearly the same positions, so an oracle
-picking the best per position gains two of forty (41). Only shared-tree
-parallelism remains, and that is weeks of work against a frontier that is
-twelve times too large rather than badly searched.
+Parallelising the DFPN search itself looked like the largest remaining lever by
+resource argument -- it is 86-99% of the work and a single position uses about a
+quarter of a 32-core machine. It is now measured and rejected in every form the
+engine could take, on the exchange rate between speed and positions rather than
+on any implementation difficulty.
+
+A perfect Kx speedup is a K-times larger node budget in the same wall clock, and
+that curve is flat: 22, 24, 24, 25, 26 solved of forty at one, two, four, eight
+and sixteen times the budget. **One position per doubling of speed** (43). So
+shared-tree df-pn at a realistic 2-5x buys one or two positions of forty for two
+to four weeks, against a restriction portfolio that already delivers five or six.
+Where DFPN is 86% of the work, Amdahl caps the whole idea at 7.1x -- under three
+doublings -- at infinite hardware.
+
+The cheap portfolio form was rejected first, on its own oracle: six
+differently-tuned DFPN searches solve nearly the same positions, so picking the
+best per position gains two of forty (41). The two experiments agree on the
+exchange rate, which is the useful part -- that six-way diversity ceiling is
+worth about the same as an eight-times speedup.
+
+Root splitting, re-measured under DFPN after being found inert under the previous
+default route, is still inert: eight threads against one scored 0.96x and 1.04x
+on two runs and not one extra position (43). A proof must refute every sibling,
+so dividing the siblings between threads removes no work.
 
 What remains genuinely unexamined is a search that reasons about *why* a defence
 fails rather than enumerating that it does. That is a different engine, not an
