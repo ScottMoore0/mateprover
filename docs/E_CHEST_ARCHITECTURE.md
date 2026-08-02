@@ -2202,6 +2202,68 @@ Verified behaviour-preserving as usual: with timing normalised, pre- and
 post-change binaries produce byte-identical output on the mate corpus including
 certificates.
 
+### 21. Coverage Measurement Found DFPN Was Broken, Not Slow
+
+20 ended by noting that the bounds-checked run proves safety only on paths the
+suite exercises. Which paths those are had never been measured. Building with
+`--coverage` and running the suite:
+
+| module | line coverage |
+|---|---|
+| **dfpn.h** | **0.0% (0/155)** |
+| routes.h | 30.9% |
+| report.h | 47.3% |
+| ordering.h | 52.7% |
+| movegen.h / board.h / search_state.h | 94% / 92% / 99% |
+
+The DFPN route **ships**, is reachable with `--route dfpn`, and no test had ever
+executed a line of it -- which is exactly why 19's static analysis found its only
+two substantive defects there. Writing the missing test immediately found a
+third, and it was not minor: **DFPN could not solve a mate-in-2 in 120 seconds**,
+while the default route did all six shallow positions in 0.04s. Ten million nodes
+on a mate-in-2, with a transposition table holding two entries.
+
+The cause was one argument. `dfpn_attacker` and `dfpn_defender` built their table
+key as `tt_key(b, 0, ...)`, passing **0 where the remaining depth belongs**. The
+module's own banner comment states the invariant it was violating: *"Depth is
+part of the key, so a result at one remaining depth can never satisfy a query at
+another."* With every depth sharing one entry, a position stored as
+`{DFPN_INF, 0}` at depth 0 read back as unprovable at every depth, and the proof
+numbers stopped meaning anything.
+
+Passing `depth` turns the mate-in-2 from **10,417,116 nodes into 76**.
+
+That overturns 8e. Re-measured on the development set at mate-in-8,
+single-threaded, 5 s, `--direct-depth`:
+
+| route | solved |
+|---|---|
+| depth-first (the promoted default) | 17/60 |
+| **dfpn** | **54/60** |
+
+DFPN solves 37 positions the default cannot and misses none that it can. All 54
+certificates verify independently, none over-deep. 8e recorded that DFPN was
+"slower than the default at every measured depth" -- it was measuring a defect,
+and the conclusion drawn from it was wrong.
+
+The default path is untouched: with timing normalised, the pre- and post-fix
+binaries are byte-identical on the mate corpus with certificates, on the
+shallow-fast route, and on perft. This iteration changes what `--route dfpn`
+does and nothing else.
+
+**Promotion is deliberately not decided here.** The measurement above used a
+development set at one budget on one thread, which is the right instrument for
+"is this worth pursuing" and the wrong one for "should this be the default".
+That decision needs the operating point, the portfolio interaction, and a freshly
+minted evaluation set per the protocol in `benchmarks/README.md`.
+
+The lesson is about coverage rather than DFPN. Three separate defects lived in
+the one module no test touched, and two of the project's own gates -- the
+architecture's promotion rule and the benchmark suite -- had both been applied to
+it and recorded a confident conclusion. A measurement of a broken implementation
+is not a measurement of the idea it implements, and nothing distinguishes the two
+except looking.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

@@ -1327,6 +1327,68 @@ def test_version_is_single_sourced(engine: Path, res: Results) -> None:
                   f"no entry for {declared.group(1)}")
 
 
+def test_alternate_routes_and_modes(engine: Path, res: Results) -> None:
+    """Everything the CLI can reach must be exercised, including what lost.
+
+    Coverage measurement found dfpn.h at **0%**: the DFPN route ships, is
+    reachable with --route dfpn, and no test had ever run a line of it. That is
+    also where static analysis found its only two substantive defects (19), which
+    is not a coincidence -- untested code is where defects survive.
+
+    A route being unpromoted is a reason to warn about its speed, not a reason to
+    ship it unverified. These use shallow positions because DFPN is slow enough
+    at depth to dominate the suite's runtime, which is itself why it lost (8e).
+    """
+    print("\n[routes] unpromoted routes and auxiliary modes still work")
+
+    shallow = [(fen, dm) for fen, dm in load_epd(HERE / "mates.epd") if dm <= 3]
+    res.check("shallow cases available for the slow routes", len(shallow) >= 4)
+
+    for route in ("dfpn", "shallow-fast", "depth-first"):
+        lines = solve(engine, shallow, ["--route", route, "--single-thread", "--no-portfolio"])
+        solved = 0
+        for (fen, dm), line in zip(shallow, lines):
+            found = DM_RE.search(line)
+            if found:
+                solved += 1
+                res.check(f"{route}: correct depth for {fen[:22]}",
+                          int(found.group(1)) == dm, line.strip()[:80])
+        res.check(f"{route} solves every shallow case", solved == len(shallow),
+                  f"{solved} of {len(shallow)}")
+
+    # A proof from an unpromoted route must verify like any other.
+    if HAVE_CHESS:
+        tool = HERE.parent / "tools" / "verify_proof.py"
+        text = chr(10).join(solve(engine, shallow,
+                                  ["--route", "dfpn", "--single-thread",
+                                   "--no-portfolio", "--emit-proof"])) + chr(10)
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "-"],
+                              input=text.encode(), capture_output=True, timeout=300)
+        res.check("certificates from the DFPN route verify", proc.returncode == 0,
+                  (proc.stdout + proc.stderr).decode().strip()[:120])
+    else:
+        res.skip("DFPN certificates verify", "python-chess not installed")
+
+    # Auxiliary output modes: reachable from the CLI, so they are contract too.
+    start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
+    divide = run(engine, ["--perft-divide", "2", "-"], start + chr(10))
+    res.check("perft-divide totals the reference count",
+              "total 400" in divide, divide.strip()[-60:])
+    res.check("perft-divide lists every root move",
+              len([l for l in divide.splitlines() if l and not l.startswith("total")]) == 20,
+              divide.strip()[:60])
+
+    legal = run(engine, ["--list-legal", "-"], start + chr(10))
+    res.check("list-legal counts the opening moves", "legal_count 20" in legal,
+              legal.strip()[:80])
+
+    profile = run(engine, ["-5", "-z", "2", "--profile", "--single-thread",
+                           "--no-portfolio", "-"],
+                  "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" + chr(10))
+    res.check("a solved position still solves under --profile", "dm 2" in profile,
+              profile.strip()[:80])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1348,6 +1410,7 @@ def main() -> int:
     res = Results()
     test_perft(args.engine, res)
     test_known_mates(args.engine, res)
+    test_alternate_routes_and_modes(args.engine, res)
     test_no_mate(args.engine, res)
     test_abort_invariant_under_stress(args.engine, res)
     test_invariance(args.engine, res)

@@ -102,7 +102,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // itself by hiding the preconditioner's cost entirely.
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
-    const TTKey key = tt_key(b, 0, 'D', s.attacker);
+    const TTKey key = tt_key(b, depth, 'D', s.attacker);
 
     bool scored = false;
     std::vector<Move> replies = dfpn_moves(s, b, scored);
@@ -177,7 +177,12 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     }
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
-    const TTKey key = tt_key(b, 0, 'A', s.attacker);
+    // Depth belongs in the key. This module's own contract says so: a result
+    // at one remaining depth must never satisfy a query at another. It was
+    // passing 0, so every depth shared one entry -- a position stored as
+    // {INF, 0} at depth 0 read back as unprovable at every depth, and the
+    // proof numbers stopped meaning anything.
+    const TTKey key = tt_key(b, depth, 'A', s.attacker);
 
     if (depth <= 0 || b.stm != s.attacker) {
         const PnDn v{DFPN_INF, 0};
