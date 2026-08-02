@@ -106,8 +106,8 @@ used once and never consulted during development:
 | measurement | solved | 95% CI |
 |---|---|---|
 | mate-in-8, default configuration, 15 s (200 positions) | **79.5%** | 73.4-84.5 |
-| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **73.3%** | 61.0-82.9 |
-| mate-in-10, same but `--no-portfolio` | 48.3% | 36.2-60.7 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **90.0%** | 79.9-95.3 |
+| mate-in-10, same with the previous default route | 61.7% | 49.0-72.9 |
 
 The last two lines are the point: at mate-in-10 the restriction portfolio is
 worth **+15 positions of 60, losing none**. Four times the time buys nothing

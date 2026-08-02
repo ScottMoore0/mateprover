@@ -2602,6 +2602,49 @@ node-cost work suggests the effect could grow if DFPN's remaining 8% node-rate
 gap were closed. Neither is worth another iteration now, because the practical
 advice to a user does not change either way.
 
+### 29. DFPN Promoted: Decisive At Mate-In-10
+
+28 settled the mate-in-8 question -- DFPN slightly ahead, not significantly -- and
+left the default alone. It did not ask about depth. That was the omission worth
+fixing, because 22's mate-in-10 comparison predates both 23 and 27, and mate-in-10
+is where this engine is weakest.
+
+Development sets first, 48 mate-in-10 positions at the operating point:
+depth-first + portfolio 34/48, dfpn + portfolio **44/48**, gaining ten and losing
+none. Then a freshly minted set of 60, measured once:
+
+| configuration | solved | 95% CI | certificates |
+|---|---|---|---|
+| depth-first + portfolio | 37/60 = 61.7% | 49.0-72.9 | 37 verified |
+| **dfpn + portfolio** | **54/60 = 90.0%** | 79.9-95.3 | 54 verified |
+
+**Seventeen gained, none lost.** All seventeen discordant positions favour DFPN,
+a sign test of p ~ 8e-6, and the intervals do not overlap. Twenty-eight points of
+solve rate at the depth where the engine had the least to offer.
+
+**Promoted: DFPN is now the default route.** The bar declined in 27 and 28 was
+"probably slightly better"; this is not that. The mate-in-8 result matters here
+only as a guard -- 171/200 against 167/200, a slight gain rather than a loss -- so
+the deep improvement is not bought at the shallow one's expense.
+
+The whole gain came from three fixes to a route this project had already
+measured, rejected and recorded a confident conclusion about:
+
+1. **21**: depth was missing from the DFPN transposition key, so every depth
+   shared one entry. Ten million nodes on a mate-in-2 became 76.
+2. **23**: preconditioning every iterative-deepening depth, when its work cannot
+   carry across depths, so only the deepest iteration repays the cost.
+3. **27**: building 24 child boards and keys per node to compute a value already
+   known, cut to 4.3.
+
+None of the three is an algorithmic insight about proof-number search. They are
+an argument in the wrong place, an unnecessary repetition, and a redundant
+computation -- and together they were the difference between "slower at every
+measured depth" and "the default". 8e's rejection was not a wrong judgement given
+its evidence; the evidence was of a broken implementation, and nothing
+distinguished that from the idea except looking, which took a coverage
+measurement finding `dfpn.h` at 0% to prompt.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

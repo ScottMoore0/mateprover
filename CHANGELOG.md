@@ -39,11 +39,11 @@ measured-best configuration, so a bare invocation performs like a tuned one.
 **Also included.** A DFPN preconditioner behind `--route dfpn`. It was long
 recorded here as rejected for being slower at every depth; that was measuring a
 defect, not the algorithm -- its transposition key omitted the remaining depth, so
-it burned ten million nodes on a mate-in-2. Repaired, and with its per-node cost
-since cut by 82%, it solves **51/60** against the default route's 40/60 at an
-equal node budget. On 200 freshly minted positions it solves 85.5% against the
-default route's 83.5% -- consistent but not decisive, so it is not the default.
-`--route dfpn --direct-depth` is the strongest configuration this engine has.
+it burned ten million nodes on a mate-in-2. Repaired -- and with two further
+fixes, preconditioning only the deepest iteration and dropping per-child work
+that computed a value already known -- it is now the **default route**. On freshly
+minted positions it solves 90.0% of mate-in-10 against the previous default's
+61.7%, gaining seventeen and losing none, and 85.5% against 83.5% at mate-in-8.
 
 `--node-limit N` gives a deterministic budget. Wall-clock limits made every
 comparison noisy at the scale of the effects being measured; a node cap gives the

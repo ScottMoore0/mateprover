@@ -32,8 +32,8 @@ for this measurement, and never consulted during development (14):
 | measurement | result | 95% CI |
 |---|---|---|
 | mate-in-8, default configuration, 15 s (200 positions) | **159/200 = 79.5%** | 73.4-84.5 |
-| mate-in-10 with the portfolio, 30 s, 32 threads, `--direct-depth` (60 positions) | **44/60 = 73.3%** | 61.0-82.9 |
-| mate-in-10, same but `--no-portfolio` | 29/60 = 48.3% | 36.2-60.7 |
+| mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **54/60 = 90.0%** | 79.9-95.3 |
+| mate-in-10, same with the previous default route | 37/60 = 61.7% | 49.0-72.9 |
 
 The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
 none** -- twenty-five points of solve rate from the one idea this engine has that
@@ -123,7 +123,7 @@ Each of these was implemented or measured, not merely considered.
 
 | idea | result | section |
 |---|---|---|
-| native DFPN route **as the default** | not promoted: 85.5% against the default route's 83.5% on 200 fresh positions, consistent but not decisive. An earlier attempt was rejected outright at 72.0% before its node cost was fixed | 21, 22, 27, 28 |
+| native DFPN route **as the default** | **promoted**: 90.0% against 61.7% at mate-in-10 on 60 fresh positions, gaining 17 and losing none. Rejected twice before, while its implementation was broken | 21, 23, 27, 29 |
 | DFPN or shallow-fast as extra lanes | add nothing the portfolio does not already reach | 8e |
 | compound restrictions (`K2`+`R2` etc.) | +2 on training, **exactly zero** at the operating point | 8g |
 | bitboard board representation | removing 57% of `make_move` calls bought 4%; no concentrated hotspot exists | 8i, 8k |

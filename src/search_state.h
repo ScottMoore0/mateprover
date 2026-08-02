@@ -14,20 +14,24 @@ namespace echest {
 // individual flags.
 struct SearchConfig {
     Color attacker = WHITE;
-    // Depth-first remains the default route.
+    // DFPN is the default route.
     //
-    // DFPN was briefly promoted here. Fixing its transposition key (21) turned
-    // it from unusable into the stronger route *under --direct-depth*: 59/60
-    // against 52/60 at mate-in-8 on the development set. But the default mode
-    // is iterative deepening, and measured there on a freshly minted evaluation
-    // set of 150 positions, DFPN scores 72.0% against depth-first's 78.0%,
-    // gaining 4 positions and losing 13. Iterative deepening re-runs DFPN at
-    // every depth from 1, and with depth correctly in the key none of that work
-    // carries across depths.
+    // It was rejected in 8e as slower at every depth, which was measuring a
+    // defect: its transposition key omitted the remaining depth, so every depth
+    // shared one entry and the proof numbers were meaningless (21). Two further
+    // fixes followed -- preconditioning only the deepest iteration (23) and
+    // dropping the per-child work that computed a value already known (27),
+    // which cut make_move calls per DFPN node from 24.3 to 4.34.
     //
-    // So `--route dfpn --direct-depth` is the strong configuration and the
-    // default is not it. See architecture 22.
-    RouteKind route = RouteKind::DepthFirst;
+    // Measured once on freshly minted evaluation sets, in the shipped
+    // configuration: at mate-in-10, 54/60 against depth-first's 37/60, gaining
+    // seventeen positions and losing none. At mate-in-8, 171/200 against
+    // 167/200 -- a slight gain that is not significant on its own, but it is a
+    // gain, so the deep result is not bought at the shallow one's expense.
+    //
+    // Still a preconditioner, never an output authority: every accepted proof,
+    // PV and certificate comes from the exact prover.
+    RouteKind route = RouteKind::Dfpn;
     bool debug = false;
     bool emit_proof = false;
     bool score_mates = false;

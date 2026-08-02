@@ -94,5 +94,25 @@
     "corpus": "matetrack.epd",
     "status": "spent",
     "measured": "default route 167/200 = 83.5%; --route dfpn 171/200 = 85.5%, gaining 6 and losing 2. Consistent with the development sets but not decisive (paired sign test p ~ 0.29), so the default was left unchanged (28)"
+  },
+  {
+    "name": "matetrack_d10_eval60_dfpn.jsonl",
+    "minted": "2026-08-02",
+    "depth": 10,
+    "count": 60,
+    "seed": 60,
+    "corpus": "matetrack.epd",
+    "pool_available": 477,
+    "status": "unused"
+  },
+  {
+    "name": "matetrack_d10_eval60_dfpn.jsonl",
+    "minted": "2026-08-02",
+    "depth": 10,
+    "count": 60,
+    "seed": 60,
+    "corpus": "matetrack.epd",
+    "status": "spent",
+    "measured": "depth-first + portfolio 37/60 = 61.7%; dfpn + portfolio 54/60 = 90.0%, gaining 17 and losing 0, all certificates verified. Promoted dfpn to the default route (29)"
   }
 ]
