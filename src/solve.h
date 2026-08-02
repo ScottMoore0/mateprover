@@ -67,7 +67,12 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     }
 
     const auto start = std::chrono::steady_clock::now();
-    const bool use_portfolio = config.portfolio && config.time_limit > 0.0;
+    // The sequential portfolio slices wall-clock time, so it needs a time
+    // limit. The parallel form gives every lane the whole budget and works with
+    // either kind.
+    const bool use_portfolio = config.portfolio &&
+                               (config.time_limit > 0.0 ||
+                                (config.node_limit > 0 && config.portfolio_parallel));
     const char* winning_entry_name = nullptr;
 
     // Each attempt gets a fresh Search: tables from a restricted run answer a

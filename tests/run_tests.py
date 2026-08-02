@@ -1389,6 +1389,47 @@ def test_alternate_routes_and_modes(engine: Path, res: Results) -> None:
               profile.strip()[:80])
 
 
+def test_node_limit_is_deterministic(engine: Path, res: Results) -> None:
+    """--node-limit must be reproducible and must never look like a disproof.
+
+    Wall-clock budgets make comparisons noisy: one configuration measured 49,
+    51, 52 and 53 of 60 across this session purely on where positions fell
+    relative to the clock, which is the size of the effects being measured.
+
+    The soundness requirement is the one from 8r: a bare line means "searched
+    exhaustively, no mate exists". An exhausted node budget has settled nothing,
+    so it must report the "gave up" outcome, exactly as a wall-clock expiry does.
+    """
+    print("\n[budget] --node-limit is deterministic and claims nothing")
+
+    hard = "3R4/pk6/p1pp4/B1pqPp2/3P3n/1N4N1/KR1P1p2/5r2 w - -" + chr(10)
+    args = ["-5", "-z", "8", "--single-thread", "--no-portfolio", "--node-limit", "200000", "-"]
+
+    runs = {re.sub(r"acs [\d.e+-]+", "acs X", run(engine, args, hard).strip())
+            for _ in range(3)}
+    res.check("three runs at the same node limit are identical", len(runs) == 1,
+              "; ".join(sorted(runs))[:160])
+
+    only = next(iter(runs))
+    res.check("an exhausted node budget reports the gave-up outcome",
+              only.endswith("timeout;"), only[:100])
+    res.check("an exhausted node budget claims no mate", DM_RE.search(only) is None, only[:100])
+    res.check("the node count stops at the limit", "acn 200000;" in only, only[:100])
+
+    # A genuine disproof must still be reported as one, not as a budget expiry.
+    disproved = run(engine, ["-5", "-z", "1", "--node-limit", "1000000", "-"],
+                    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -" + chr(10)).strip()
+    res.check("a completed disproof under a node limit carries no marker",
+              re.fullmatch(r"[^;]+; acn \d+; acs [\d.e+-]+;", disproved) is not None,
+              disproved[:100])
+
+    # And a solvable position still solves when the budget is ample.
+    solved = run(engine, ["-5", "-z", "2", "--single-thread", "--no-portfolio",
+                          "--node-limit", "1000000", "-"],
+                 "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -" + chr(10))
+    res.check("an ample node budget still solves", "dm 2" in solved, solved.strip()[:80])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1416,6 +1457,7 @@ def main() -> int:
     test_invariance(args.engine, res)
     test_order_and_scheduling_independence(args.engine, res)
     test_time_limit(args.engine, res)
+    test_node_limit_is_deterministic(args.engine, res)
     test_illegal_positions_rejected(args.engine, res)
     test_castling_needs_its_rook(args.engine, res)
     test_cli_contract(args.engine, res)

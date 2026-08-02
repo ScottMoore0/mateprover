@@ -77,6 +77,15 @@ struct SearchConfig {
     int dfpn_epsilon_64 = 0;
     bool dfpn_sort = false;
     // Wall-clock budget in seconds. 0 means unlimited.
+    // A deterministic alternative to --time-limit. Wall-clock budgets make every
+    // comparison noisy: the same configuration measured 49, 51, 52 and 53 of 60
+    // across this session purely on where positions fell relative to the clock,
+    // which is the same size as the effects being measured. A node cap gives the
+    // same answer on every run and every machine.
+    //
+    // Kept separate from node_budget, which the parallel cost gate sets and
+    // clears for its own purposes and would otherwise wipe a user's limit.
+    std::uint64_t node_limit = 0;
     double time_limit = 0.0;
     // Begin iterative deepening at the requested depth instead of 1. Only valid
     // when the caller wants "a mate within N" rather than "the shortest mate".
@@ -191,6 +200,15 @@ inline bool search_cancelled(Search& s) {
         return true;
     }
     if (s.node_budget != 0 && s.stats.nodes >= s.node_budget) {
+        s.aborted = true;
+        return true;
+    }
+    if (s.node_limit != 0 && s.stats.nodes >= s.node_limit) {
+        // timed_out, not merely aborted. Section 8r: a line with no marker means
+        // "searched exhaustively, no mate exists". An exhausted node budget has
+        // settled nothing, so it must report the same "gave up" outcome a
+        // wall-clock expiry does, or it would be read as a disproof.
+        s.timed_out = true;
         s.aborted = true;
         return true;
     }

@@ -2375,6 +2375,47 @@ Answering it needs a freshly minted evaluation set, and 22 spent one on exactly
 this question two iterations ago. That is the cost of having measured the wrong
 configuration then, and it is not a reason to lower the bar now.
 
+### 24. A Deterministic Budget, And What It Says About DFPN
+
+23 left a question open -- whether DFPN should be the default -- and noted the
+margin was inside run-to-run variance. That variance is worth attacking directly:
+the same configuration measured **49, 51, 52 and 53 of 60** across this session,
+purely on where positions fell relative to a wall clock, which is the size of the
+effects being measured. Every comparison in this project has been made through
+that noise.
+
+`--node-limit N` stops after N nodes and reports the same "gave up" outcome a
+wall-clock expiry does. Sequentially it is exactly reproducible: three runs of a
+hard position at the same limit are byte-identical, stopping at `acn 200000` each
+time. With threads the node totals vary because lanes race, but the answers do
+not.
+
+The soundness requirement is the one 8r established, and it is why the internal
+`node_budget` could not simply be exposed: exceeding it sets `aborted` **without**
+`timed_out`, and a line with no marker means "searched exhaustively, no mate
+exists". A user-facing node limit reusing that path would have reported every
+exhausted budget as a **disproof**. The new limit sets `timed_out`, so it lands
+in the documented gave-up outcome rather than inventing a fifth one.
+
+Used on the open question, at an equal 20M-node budget, sequential, no portfolio:
+
+| route | solved |
+|---|---|
+| depth-first | 40/60 |
+| **dfpn, final-depth-only** | **51/60** |
+
+Eleven positions, with no noise at all, against the +2 that wall-clock measurement
+suggested. The two numbers are both right and they measure different things.
+Per **node** DFPN is far ahead: its search is much better directed. Per **second**
+it is roughly break-even, which means its nodes cost proportionally more --
+proof-number bookkeeping, a second table, and threshold arithmetic at every node.
+
+That resolves the open question in a more useful way than choosing a winner. A
+user paying in seconds should not expect much from `--route dfpn` at mate-in-8
+today; the reason is node cost rather than search quality, and node cost is the
+kind of thing that can be optimised. The default stays where it is, and the
+deterministic budget is now available for whoever tries.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

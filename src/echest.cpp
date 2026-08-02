@@ -104,6 +104,10 @@ void print_usage() {
 "  --parallel-min-nodes N        run a depth sequentially until it exceeds\n"
 "                                N nodes, then split (default 500)\n"
 "  --no-parallel-gate            always split, never probe sequentially\n"
+"  --node-limit N                deterministic budget: stop after N nodes and\n"
+"                                report 'timeout', claiming nothing. Same\n"
+"                                answer on every run and machine, unlike\n"
+"                                --time-limit (0 = unlimited)\n"
 "  --time-limit S                wall-clock budget in seconds; on expiry the\n"
 "                                search reports \"timeout\", never a mate\n"
 "  --root-sequential-first N     search N root moves sequentially before\n"
@@ -407,6 +411,12 @@ int main(int argc, char** argv) {
             config.direct_depth = true;
         } else if (arg == "--iterative-depth") {
             config.direct_depth = false;
+        } else if (arg == "--node-limit") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--node-limit' requires a node count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--node-limit' expects a number");
+            config.node_limit = static_cast<std::uint64_t>(value);
         } else if (arg == "--time-limit") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--time-limit' requires seconds");

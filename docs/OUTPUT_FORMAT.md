@@ -42,7 +42,8 @@ This is a positive claim, not a non-answer. It is expressed by the *absence* of
 any marker, which is worth stating plainly because it is the one case a naive
 consumer will get wrong.
 
-**3. Gave up.** The budget expired before the question was settled:
+**3. Gave up.** The budget expired before the question was settled -- either the
+wall-clock budget of `--time-limit` or the node budget of `--node-limit`:
 
 ```
 <fen4>; acn N; acs S; timeout;
