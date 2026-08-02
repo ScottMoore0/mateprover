@@ -244,6 +244,14 @@ tablebase reaches **1.01%** of proof nodes and the full 18 TB 7-man set reaches
 where the subtree beneath them is already almost free. The value of an
 early-termination oracle is set by where its hits land, not how many there are.
 
+Parallelising the DFPN search itself is the largest remaining lever by resource
+argument -- it is 86-99% of the work and a single position uses about a quarter of
+a 32-core machine. The cheap form of it is measured and rejected: six
+differently-tuned DFPN searches solve nearly the same positions, so an oracle
+picking the best per position gains two of forty (41). Only shared-tree
+parallelism remains, and that is weeks of work against a frontier that is
+twelve times too large rather than badly searched.
+
 What remains genuinely unexamined is a search that reasons about *why* a defence
 fails rather than enumerating that it does. That is a different engine, not an
 increment to this one, and this document should not pretend otherwise.

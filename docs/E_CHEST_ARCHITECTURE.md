@@ -3051,6 +3051,52 @@ almost no repeated visits. What that also says is that the remaining node count
 is not waste to be squeezed out -- it is the search actually exploring, which is a
 harder thing to improve.
 
+### 41. Bounding Parallel DFPN Before Building It
+
+DFPN is 86-99% of the work (39) and a single position uses about 8 of 32 cores,
+so parallelising DFPN is the largest remaining lever by resource argument. It is
+also the most expensive thing on the list -- thread-safe tables, a divergence
+strategy, and real tuning -- and this project has a direct warning against
+assuming idle cores convert into speed: root splitting is completely inert (32).
+
+There are two families to parallelise a search like this. **Portfolio**: run
+several differently-parameterised searches at once and take the first to finish.
+**Shared tree**: several threads cooperating on one search through a shared
+transposition table. The first is a few lines here; the second is weeks. So the
+first question is whether the portfolio form would pay, and that is measurable
+today with knobs the engine already has.
+
+Six DFPN variants -- three threshold-widening settings crossed with move sorting
+on and off -- on 40 mate-in-16 positions at a fixed 2M-node budget:
+
+| variant | solved |
+|---|---|
+| eps 0 | 22/40 |
+| eps 0 + sort | 21/40 |
+| eps 8 | 22/40 |
+| eps 8 + sort | 22/40 |
+| eps 24 | **23/40** |
+| eps 24 + sort | 21/40 |
+| **union of all six** | **25/40** |
+
+An **oracle** that picked the best variant for each position separately would gain
+**two positions of forty** over simply always using the best single variant. A
+real portfolio cannot beat its own oracle, so that is the ceiling, and it is
+worth a fifth of what the restriction portfolio delivers (+5 to +6, section 30)
+for six times the cores.
+
+**Portfolio-style parallel DFPN is rejected on that ceiling**, without building
+it. The variants solve nearly the same positions, which says the search is robust
+to these parameters: it is not taking a wrong path that a differently-tuned
+sibling would avoid. That is consistent with 16, which found the unreachable
+positions are not structurally different, merely about twelve times larger.
+
+This does **not** settle shared-tree parallel df-pn. That form makes one search
+faster rather than making several searches diverse, and a tree twelve times too
+large is exactly the case where raw speed helps. But it does mean the cheap form
+of the idea is spent, and anyone attempting the expensive form should expect to
+be fighting tree size rather than search quality.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
