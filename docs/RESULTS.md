@@ -107,12 +107,12 @@ transposition key omitted the remaining depth, so it searched ten million nodes
 on a mate-in-2 (21) -- and with that fixed it is the strongest route this engine
 has, *provided* the depth is searched directly.
 
-It is not the default because the default proves "the shortest mate is N" by
-iterative deepening, where DFPN cannot carry work across depths (22). That has
-since been largely repaired: preconditioning only the deepest iteration, rather
-than every depth, takes `--route dfpn` from 45/60 to **53/60** under iterative
-deepening against the default route's 51/60 (23). The margin there is inside
-run-to-run variance, so the default is unchanged pending a fresh evaluation set.
+Under the default iterative-deepening mode the two routes are close. Measured
+once on 200 freshly minted positions in the shipped configuration, `--route dfpn`
+solves **85.5%** against the default route's 83.5%, gaining six positions and
+losing two (28). That is consistent with the development sets but not decisive,
+so the default is unchanged: choosing `--route dfpn` is not a risk, it is simply
+not a guarantee.
 
 If you know the depth and want reach rather than minimality, use both flags
 together.
@@ -123,7 +123,7 @@ Each of these was implemented or measured, not merely considered.
 
 | idea | result | section |
 |---|---|---|
-| native DFPN route **as the default** | rejected: 72.0% against depth-first's 78.0% on 150 fresh positions, because the default mode is iterative deepening | 21, 22 |
+| native DFPN route **as the default** | not promoted: 85.5% against the default route's 83.5% on 200 fresh positions, consistent but not decisive. An earlier attempt was rejected outright at 72.0% before its node cost was fixed | 21, 22, 27, 28 |
 | DFPN or shallow-fast as extra lanes | add nothing the portfolio does not already reach | 8e |
 | compound restrictions (`K2`+`R2` etc.) | +2 on training, **exactly zero** at the operating point | 8g |
 | bitboard board representation | removing 57% of `make_move` calls bought 4%; no concentrated hotspot exists | 8i, 8k |

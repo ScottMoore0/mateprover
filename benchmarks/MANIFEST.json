@@ -74,5 +74,25 @@
     "corpus": "matetrack.epd",
     "status": "spent",
     "measured": "depth-first default 117/150 = 78.0%; dfpn as default 108/150 = 72.0%, gaining 4 and losing 13 -- the promotion this set was minted to judge was rejected on it (22)"
+  },
+  {
+    "name": "matetrack_d8_eval200_dfpn.jsonl",
+    "minted": "2026-08-02",
+    "depth": 8,
+    "count": 200,
+    "seed": 200,
+    "corpus": "matetrack.epd",
+    "pool_available": 550,
+    "status": "unused"
+  },
+  {
+    "name": "matetrack_d8_eval200_dfpn.jsonl",
+    "minted": "2026-08-02",
+    "depth": 8,
+    "count": 200,
+    "seed": 200,
+    "corpus": "matetrack.epd",
+    "status": "spent",
+    "measured": "default route 167/200 = 83.5%; --route dfpn 171/200 = 85.5%, gaining 6 and losing 2. Consistent with the development sets but not decisive (paired sign test p ~ 0.29), so the default was left unchanged (28)"
   }
 ]

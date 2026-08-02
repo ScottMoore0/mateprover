@@ -2554,6 +2554,54 @@ an evaluation set discovering that a development-set lead can reverse. The hones
 position is that DFPN has gone from clearly worse to probably slightly better,
 and "probably slightly" is not a standard this project promotes on.
 
+### 28. The DFPN Question, Settled As Far As The Evidence Allows
+
+27 cut DFPN's per-node cost and left the default unchanged, on the grounds that a
+two-position lead is inside measured variance. With the work finished, the
+protocol says to mint a set and spend it once. Counting what 27 actually
+achieved first, by subtracting the exact prover's share from a DFPN run:
+
+| per DFPN node | before 27 | after 27 |
+|---|---|---|
+| `make_move` calls | 24.3 | **4.34** |
+| `tt_key` calls | 23.6 | **4.60** |
+
+An 82% reduction, and DFPN nodes now do *less* board work than exact nodes,
+which do 5.16 `make_move` each. The remaining node-rate gap is 8% (465 k/s
+against 503 k/s), so there is little left to win here and this line of
+optimisation is finished.
+
+Fresh evaluation set, 200 positions minted after the work and measured once, in
+the shipped configuration:
+
+| route | solved | 95% CI |
+|---|---|---|
+| default (depth-first) | 167/200 = 83.5% | 77.7-88.0 |
+| `--route dfpn` | **171/200 = 85.5%** | 80.0-89.7 |
+
+DFPN gains six positions and loses two. It did **not** reverse the way 22's
+promotion did, and the direction agrees with both development sets.
+
+**The default is still unchanged.** The intervals overlap heavily, and the paired
+comparison -- eight positions decided differently, six favouring DFPN -- gives a
+sign-test p of about 0.29. That is "probably slightly better", which is exactly
+the standard 27 declined to promote on. Having written that down before seeing
+this number, lowering the bar now because the number came out favourable would
+make the standard meaningless.
+
+What the evidence does support is stated plainly in the documentation: the DFPN
+route is now at least as good as the default and probably a little better, it is
+markedly better where the depth is known (`--direct-depth`), and it is
+dramatically better per node. A user choosing `--route dfpn` is not taking a
+risk; they are simply not getting a guarantee.
+
+Settling it properly would need a much larger sample -- detecting a two-point
+difference at this variance takes on the order of a thousand positions -- or a
+larger effect. Both are available: 550 unused mate-in-8 positions remain, and the
+node-cost work suggests the effect could grow if DFPN's remaining 8% node-rate
+gap were closed. Neither is worth another iteration now, because the practical
+advice to a user does not change either way.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
