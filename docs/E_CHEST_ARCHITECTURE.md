@@ -2984,6 +2984,43 @@ measurement that says "with X" against "without X" is really saying "with X"
 against "whatever the default is", and the second half of that sentence changes
 without anyone editing the comparison.
 
+### 39. Memory Is Still Not A Lever, And The Work Has Moved Into DFPN
+
+8l concluded that memory buys nothing. It measured mate-in-8 under the
+depth-first route, so it described a configuration the engine no longer has, at a
+depth where trees are small. Re-tested at the frontier -- 40 mate-in-16 positions,
+30 s, shipped configuration:
+
+| table | solved | evictions |
+|---|---|---|
+| 256 MB | 31/40 | **0** |
+| 1 GB | 31/40 | 0 |
+| 4 GB | 31/40 | 0 |
+
+The conclusion holds and is now stronger than 8l could state it: at this depth
+the table never fills at all, so memory is not merely unhelpful, it is not a
+constraint. The 256 MB default is ample and nothing above it can matter.
+
+**The work has moved.** 25 measured a DFPN run as 9% preconditioner nodes and 91%
+exact-prover nodes, and reasoned from that. 27 then cut DFPN's per-node cost by
+82%, so it explores far more nodes in the same time. Measured now:
+
+| depth | DFPN | exact prover |
+|---|---|---|
+| mate-8 | 97.1% | 2.9% |
+| mate-10 | 99.7% | 0.3% |
+| mate-16 | 85.6% | 14.4% |
+
+The ratio has inverted. This matters for what is worth optimising next: the exact
+prover, which every efficiency measurement in 8i, 8j and 8k examined, is now
+between 0.3% and 14% of the work. Optimising it cannot pay. DFPN is 86-99% of it.
+
+That also retires a proposal. The obvious reading of 25 was that the exact pass
+re-derives what DFPN already found, and eliminating that re-derivation would be
+worth most of the runtime. At 0.3% of nodes at mate-in-10 there is nothing there
+to eliminate -- the exact pass is already almost free, because DFPN hands it a
+proof structure that verifies immediately.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
