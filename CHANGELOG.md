@@ -36,8 +36,21 @@ forging a certificate.
 measured-best configuration, so a bare invocation performs like a tuned one.
 `--print-config` reports the effective settings for reproducibility.
 
+**Also included.** A DFPN preconditioner behind `--route dfpn`. It was long
+recorded here as rejected for being slower at every depth; that was measuring a
+defect, not the algorithm -- its transposition key omitted the remaining depth, so
+it burned ten million nodes on a mate-in-2. Repaired, it solves **51/60** against
+the default route's 40/60 at an equal node budget. Per second it is roughly
+break-even, because a DFPN node costs about three times an exact one, so it is
+not the default; `--route dfpn --direct-depth` is the strongest configuration
+this engine has.
+
+`--node-limit N` gives a deterministic budget. Wall-clock limits made every
+comparison noisy at the scale of the effects being measured; a node cap gives the
+same answer on every run and machine.
+
 **Not included.** Endgame tablebases (measured: they would reach 1% of proof
-nodes, near the leaves), a DFPN route (measured: slower at every depth), and a
-bitboard rewrite (measured: no concentrated hotspot to justify it). Each is
+nodes, and near the leaves where the subtree beneath is already almost free) and
+a bitboard rewrite (measured: no concentrated hotspot to justify it). Each is
 recorded with its numbers in `docs/E_CHEST_ARCHITECTURE.md` rather than left as
 an implied roadmap.

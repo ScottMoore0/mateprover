@@ -2416,6 +2416,61 @@ today; the reason is node cost rather than search quality, and node cost is the
 kind of thing that can be optimised. The default stays where it is, and the
 deterministic budget is now available for whoever tries.
 
+### 25. Where A DFPN Node's Cost Goes, And What That Implies
+
+24 established that DFPN wins per node and breaks even per second, and named node
+cost as the thing to attack. Measuring it:
+
+| quantity | value |
+|---|---|
+| node rate, depth-first route | 503 k/s |
+| node rate, dfpn route | 350 k/s |
+| DFPN nodes as a share of all nodes in a dfpn run | **9%** |
+| move generations per DFPN node | 1.00 |
+| checkmate tests per DFPN node | 0.60 |
+| distinct table entries per node visit | 0.80 |
+
+Two things follow, and the second is more interesting than the first.
+
+**A DFPN node costs about three times an exact node.** Holding the exact route's
+rate fixed, 3.31M exact nodes account for ~6.6s of a 12s run, leaving ~5.4s for
+901k DFPN nodes. The reason is per-child work: a DFPN node generates its moves
+once but then builds a child board, computes a transposition key and performs a
+lookup **for every child**, to pick the cheapest one to descend into. An exact
+node builds roughly one child. With ~25 legal moves that is the whole 3x.
+
+**The preconditioner is only 9% of the nodes.** It is not doing most of the work;
+it is redirecting the 91% that the exact prover does. Spending 9% of nodes to
+gain eleven positions of reach at a fixed node budget is a very high return -- and
+it is exactly why the wall-clock result is break-even rather than a loss: that 9%
+of nodes costs about 27% of the time, which is roughly what the gain is worth.
+
+That makes the arithmetic unusually clear for once. **If a DFPN node cost what an
+exact node costs, the route would win outright on wall clock too.** The gap is
+not algorithmic, and it is not spread thin the way 8k found the exact search's
+cost to be -- it is concentrated in one identifiable place, per-child board and
+key construction.
+
+The obvious attack is to stop building children whose values are not yet known.
+On a node's first visit nearly every child is unvisited and its lookup returns
+the default `{1, 1}`, so the board and key were built to learn nothing. Visits are
+only 1.25 per distinct node here, so first visits dominate. Skipping that work
+would change DFPN's search order, which is sound -- the proof numbers are a
+heuristic and every verdict still comes from the exact prover -- but it would need
+measuring in both currencies, since it trades search quality for node cost and
+`--node-limit` now separates those cleanly.
+
+Not attempted here. It is a real change to the one module that had 0% test
+coverage a few iterations ago, and this iteration's contribution is the
+measurement that makes it worth attempting and says what success would look
+like: a DFPN node rate approaching the exact route's, with the equal-node result
+holding at 51/60.
+
+Also corrected: `CHANGELOG.md` still listed DFPN under "not included", as
+"measured: slower at every depth". That was written before 21 found the defect
+and is exactly the sort of stale claim the fresh-measurement discipline exists to
+catch. It now says what the route is and why it is not the default.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
