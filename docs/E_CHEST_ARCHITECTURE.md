@@ -2686,6 +2686,49 @@ discriminator for the shipped configuration -- it cannot show an improvement any
 more, only a regression. Its usefulness from here is as a canary, not a
 comparison.
 
+### 31. How Deep It Actually Goes, And How It Compares
+
+Promoting DFPN (29) raised mate-in-10 from 61.7% to 90%. Nothing had been measured
+deeper, so the documentation's claim to address "the shallow end of matetrack" was
+an assumption rather than a finding. Freshly minted evaluation sets, 30 s, shipped
+configuration with `--direct-depth`, every certificate independently verified:
+
+| depth | solved | 95% CI |
+|---|---|---|
+| mate-10 | 54/60 = 90.0% | 79.9-95.3 |
+| mate-12 | 33/40 = 82.5% | 68.0-91.3 |
+| mate-14 | 30/40 = 75.0% | 59.8-85.8 |
+| mate-16 | 28/40 = 70.0% | 54.6-81.9 |
+| mate-20 | 23/40 = 57.5% | 42.2-71.5 |
+
+There is no wall, only a gradual decline. The engine solves more than half of
+mate-in-20 positions within thirty seconds, which nothing in this document
+previously suggested.
+
+**Against Chest 3.19**, the program this one reimplements, on the same machine,
+positions, memory and time cap:
+
+| depth | Chest 3.19 | echest, one thread | echest, default |
+|---|---|---|---|
+| mate-8 | 39/40, 4.3 s | 40/40, 1.0 s | 40/40, 1.2 s |
+| mate-10 | 17/40, 21.2 s | 37/40, 3.3 s | 37/40, 3.3 s |
+| mate-12 | 8/40, 26.3 s | 33/40, 6.4 s | 33/40, 6.4 s |
+
+Comparable at mate-in-8 with about a fourfold speed advantage; four times the
+reach at mate-in-12. Both single-threaded in the fair column, so this is an
+algorithmic difference, not a hardware one -- the parallel column is nearly
+identical because these positions resolve in seconds.
+
+A methodological note, because the first attempt at this comparison was wrong.
+It reported Chest solving **0/40 at every depth**, at 0.0 seconds per position,
+which was a harness fault: the binary was wrapped in an external `timeout`
+command that failed silently in the background environment. The giveaway was the
+timing, not the score -- an engine that searches and fails consumes its budget,
+and one that consumes none never ran. Publishing that would have libelled a
+program that in fact solves 39 of 40 mate-in-8 positions unaided. A comparison
+against someone else's work needs its failures to look like failures before its
+numbers mean anything.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

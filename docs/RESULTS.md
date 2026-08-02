@@ -34,6 +34,37 @@ for this measurement, and never consulted during development (14):
 | mate-in-8, default configuration, 15 s (200 positions) | **171/200 = 85.5%** | 80.0-89.7 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **54/60 = 90.0%** | 79.9-95.3 |
 | mate-in-10, same with the previous default route | 37/60 = 61.7% | 49.0-72.9 |
+| mate-in-12, same conditions (40 positions) | 33/40 = 82.5% | 68.0-91.3 |
+| mate-in-14, same conditions (40 positions) | 30/40 = 75.0% | 59.8-85.8 |
+| mate-in-16, same conditions (40 positions) | 28/40 = 70.0% | 54.6-81.9 |
+| mate-in-20, same conditions (40 positions) | 23/40 = 57.5% | 42.2-71.5 |
+
+Every certificate at every depth verified independently. The decline with depth is
+gradual rather than a wall: this engine is not confined to the shallow end of
+matetrack, and earlier versions of this document said it was because nothing had
+looked past mate-in-10 (31).
+
+### Against Chest 3.19
+
+The program this one reimplements. Same machine, same positions, same 2 GB table,
+same 30-second cap, both single-threaded for the fair comparison:
+
+| depth | Chest 3.19 | echest, one thread | echest, shipped default |
+|---|---|---|---|
+| mate-8 | 39/40, mean 4.3 s | **40/40, mean 1.0 s** | 40/40, mean 1.2 s |
+| mate-10 | 17/40, mean 21.2 s | **37/40, mean 3.3 s** | 37/40, mean 3.3 s |
+| mate-12 | 8/40, mean 26.3 s | **33/40, mean 6.4 s** | 33/40, mean 6.4 s |
+
+At mate-in-8 the two are close in reach and echest is about four times faster. The
+gap widens with depth: at mate-in-12 echest solves four times as many positions.
+Mean times are censored by the 30-second cap, so they understate the speed
+difference wherever Chest times out.
+
+Two things that comparison does not capture. echest emits a machine-checkable
+certificate for every proof and Chest does not, so the results are not merely
+faster but independently checkable. And the parallel columns are nearly identical
+to the single-thread ones because these positions resolve in seconds -- threads
+matter at the budgets where they do not (8d).
 
 The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
 none** -- twenty-five points of solve rate from the one idea this engine has that

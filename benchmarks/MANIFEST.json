@@ -114,5 +114,45 @@
     "corpus": "matetrack.epd",
     "status": "spent",
     "measured": "depth-first + portfolio 37/60 = 61.7%; dfpn + portfolio 54/60 = 90.0%, gaining 17 and losing 0, all certificates verified. Promoted dfpn to the default route (29)"
+  },
+  {
+    "name": "matetrack_d12_eval40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 12,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "pool_available": 332,
+    "status": "unused"
+  },
+  {
+    "name": "matetrack_d14_eval40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 14,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "pool_available": 148,
+    "status": "unused"
+  },
+  {
+    "name": "matetrack_d16_eval40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 16,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "pool_available": 101,
+    "status": "unused"
+  },
+  {
+    "name": "matetrack_d20_eval40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 20,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "pool_available": 44,
+    "status": "unused"
   }
 ]

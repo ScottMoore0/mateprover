@@ -101,13 +101,23 @@ boundary.
 
 **Read this honestly:** echest solves mate-in-5 and below essentially always and
 mate-in-6/7 reliably in seconds. Deeper, the numbers come from evaluation sets
-used once and never consulted during development:
+used once and never consulted during development. There is no wall -- the solve
+rate declines gradually and is still above half at mate-in-20:
 
 | measurement | solved | 95% CI |
 |---|---|---|
 | mate-in-8, default configuration, 15 s (200 positions) | **85.5%** | 80.0-89.7 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60 positions) | **90.0%** | 79.9-95.3 |
 | mate-in-10, same with the previous default route | 61.7% | 49.0-72.9 |
+| mate-in-12, same conditions (40 positions) | 82.5% | 68.0-91.3 |
+| mate-in-14, same conditions (40 positions) | 75.0% | 59.8-85.8 |
+| mate-in-16, same conditions (40 positions) | 70.0% | 54.6-81.9 |
+| mate-in-20, same conditions (40 positions) | 57.5% | 42.2-71.5 |
+
+Against **Chest 3.19**, the program this reimplements, on the same machine,
+positions, memory and 30-second cap, both single-threaded: at mate-in-8 39/40
+against 40/40 and about four times faster; at mate-in-10 17/40 against 37/40; at
+mate-in-12 8/40 against 33/40. See [docs/RESULTS.md](docs/RESULTS.md).
 
 The last two lines are the point: at mate-in-10 the restriction portfolio is
 worth **+15 positions of 60, losing none**. Four times the time buys nothing
