@@ -799,6 +799,39 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
 
 
+def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
+    """A UTF-8 BOM must not swallow the first position.
+
+    Windows is the primary platform, and both Notepad and PowerShell's
+    `Set-Content -Encoding utf8` prepend EF BB BF. Those three bytes made the
+    first line fail as "error input" while every later line succeeded -- so a
+    multi-position file quietly lost one position, and a single-position file
+    lost the only one and reported an error with nothing to explain it. This
+    harness tripped over it twice while measuring something else, which is the
+    best evidence available that users would too.
+    """
+    print("\n[input] a UTF-8 BOM does not swallow the first position")
+
+    pos = "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - - dm 2\n"
+
+    plain = run(engine, ["--time-limit", "10", "-"], pos)
+    bom = run(engine, ["--time-limit", "10", "-"], "﻿" + pos)
+    res.check("BOM + position solves", "error input" not in bom)
+    res.check("BOM run matches the plain run",
+              DM_RE.findall(bom) == DM_RE.findall(plain))
+    res.check("the BOM is not echoed back", "﻿" not in bom)
+
+    # A BOM landed on the first non-space character, so it also stopped the
+    # leading '#' from being recognised and turned a comment into an error.
+    commented = run(engine, ["--time-limit", "10", "-"], "﻿# header\n" + pos)
+    res.check("BOM before a comment line still comments it out",
+              "error input" not in commented and "header" not in commented)
+
+    # Degenerate input: a file containing nothing but a BOM must exit cleanly.
+    res.check("a BOM-only input is not an error",
+              run(engine, ["--time-limit", "10", "-"], "﻿\n").strip() == "")
+
+
 def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
     """Documentation must not point at files the published tree does not contain.
 
@@ -1572,6 +1605,7 @@ def main() -> int:
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
+    test_bom_tolerated_on_input(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
     test_output_format_conformance(args.engine, res)

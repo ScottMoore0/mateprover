@@ -659,7 +659,20 @@ int main(int argc, char** argv) {
 
     if (read_stdin) {
         std::string line;
+        bool first_line = true;
         while (std::getline(std::cin, line)) {
+            // Strip a leading UTF-8 byte order mark. Windows is the primary
+            // platform here, and both Notepad and PowerShell's `Set-Content
+            // -Encoding utf8` prepend EF BB BF; without this the first position
+            // of such a file fails as "error input" while every later line
+            // succeeds, which for a single-position file means the only
+            // position is lost with no indication why.
+            if (first_line) {
+                first_line = false;
+                if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
+                    line.erase(0, 3);
+                }
+            }
             // Skip comment lines. EPD corpora are routinely commented -- this
             // repository's own tests/mates.epd opens with two such lines -- and
             // reporting "error input" for each made piping a corpus in produce

@@ -151,7 +151,10 @@ def main() -> int:
                          "(the engine emits them only under --emit-proof)")
     args = ap.parse_args()
 
-    stream = sys.stdin if args.input == "-" else open(args.input, encoding="utf-8")
+    # utf-8-sig, not utf-8: a certificate saved on Windows may carry a BOM, and
+    # the engine now tolerates one on its own input. Identical to utf-8 when no
+    # BOM is present.
+    stream = sys.stdin if args.input == "-" else open(args.input, encoding="utf-8-sig")
 
     checked = pv_only = skipped = 0
     failures: list[str] = []

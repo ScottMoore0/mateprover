@@ -39,7 +39,11 @@ forging a certificate.
 
 **Interfaces.** Output format and proof format are specified. Defaults are the
 measured-best configuration, so a bare invocation performs like a tuned one.
-`--print-config` reports the effective settings for reproducibility.
+`--print-config` reports the effective settings for reproducibility. Input
+tolerates a leading UTF-8 BOM: Notepad and PowerShell's `Set-Content -Encoding
+utf8` both emit one, and without this the first position of such a file failed
+as `error input` while the rest of the file succeeded. `tools/verify_proof.py`
+reads certificates as `utf-8-sig` for the same reason.
 
 **Also included.** A DFPN preconditioner behind `--route dfpn`. It was long
 recorded here as rejected for being slower at every depth; that was measuring a
