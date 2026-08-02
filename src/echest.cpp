@@ -54,9 +54,12 @@ using namespace echest;
 // split saturates, so detected-core-count parallelism wastes cores above this.
 constexpr int AUTO_THREAD_CAP = 16;
 
-#ifndef ECHEST_VERSION
-#define ECHEST_VERSION "0.1.0-dev"
-#endif
+// The single source of truth for the version. CMakeLists.txt parses this line
+// rather than declaring its own: it used to declare 0.1.0 and pass it in, while
+// a direct g++ build of the same source fell back to "0.1.0-dev". Two builds of
+// identical code reported different versions, and neither string said which was
+// which.
+#define ECHEST_VERSION "1.0.0"
 
 void print_version() {
     std::cout << "echest " << ECHEST_VERSION << "\n";

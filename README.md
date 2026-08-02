@@ -37,6 +37,8 @@ The reach figures above are reproducible: the held-out positions ship in
 `benchmarks/`, and `python tools/reproduce_results.py --engine build/echest`
 re-runs the measurements and prints them beside the documented values.
 
+[CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
+
 [docs/RESULTS.md](docs/RESULTS.md) is the place to start if you want to know
 where this engine's capability comes from, what was tried and rejected with
 measurements, and how far to trust the numbers above. It is short.

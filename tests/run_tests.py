@@ -1286,6 +1286,47 @@ def test_persistent_service_mode(engine: Path, res: Results) -> None:
               str(process.returncode))
 
 
+def test_version_is_single_sourced(engine: Path, res: Results) -> None:
+    """Every build of the same source must report the same version.
+
+    It did not: CMake declared 0.1.0 and passed it in, while a direct g++ build
+    fell back to a hardcoded "0.1.0-dev". Two builds of identical code reported
+    different versions and neither string said which was which -- so a version in
+    a bug report identified the build system, not the code.
+
+    The source now holds the version and CMake parses it out.
+    """
+    print("\n[release] the version has one source of truth")
+
+    root = HERE.parent
+    source = (root / "src" / "echest.cpp").read_text(encoding="utf-8")
+    declared = re.search(r'#define ECHEST_VERSION "([^"]+)"', source)
+    res.check("the source declares a version", declared is not None)
+    if not declared:
+        return
+
+    reported = run(engine, ["--version"], "").strip()
+    res.check("--version matches the source declaration",
+              reported == f"echest {declared.group(1)}",
+              f"{reported!r} vs source {declared.group(1)!r}")
+
+    banner = run(engine, ["--help"], "").splitlines()[0]
+    res.check("--help banner carries the same version",
+              declared.group(1) in banner, banner)
+
+    cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+    res.check("CMakeLists declares no competing version",
+              not re.search(r"\bVERSION\s+\d+\.\d+\.\d+", cmake),
+              "a hardcoded version in CMakeLists will drift from the source")
+
+    changelog = root / "CHANGELOG.md"
+    res.check("a changelog exists", changelog.exists())
+    if changelog.exists():
+        res.check("the changelog documents this version",
+                  declared.group(1) in changelog.read_text(encoding="utf-8"),
+                  f"no entry for {declared.group(1)}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -1315,6 +1356,7 @@ def main() -> int:
     test_illegal_positions_rejected(args.engine, res)
     test_castling_needs_its_rook(args.engine, res)
     test_cli_contract(args.engine, res)
+    test_version_is_single_sourced(args.engine, res)
     test_help_documents_every_option(args.engine, res)
     test_documented_defaults_are_real(args.engine, res)
     test_checks_only_restriction(args.engine, res)

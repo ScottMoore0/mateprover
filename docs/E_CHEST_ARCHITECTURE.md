@@ -2082,6 +2082,37 @@ externally-suggested ideas. What remains genuinely unexamined is a search that
 reasons about *why* a defence fails rather than enumerating that it does -- which
 is a different engine, not an increment to this one.
 
+### 18. Two Builds, Two Versions
+
+`CMakeLists.txt` declared `VERSION 0.1.0` and passed it to the compiler, while
+`src/echest.cpp` carried `#define ECHEST_VERSION "0.1.0-dev"` as a fallback for
+builds that did not define it. Both build paths are supported and documented, so
+the same source reported **0.1.0** or **0.1.0-dev** depending on how it was
+compiled, and neither string said which. A version in a bug report identified the
+build system rather than the code.
+
+Two declarations of one fact drift; there is no way to keep them honest by
+attention. The source is now the only declaration and `CMakeLists.txt` parses it
+out with a regex, failing the configure step if it cannot find one. The
+compile-definition path is gone, so there is nothing left to disagree with.
+
+Version set to **1.0.0**, which the state of the work supports: both external
+formats are specified and independently versioned, the defaults are the
+measured-best configuration, the capability figures come from evaluation sets
+used once, and 230 checks cover the contracts. `CHANGELOG.md` records what the
+version *is* rather than a list of commits -- what it can do, measured on which
+positions, what was deliberately left out and why.
+
+The gate checks four things: that the source declares a version, that
+`--version` and the `--help` banner agree with it, that `CMakeLists.txt` contains
+no competing hardcoded version, and that the changelog has an entry for the
+current one. Verified by bumping the source to 1.0.1 and confirming the changelog
+check fails.
+
+That last check is the one worth having. The first three catch drift between
+files; the fourth catches a version bumped without anyone saying what changed,
+which is the failure that actually happens.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

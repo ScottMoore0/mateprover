@@ -1,7 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Read the version out of the source rather than declaring it here. Two
+# declarations drift: this file said 0.1.0 while a direct g++ build reported
+# 0.1.0-dev, for the same code.
+file(READ src/echest.cpp _echest_main_source)
+string(REGEX MATCH "#define ECHEST_VERSION \"([0-9]+\.[0-9]+\.[0-9]+)\""
+       _echest_version_match "${_echest_main_source}")
+if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "could not read ECHEST_VERSION from src/echest.cpp")
+endif()
+
 project(echest
-    VERSION 0.1.0
+    VERSION ${CMAKE_MATCH_1}
     DESCRIPTION "Exact directmate prover with machine-checkable proof certificates"
     LANGUAGES CXX)
 
@@ -34,7 +44,6 @@ add_executable(echest
     src/report.h
     src/solve.h)
 target_link_libraries(echest PRIVATE Threads::Threads)
-target_compile_definitions(echest PRIVATE ECHEST_VERSION="${PROJECT_VERSION}")
 
 # Cost attribution for the move-generation path. Not built by default: it is a
 # development tool, not part of the shipped engine.
