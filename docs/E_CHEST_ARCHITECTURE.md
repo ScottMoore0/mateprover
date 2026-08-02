@@ -2045,6 +2045,43 @@ the available constant factors and found none worth having. The honest position
 is that the frontier moves with hardware and with nothing else this project has
 found.
 
+### 17. Tablebase Termination Would Reach One Percent Of The Wrong Nodes
+
+16 closed the new-restriction idea and left tablebase termination as the last
+named candidate from outside this project's methods. Endgame tablebases give an
+exact verdict for positions with few enough pieces, which would let the search
+stop early wherever a line reduces that far. Whether that helps depends entirely
+on how often proof trees get there.
+
+Walking 107,965 nodes of real certificates from 25 solved mate-in-8 positions:
+
+| tablebase | approximate size | proof nodes reached |
+|---|---|---|
+| <= 5 pieces | 1 GB | **1.01%** |
+| <= 6 pieces | 150 GB | 1.27% |
+| <= 7 pieces | 18 TB | 5.02% |
+
+A shippable tablebase reaches one node in a hundred. The complete 7-man set,
+eighteen terabytes, reaches one in twenty.
+
+The count is not even the main problem. Those nodes sit at **mean ply 11.5 of a
+15-ply proof** -- deep, near the leaves, because pieces only leave the board by
+capture and a mating attack does not have many to spare. A node that deep has a
+handful of plies left beneath it, so terminating it early saves a subtree that
+was nearly free. Had the hits clustered near the root, 1% of nodes could have
+meant a large fraction of the work; near the leaves it means almost none.
+
+That is the general point worth keeping: **the value of an early-termination
+oracle is set by where its hits fall, not by how many there are.** Counting
+reachable nodes without asking where they sit would have made a 5% figure look
+like a 5% saving, and it would have been wrong by whatever the branching factor
+does over the plies below.
+
+Rejected on measurement, without implementing it. With 16 this closes both
+externally-suggested ideas. What remains genuinely unexamined is a search that
+reasons about *why* a defence fails rather than enumerating that it does -- which
+is a different engine, not an increment to this one.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

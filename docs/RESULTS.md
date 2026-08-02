@@ -162,10 +162,16 @@ defender branching, which compounds to roughly twelve times the tree over eight
 plies, matching the sixteen-times budget the curve above requires (16). A
 restriction needs something to key on, and there is nothing.
 
-That leaves ideas outside anything tried here: endgame tablebase termination, or
-a search that reasons about *why* a defence fails rather than enumerating that it
-does. Those are open questions, not backlog items, and this document should not
-pretend otherwise.
+Endgame tablebase termination was the other candidate, and it is also measured
+and rejected (17). Walking 108,000 nodes of real certificates, a shippable 5-man
+tablebase reaches **1.01%** of proof nodes and the full 18 TB 7-man set reaches
+5.02% -- and those nodes sit at mean ply 11.5 of a 15-ply proof, near the leaves
+where the subtree beneath them is already almost free. The value of an
+early-termination oracle is set by where its hits land, not how many there are.
+
+What remains genuinely unexamined is a search that reasons about *why* a defence
+fails rather than enumerating that it does. That is a different engine, not an
+increment to this one, and this document should not pretend otherwise.
 
 One thing the frontier analysis did explain: the defending king already has
 essentially no mobility in this corpus -- 0.6 legal king moves on average -- which
