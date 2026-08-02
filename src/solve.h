@@ -91,11 +91,15 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     //
     // 0 keeps its meaning of "unbounded", and a share never rounds to 0: a
     // table with a one-entry ceiling would evict on every store.
+    //
+    // Only an explicit -M is divided. The default is per-table, so raising
+    // --parallel-positions cannot quietly shrink the tuned budget underneath
+    // a batch run.
     const std::size_t memory_workers =
         static_cast<std::size_t>(std::max(1, config.parallel_positions));
     auto memory_share = [&](std::size_t consumers) -> std::size_t {
-        if (config.memory_mb == 0) {
-            return 0;
+        if (config.memory_mb == 0 || !config.memory_is_total) {
+            return config.memory_mb;
         }
         const std::size_t divisor = memory_workers * std::max<std::size_t>(1, consumers);
         return std::max<std::size_t>(1, config.memory_mb / divisor);

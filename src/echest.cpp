@@ -94,10 +94,13 @@ void print_usage() {
 "                                is the default whenever --time-limit is set\n"
 "\n"
 "Resources:\n"
-"  -M N                          table budget in MB across all tables alive\n"
-"                                at once, split between portfolio lanes and\n"
-"                                --parallel-positions workers; honoured as an\n"
-"                                entry ceiling; 0 = unbounded (default 2048)\n"
+"  -M N                          total table budget in MB across every table\n"
+"                                alive at once, split between portfolio lanes\n"
+"                                and --parallel-positions workers; honoured as\n"
+"                                an entry ceiling, not a hard RSS bound;\n"
+"                                0 = unbounded. Unset, the budget is per table\n"
+"                                and the total scales with the table count\n"
+"                                (default 256)\n"
 "  --threads N | auto            root-split worker threads (default: auto).\n"
 "                                auto = min(cores,16):\n"
 "                                the split saturates above that, so extra\n"
@@ -493,6 +496,9 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '-M' expects a number");
             config.memory_mb = value; // 0 means unbounded
+            // An explicit budget is a total across every table alive at
+            // once; the default is per table. See architecture 42, 44.
+            config.memory_is_total = true;
         } else if (arg == "-C") {
             // ChecksOnly bitmask: 1 own checks only, 2 no opponent checks,
             // 4 no opponent captures, 8 no own captures, 16 no own checks

@@ -826,8 +826,20 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
 
     # The reported figure is the total the user asked for, not a share of it.
     cfg = run(engine, ["--print-config", "-M", "512", "--time-limit", "10", "-"], pos)
+    flat = cfg.replace(" ", "")
     res.check("--print-config reports the total, not the per-table share",
-              '"memory_mb":512' in cfg.replace(" ", ""))
+              '"memory_mb":512' in flat)
+    res.check("an explicit -M is marked as a total", '"memory_is_total":true' in flat)
+
+    # The default is per table, so no number of workers can erode it. Splitting
+    # a fixed total would have handed each table 32 MB at eight workers, half
+    # of what 8l already calls well below the knee -- a silent throughput loss
+    # in exactly the batch runs that set --parallel-positions in the first place.
+    for workers in ("1", "8"):
+        d = run(engine, ["--print-config", "--parallel-positions", workers,
+                         "--time-limit", "10", "-"], pos).replace(" ", "")
+        res.check(f"the default budget is per table at {workers} workers",
+                  '"memory_mb":256' in d and '"memory_is_total":false' in d)
 
 
 def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:

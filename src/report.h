@@ -219,6 +219,7 @@ void emit_config_json(const SearchConfig& c) {
     out << ",\"threads\":" << c.threads;
     out << ",\"parallel_positions\":" << c.parallel_positions;
     out << ",\"memory_mb\":" << c.memory_mb;
+    out << ",\"memory_is_total\":" << (c.memory_is_total ? "true" : "false");
     out << ",\"time_limit\":" << c.time_limit;
     out << ",\"parallel_min_nodes\":" << c.parallel_min_nodes;
     out << ",\"shared_tt_shards\":" << c.shared_tt_shards;

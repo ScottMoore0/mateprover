@@ -3214,3 +3214,34 @@ parallelism is a poor instrument against it: a doubling of hardware buys a
 single position, while the 16 finding -- unreached positions are about twelve
 times too large -- needs roughly three and a half doublings just to pull one
 notch of depth into range.
+
+
+## 44. The Default Budget Is Per Table, Not A Split Total
+
+42 made `-M` a total and raised the default 256 -> 2048 so that the default
+portfolio's eight lanes would still see 256 MB each. That reasoning holds only
+at one worker count. At `--parallel-positions 8` the same total splits eight
+ways again -- 2048 / (8 workers x 8 lanes) = **32 MB per table**, half of the
+64 MB that 8l already records as sitting well below the knee.
+
+The regression would have been invisible: batch runs would simply have solved
+slightly less, in exactly the mode people reach for when they have a lot of
+work to do.
+
+The fix is not a better constant. A default expressed as a total has to be
+divided by a table count that is not known until the flags are parsed, so any
+constant is wrong at some worker count. The default is therefore expressed the
+other way round -- **256 MB per table, total scaling with the number of
+tables** -- which is the tuned figure at every lane and worker count, and cannot
+be eroded by raising `--parallel-positions`. An explicit `-M` keeps 42's
+meaning: a total, divided.
+
+Same shape as `--threads auto`, and the same justification: the default adapts
+to the machine and the workload, an explicit value is obeyed literally.
+`--print-config` reports `memory_is_total` so which rule is in force is
+visible rather than inferred.
+
+The measurement 42 rests on is unaffected -- an explicit `-M 256` still costs
+533 MB at four workers rather than 1994 -- and the default is now the tuned
+configuration by construction rather than by a benchmark that would have had to
+be re-run at every worker count.

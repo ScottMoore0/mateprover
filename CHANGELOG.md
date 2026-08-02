@@ -32,18 +32,18 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 287 automated checks cover perft against
+sharing no code with the engine. 290 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
 
 **Interfaces.** Output format and proof format are specified. Defaults are the
 measured-best configuration, so a bare invocation performs like a tuned one.
-`--print-config` reports the effective settings for reproducibility. `-M` is
-the budget for every table alive at once, split across portfolio lanes and
-`--parallel-positions` workers; it previously applied per table, so a stated
-256 MB cost 1994 MB at four workers. Default raised 256 -> 2048 so the
-shipped per-lane share is unchanged. Input
+`--print-config` reports the effective settings for reproducibility. An explicit
+`-M` is the budget for every table alive at once, split across portfolio lanes
+and `--parallel-positions` workers; it previously applied per table, so a stated
+256 MB cost 1994 MB at four workers. Left unset it stays per table at the tuned
+256 MB, so raising `--parallel-positions` cannot shrink it. Input
 tolerates a leading UTF-8 BOM: Notepad and PowerShell's `Set-Content -Encoding
 utf8` both emit one, and without this the first position of such a file failed
 as `error input` while the rest of the file succeeded. `tools/verify_proof.py`

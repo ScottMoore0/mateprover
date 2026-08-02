@@ -140,12 +140,19 @@ struct SearchConfig {
     // throughput, and the budget's fixed overhead is proportionally worst there
     // (a 64 MB request peaks near 91 MB RSS). See architecture 8l.
     //
-    // This is the budget for every table alive at once, divided across the
-    // portfolio's lanes and the batch's position workers. 2048 rather than 256
-    // because the default portfolio runs eight lanes: the per-lane share stays
-    // at the 256 MB the tuning above measured, so the default is unchanged
-    // while `-M` now means what it says. See architecture 42.
-    std::size_t memory_mb = 2048;
+    // When the user passes -M, this is the budget for every table alive at
+    // once, divided across the portfolio's lanes and the batch's position
+    // workers (architecture 42). Left alone, it is the budget for each table
+    // and the total scales with the number of tables -- so the default is
+    // exactly the tuning above at any lane and worker count, and cannot be
+    // eroded by raising --parallel-positions. Splitting a fixed total would
+    // have handed each table 32 MB at eight workers, half of the 64 MB the
+    // comment above records as already well below the knee.
+    //
+    // Same shape as `--threads auto`: the default adapts, an explicit value is
+    // obeyed literally.
+    std::size_t memory_mb = 256;
+    bool memory_is_total = false;
 };
 
 struct PnDnFwd {
