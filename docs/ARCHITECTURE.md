@@ -454,16 +454,18 @@ Section 7 called `-C`, `-R`, `-K`, `-P`, `-X` and `-I` "Chest/WinChest options" 
 
 **Chest 3.19 accepts none of them.** Its option set is `? 2 A a b c d D f g l L m p r s S t T u U V x y o h E O H M G z Z Q`, and the six are absent from both its usage text and its parser. They are **WinChest extensions**, and this document and the CLI had been mis-attributing them.
 
-Their meanings, from WinChest's own `Options.txt`:
+What each selects, as established by probing the binary's behaviour (the
+one-line summaries in its own documentation proved misleading twice over, and
+are paraphrased rather than reproduced here):
 
-| option | meaning |
+| option | restriction it imposes |
 |---|---|
-| `-C N` | special mate: examine checking moves only |
-| `-R N` | special mate: examine threats only |
-| `-K N` | special mate: limit defender king mobility |
-| `-P N` | special mate: limit the set of moving pieces |
-| `-X N` | special mate: limit maximum moves |
-| `-I N` | special mate: threat flags |
+| `-C N` | restricts the attacker to checking moves, under a bitmask |
+| `-R N` | restricts to moves carrying a threat, to a given depth |
+| `-K N` | admits a move only if it leaves the defending king at most N squares |
+| `-P N` | caps how many defender pieces may retain a legal move |
+| `-X N` | caps the defender's total legal replies |
+| `-I N` | flags governing how threats are counted; semantics never established |
 
 Each selects a **different problem**, not a tuning knob on the same one. That is why rejecting them is right and why implementing them is a feature rather than a refinement: `-C` restricted to checking attacker moves is a distinct composition genre, not a faster route to the same answer.
 

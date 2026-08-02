@@ -284,9 +284,21 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Project context
 
-mateprover is a from-scratch implementation. Other mate solvers are used as
-behavioural oracles and differential references in testing; no code from any
-of them is used here.
+MateProver is a from-scratch implementation. It was developed inside a larger
+workspace that also holds other mate solvers, which were run as behavioural
+oracles and as benchmark references — that is how the restriction semantics were
+established and how the comparative figures above were produced. **No code from
+any of them appears here.** Every line is original, and the option semantics were
+derived by observing what those programs do, not by copying how they do it.
 
 `docs/ARCHITECTURE.md` records the design and, in more detail than is
 usual, the optimisations that were measured and **rejected** — including why.
+
+## Licence
+
+MateProver is released under the MIT License. See `LICENSE` for the full
+text.
+
+`tools/verify_proof.py` requires python-chess, which is not distributed with
+MateProver and must be installed separately. Benchmark position sets are not
+distributed either; `benchmarks/README.md` explains how to regenerate them.

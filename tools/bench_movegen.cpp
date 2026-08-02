@@ -1,3 +1,8 @@
+// MateProver -- an exact directmate prover with machine-checkable proofs.
+// Copyright (C) 2026 Scott Moore
+//
+// Released under the MIT License. See LICENSE for the full text.
+
 // bench_movegen.cpp -- Where does a move-generation call actually spend its time?
 //
 // Node-rate ablations inside the search are confounded: turning a feature off

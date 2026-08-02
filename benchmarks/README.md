@@ -1,29 +1,43 @@
 # Benchmark positions
 
-Position sets drawn from the public `matetrack.epd` corpus. One JSON object per
-line: `fen4` is the position, `mate` the true mate distance.
+**The position sets are not shipped. This directory records what they were and
+how to rebuild them.**
 
-## Evaluation sets -- used once
+They are drawn from a public mate-tracking EPD corpus that is published under a
+copyleft licence. Redistributing derived subsets of it would carry that
+licence's obligations into this tree; deriving them locally does not. Nothing is
+lost in reproducibility, because a set is fully determined by its corpus, depth,
+count and seed — and `MANIFEST.json` records all four for every set ever minted.
 
-| file | positions | depth |
+Rebuild any set with:
+
+    python ../tools/mint_eval_set.py --corpus <corpus.epd> \
+        --depth <N> --count <N> --seed <N> --name <stem>
+
+taking the arguments from `MANIFEST.json`. One JSON object per line: `fen4` is
+the position, `mate` the true mate distance.
+
+## Evaluation sets — used once
+
+| set | positions | depth |
 |---|---:|---|
-| `matetrack_d8_eval200.jsonl` | 200 | mate in 8 |
-| `matetrack_d10_eval60.jsonl` | 60 | mate in 10 |
+| `d8_eval200` | 200 | mate in 8 |
+| `d10_eval60` | 60 | mate in 10 |
 
 The reach figures in `../docs/RESULTS.md` come from these. They were minted after
 all development was complete and measured exactly once. **Do not tune against
 them.** Their only value is that nothing has been decided by looking at them, and
 that is spent the first time it is.
 
-## Development sets -- consulted repeatedly
+## Development sets — consulted repeatedly
 
-| file | positions | depth |
+| set | positions | depth |
 |---|---:|---|
-| `matetrack_d8_holdout60.jsonl` | 60 | mate in 8 |
-| `matetrack_d10_holdout24.jsonl` | 24 | mate in 10 |
+| `d8_holdout60` | 60 | mate in 8 |
+| `d10_holdout24` | 24 | mate in 10 |
 
 These were held out from *tuning* but were used for promote-or-reject decisions
-throughout development -- about ten times for the mate-in-8 set. That is enough to
+throughout development — about ten times for the mate-in-8 set. That is enough to
 make them optimistic: the same configuration scores 86.7% on the mate-in-8 set
 here and 79.5% on the 200-position evaluation set, with the former outside the
 latter's confidence interval. They remain useful for comparing two builds, which
@@ -33,7 +47,7 @@ is what they were used for; they are no longer evidence of absolute reach.
 
 A reach figure is evidence about the engine only if nothing about the engine was
 chosen by looking at it. That property is consumed by use, silently, and it does
-not require anything as deliberate as tuning -- ten promote-or-reject decisions
+not require anything as deliberate as tuning — ten promote-or-reject decisions
 were enough to overstate mate-in-8 reach by seven points.
 
 So, for any future work that could change reach:
@@ -47,8 +61,8 @@ So, for any future work that could change reach:
 3. **Measure once**, when the work is finished, and mark the set `spent` in
    `MANIFEST.json`.
 
-`MANIFEST.json` records what each set is for and whether it has been spent. Both
-evaluation sets currently shipped are spent: they produced the figures in
+Both evaluation sets are marked spent: they produced the figures in
 `../docs/RESULTS.md` and cannot honestly produce another.
 
-Reproduce the documented figures with `../tools/reproduce_results.py`.
+Reproduce the documented figures with `../tools/reproduce_results.py`, after
+rebuilding the sets it names.

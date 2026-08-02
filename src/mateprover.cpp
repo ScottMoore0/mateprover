@@ -1,3 +1,8 @@
+// MateProver -- an exact directmate prover with machine-checkable proofs.
+// Copyright (C) 2026 Scott Moore
+//
+// Released under the MIT License. See LICENSE for the full text.
+
 // MateProver initial exact directmate prover.
 //
 // This is a conservative first checkpoint for the E rewrite line. It favors

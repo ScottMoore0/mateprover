@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# MateProver -- an exact directmate prover with machine-checkable proofs.
+# Copyright (C) 2026 Scott Moore
+#
+# Released under the MIT License. See LICENSE for the full text.
+
 """Self-contained test suite for the mateprover directmate prover.
 
 The core tests deliberately have no third-party dependencies so they run

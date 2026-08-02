@@ -1,3 +1,8 @@
+// MateProver -- an exact directmate prover with machine-checkable proofs.
+// Copyright (C) 2026 Scott Moore
+//
+// Released under the MIT License. See LICENSE for the full text.
+
 // report.h -- Perft, profile counters, and the line-oriented output helpers.
 //
 // Part of a header-based split of a single translation unit. The modules are

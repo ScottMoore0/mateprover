@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# MateProver -- an exact directmate prover with machine-checkable proofs.
+# Copyright (C) 2026 Scott Moore
+#
+# Released under the MIT License. See LICENSE for the full text.
+
 """Reproduce the reach figures quoted in docs/RESULTS.md.
 
 The numbers in the documentation are worth exactly as much as a reader's ability
@@ -98,7 +103,22 @@ def main():
         return 2
 
     def load(name):
-        rows = [json.loads(line) for line in (SUITES / name).read_text().splitlines() if line.strip()]
+        # Position sets are regenerated, not shipped. They are drawn from a
+        # third-party corpus under a copyleft licence, and redistributing
+        # derived subsets would carry that licence's obligations into this
+        # tree; deriving them locally does not. benchmarks/MANIFEST.json keeps
+        # the seed and selection parameters for every set, so a regenerated set
+        # is the same set.
+        path = SUITES / name
+        if not path.exists():
+            raise SystemExit(
+                f"position set not found: {path}\n\n"
+                "Position sets are not shipped. Rebuild them with the seeds\n"
+                "recorded in benchmarks/MANIFEST.json:\n\n"
+                "    python tools/mint_eval_set.py --corpus <corpus.epd> \\\n"
+                "        --depth <N> --count <N> --seed <N> --name <stem>\n\n"
+                "See benchmarks/README.md.")
+        rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
         return rows[::3] if args.quick else rows
 
     scale = 3 if args.quick else 1

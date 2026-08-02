@@ -1,3 +1,8 @@
+// MateProver -- an exact directmate prover with machine-checkable proofs.
+// Copyright (C) 2026 Scott Moore
+//
+// Released under the MIT License. See LICENSE for the full text.
+
 // routes.h -- Route implementations and the single guard that decides whether a route result may be reported.
 //
 // Part of a header-based split of a single translation unit. The modules are
