@@ -595,20 +595,37 @@ int main(int argc, char** argv) {
         if (pending.empty()) {
             return;
         }
+        // Workers pull the next position as they finish, rather than each taking
+        // one and joining at a barrier.
+        //
+        // The barrier version made a chunk take as long as its slowest member
+        // while every other core idled, and positions differ enormously -- some
+        // resolve instantly, some run to the whole budget. Measured, that cost
+        // most of the available speedup, more than thread oversubscription (~3%)
+        // or table size (~5% across a 32x range) (34, 35).
+        const std::size_t width = std::min<std::size_t>(
+            pending.size(), static_cast<std::size_t>(config.parallel_positions));
         std::vector<std::ostringstream> buffers(pending.size());
-        std::vector<std::thread> pool;
-        pool.reserve(pending.size() - 1);
-        auto solve_one = [&](std::size_t i) {
-            solve_line(pending[i], requested_depth, config, buffers[i]);
+        std::atomic<std::size_t> next{0};
+        auto worker = [&]() {
+            for (;;) {
+                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i >= pending.size()) {
+                    return;
+                }
+                solve_line(pending[i], requested_depth, config, buffers[i]);
+            }
         };
-        for (std::size_t i = 1; i < pending.size(); ++i) {
+        std::vector<std::thread> pool;
+        pool.reserve(width - 1);
+        for (std::size_t w = 1; w < width; ++w) {
             try {
-                pool.emplace_back(solve_one, i);
+                pool.emplace_back(worker);
             } catch (const std::system_error&) {
-                solve_one(i);   // the OS refused a thread; do it here instead
+                break;      // the OS refused a thread; the rest carry the load
             }
         }
-        solve_one(0);
+        worker();
         for (std::thread& t : pool) {
             t.join();
         }
@@ -637,7 +654,10 @@ int main(int argc, char** argv) {
                 list_legal_line(line);
             } else if (config.parallel_positions > 1) {
                 pending.push_back(line);
-                if (pending.size() >= static_cast<std::size_t>(config.parallel_positions)) {
+                // Four positions per worker before flushing: the queue can only
+                // balance load it can see, and a chunk equal to the worker count
+                // degenerates back into one position each.
+                if (pending.size() >= static_cast<std::size_t>(config.parallel_positions) * 4) {
                     flush_pending();
                 }
             } else {

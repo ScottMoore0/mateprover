@@ -100,10 +100,10 @@ because answers then arrive in batches rather than as they are produced, which i
 what service mode depends on.
 
 Pair it with `--node-limit` rather than `--time-limit` for corpus work. A node
-budget is per-position, so batching costs nothing: eight at a time gives 1.7x
+budget is per-position, so batching costs nothing: eight at a time gives 2.2x
 throughput with **identical** answers. A wall clock is shared, so positions
-competing for cores each get less of it -- 2.4x throughput, but a few deep
-positions fall out (34).
+competing for cores each get less of it -- 4.1x throughput, but a few deep
+positions fall out (34, 35).
 
 ## Other modes
 

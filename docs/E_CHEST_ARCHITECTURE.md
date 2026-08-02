@@ -2784,11 +2784,10 @@ the buffers in input order. Measured on 40 mate-in-12 positions with a 5 s cap:
 | 4 | 40.9 s | 30/40 |
 | 8 | **30.4 s** | 29/40 |
 
-**2.4x throughput at width 8.** Not linear: each position already runs eight
-lanes, so the gain comes from filling gaps left when a lane finishes early rather
-than from adding independent work. (This section originally blamed
-oversubscription -- 64 threads on 32 cores. 34 tested that and found it worth
-about 3%, so it is not the explanation.)
+**2.4x throughput at width 8** as first implemented, since raised to 4.1x. This
+section originally blamed the shortfall on oversubscription; 34 blamed lane
+imbalance; 35 found the actual cause, a barrier in the batching code, and removed
+it. The numbers in the table above are the barrier version's.
 
 The solve count drifts down slightly, 31 to 29. That is the honest cost: under a
 *wall-clock* limit, positions sharing cores each get less work done, so a wider
@@ -2847,6 +2846,47 @@ That also makes the batch test deterministic. It compared verdicts under a
 wall-clock limit, where a wider batch can legitimately lose a position for
 reasons unrelated to ordering -- a test that could fail without a defect. It now
 uses a node budget, where any difference is a real one.
+
+### 35. The Third Explanation Was The Right One
+
+33 blamed sub-linear batch scaling on thread oversubscription. 34 tested that,
+found it worth about 3%, and blamed lane-length imbalance instead. That was also
+wrong, and for a reason that should have been obvious: when a lane proves a mate
+every other lane is cancelled, so a position finishes when its *fastest* lane
+succeeds, not its slowest.
+
+Memory was the next candidate -- eight concurrent positions each holding a table.
+Measured with a fixed node budget so only throughput varies, across a 32x range
+of table sizes: 2.82x speedup at 64 MB, 2.71x at 512 MB, 2.67x at 2 GB. A 32x
+change in memory moves scaling by 5%. Not that either.
+
+The cause was in the code I had written the iteration before. `flush_pending`
+spawned one thread per position and joined them all -- **a barrier**. A chunk took
+as long as its slowest member while every other core idled, and positions differ
+enormously: some resolve instantly, some run to the whole budget.
+
+Replaced with a work queue. Workers pull the next position as they finish, and
+chunks accumulate four positions per worker so the queue has imbalance to
+absorb. Same 40 positions, same fixed node budget:
+
+| version | width 1 | width 8 | scaling |
+|---|---|---|---|
+| barrier | 196.1 s | 107.5 s | 1.82x |
+| **work queue** | 187.9 s | **84.4 s** | **2.23x** |
+
+21% faster at width 8, with identical solve counts.
+
+The wall-clock arm improves more and costs more: 72.9 s to 18.0 s is **4.06x**,
+against 2.4x for the barrier, but reach falls 31 to 27 rather than 31 to 29.
+That is consistent rather than contradictory. Keeping every core busy means each
+position gets a smaller share of a budget that is *shared*; a node budget is
+per-position and indifferent, so it stays lossless. The guidance from 34 holds
+and gets sharper: corpus work should use `--node-limit`, where batching is free.
+
+Three wrong explanations before the right one, each plausible and each cheap to
+test. What distinguished the last is that it was a property of code written two
+iterations earlier rather than of the machine -- the kind of cause that is easy to
+overlook precisely because it is the newest thing in the picture.
 
 ## Promotion Rule
 
