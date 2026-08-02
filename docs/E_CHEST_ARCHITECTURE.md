@@ -2000,6 +2000,51 @@ refuses to overwrite a set that already exists -- a minted set is spent the firs
 time it is measured and is never regenerated. `benchmarks/README.md` states the
 protocol: mint before the work, do not look during, measure once after.
 
+### 16. The Frontier Has No Structure To Exploit
+
+`RESULTS.md` says the only remaining route to more reach is a restriction family
+the WinChest set does not contain. Such a family would have to exploit some
+property the unreachable positions share, so the obvious first step is to ask
+what they do share. Splitting the 200 fresh mate-in-8 positions at a 15 s budget
+gives 159 solved and 41 not, and comparing the two groups:
+
+| feature | solved (159) | unsolved (41) | ratio |
+|---|---|---|---|
+| attacker moves at the root | 24.4 | 30.4 | 1.25x |
+| mean defender replies | 14.0 | 21.1 | **1.51x** |
+| worst-case defender replies | 18.1 | 26.1 | 1.44x |
+| defender pieces | 8.0 | 10.0 | 1.26x |
+| attacker pieces | 6.5 | 8.7 | 1.35x |
+| defender king mobility | 0.58 | 0.71 | 1.21x |
+
+**There is no structural signature, only size.** Every feature moves in the same
+direction by a similar factor: the unsolved positions have more of everything.
+Compounding the branching over eight plies -- four attacker moves and four
+defender replies -- estimates `1.25^4 x 1.51^4`, about **twelve times the tree**.
+That is consistent with what the budget curve measured independently: sixteen
+times the budget converts 80% into 96% (15).
+
+This is a negative result for the new-restriction idea, and a fairly strong one.
+A restriction earns its place by removing attacker options in positions where the
+remaining options still suffice. The unreachable positions do not differ in kind
+from the reachable ones -- no distinctive material, no distinctive king
+confinement, no distinctive tactical shape -- so there is nothing for a new
+restriction to key on. They are the same problems, an order of magnitude larger.
+
+One incidental finding explains something the portfolio work never accounted for.
+**Defender king mobility is already near zero in both groups**, 0.58 and 0.71
+legal king moves on average. That is why `KingSquares` restrictions are the
+strongest lanes at both depths (8f, 8y): they cost almost nothing, because the
+defending king is already confined in nearly every position in this corpus, while
+pruning every attacker move that would release it. The lane set found by set
+cover was exploiting a property of the problem domain that nobody had noticed.
+
+What this leaves: closing the remaining 4% at mate-in-8 needs roughly another
+order of magnitude, from budget or from a faster search. 8i, 8j and 8k measured
+the available constant factors and found none worth having. The honest position
+is that the frontier moves with hardware and with nothing else this project has
+found.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

@@ -154,8 +154,21 @@ capability -- changing *which problem* is searched rather than how fast the same
 problem is searched -- is saturated at eight lanes over the restriction set the
 engine implements.
 
-Extending reach further needs a genuinely different idea: a restriction family
-the WinChest set does not contain, endgame tablebase termination, or a search
-that reasons about *why* a defence fails rather than enumerating that it does.
-Those are open questions, not backlog items, and this document should not
+A new restriction family was the most promising of those, and it now looks
+unlikely. Comparing the positions the engine cannot reach against the ones it can
+shows **no structural difference at all** -- not in material, not in king
+confinement, not in tactical shape. They differ only in size: about 1.5x the
+defender branching, which compounds to roughly twelve times the tree over eight
+plies, matching the sixteen-times budget the curve above requires (16). A
+restriction needs something to key on, and there is nothing.
+
+That leaves ideas outside anything tried here: endgame tablebase termination, or
+a search that reasons about *why* a defence fails rather than enumerating that it
+does. Those are open questions, not backlog items, and this document should not
 pretend otherwise.
+
+One thing the frontier analysis did explain: the defending king already has
+essentially no mobility in this corpus -- 0.6 legal king moves on average -- which
+is why `KingSquares` restrictions are the strongest lanes at both depths. They
+cost almost nothing and prune every attacker move that would free the king. The
+set-cover derivation found that without anyone realising why it worked.
