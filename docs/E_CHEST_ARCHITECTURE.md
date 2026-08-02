@@ -1963,6 +1963,43 @@ corrections in 8h, 8l and 8x: a number is only evidence about the engine if
 nothing about the engine was chosen by looking at that number. Freshness is
 consumed by use, and it is consumed silently.
 
+### 15. The Mate-In-8 Budget Curve, On Fresh Positions
+
+8h established that mate-in-8 is budget-limited, on the 60-position development
+set: 51/60 at 15 s, 56/60 at 60 s, 60/60 at 300 s. "Nothing at this depth is out
+of reach" has been quoted since. Measured on the 200 fresh evaluation positions:
+
+| budget | cumulative | 95% CI | newly solved |
+|---|---|---|---|
+| 15 s | 160/200 = 80.0% | 73.9-85.0 | -- |
+| 60 s | 181/200 = 90.5% | 85.6-93.8 | +21 |
+| 240 s | **192/200 = 96.0%** | 92.3-98.0 | +11 |
+
+The qualitative claim survives and is now much better quantified: sixteen times
+the budget converts 80% into 96%, and the curve is still climbing at 240 s. That
+is the strongest statement this engine can make about itself, and it is the exact
+opposite of the mate-in-10 picture, where four times the budget buys nothing.
+
+The absolute claim does not survive. **Eight positions resist 240 s**, so
+"nothing at this depth is out of reach" was an artefact of a 60-position sample
+in which all sixty happened to fall. A 100% observation on 60 positions is
+consistent with a true rate anywhere above about 94%, and the measured rate is
+96% -- the two are not in conflict, but only one of them should have been written
+down as a property of the engine.
+
+This is the third quantity in this project that shrank when measured on fresh
+positions, after the mate-in-8 solve rate and the mate-in-10 figures (14). In
+each case the direction was the same: the development set flattered the engine,
+by an amount that scaled with how often it had been consulted. Recording it here
+rather than quietly restating the number, because the pattern is the useful part.
+
+The evaluation protocol is now mechanical rather than a matter of discipline.
+`tools/mint_eval_set.py` draws a fresh set while excluding every position any
+existing set contains, records the draw in `benchmarks/MANIFEST.json`, and
+refuses to overwrite a set that already exists -- a minted set is spent the first
+time it is measured and is never regenerated. `benchmarks/README.md` states the
+protocol: mint before the work, do not look during, measure once after.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:

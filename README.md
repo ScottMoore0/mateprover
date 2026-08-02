@@ -110,8 +110,9 @@ used once and never consulted during development:
 The last two lines are the point: at mate-in-10 the restriction portfolio is
 worth **+15 positions of 60, losing none**. Four times the time buys nothing
 there, and four times the memory buys nothing; only the portfolio buys reach.
-At mate-in-8 the opposite holds -- the engine is budget-limited, and 60/60 of a
-development set fall given 300 seconds.
+At mate-in-8 the opposite holds: the engine is budget-limited. On the same 200
+positions, 80.0% solve in 15 s, 90.5% in 60 s and **96.0% in 240 s**. Sixteen
+times the budget converts four fifths into all but eight.
 
 `--direct-depth` proves "a mate within N" rather than "the shortest mate is N";
 it is not the default.

@@ -1,0 +1,40 @@
+[
+  {
+    "name": "matetrack_d8_eval200.jsonl",
+    "minted": "2026-08-01",
+    "depth": 8,
+    "count": 200,
+    "seed": 61,
+    "corpus": "matetrack.epd",
+    "status": "spent",
+    "measured": "159/200 = 79.5% at 15s default; budget curve 80.0% at 15s, 90.5% at 60s, 96.0% at 240s"
+  },
+  {
+    "name": "matetrack_d10_eval60.jsonl",
+    "minted": "2026-08-01",
+    "depth": 10,
+    "count": 60,
+    "seed": 61,
+    "corpus": "matetrack.epd",
+    "status": "spent",
+    "measured": "44/60 = 73.3% with portfolio, 29/60 = 48.3% without, 30s"
+  },
+  {
+    "name": "matetrack_d8_holdout60.jsonl",
+    "minted": "2026-08-01",
+    "depth": 8,
+    "count": 60,
+    "corpus": "matetrack.epd",
+    "status": "development",
+    "note": "consulted for ~10 promote-or-reject decisions; optimistic by ~7 points"
+  },
+  {
+    "name": "matetrack_d10_holdout24.jsonl",
+    "minted": "2026-08-01",
+    "depth": 10,
+    "count": 24,
+    "corpus": "matetrack.epd",
+    "status": "development",
+    "note": "consulted 2-3 times; close to the evaluation figure"
+  }
+]

@@ -39,11 +39,22 @@ The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
 none** -- twenty-five points of solve rate from the one idea this engine has that
 is not a conventional search technique.
 
-Separately, and on the older development set, mate-in-8 under escalating budgets
-at 32 threads with `--direct-depth`: 51/60 at 15 s, 56/60 at 60 s, **60/60 at
-300 s**. Nothing at that depth is out of reach; it is purely a matter of budget
-(8h). At mate-in-10, by contrast, four times the time or memory buys nothing
-(8x).
+**Mate-in-8 is budget-limited**, measured on the same 200 evaluation positions:
+
+| budget | solved | 95% CI |
+|---|---|---|
+| 15 s | 160/200 = 80.0% | 73.9-85.0 |
+| 60 s | 181/200 = 90.5% | 85.6-93.8 |
+| 240 s | **192/200 = 96.0%** | 92.3-98.0 |
+
+Sixteen times the budget converts 80% into 96%. Eight positions resist 240 s, so
+the earlier claim that *nothing* at this depth is out of reach -- taken from a
+60-position development set where all 60 fell at 300 s -- is stronger than fresh
+data supports (15).
+
+**Mate-in-10 is not budget-limited.** Four times the time buys nothing there, and
+four times the memory buys nothing; only the portfolio buys reach (8x). The two
+depths behave in opposite ways and each result describes only its own depth.
 
 ### A caution about the older figures
 
@@ -125,6 +136,15 @@ only behaviour.
   implied: the thread-count invariance check does not catch an injected
   scheduling fault, because the property it tests has no observable consequence
   on any corpus tried (8v).
+
+## If you extend this
+
+Both evaluation sets are spent. Any future change that could affect reach needs a
+set minted *before* the work starts, using `tools/mint_eval_set.py`, and measured
+once when it finishes; `benchmarks/README.md` states the protocol and
+`benchmarks/MANIFEST.json` tracks which sets remain unused. The development sets
+are still the right tool for deciding whether one build beats another -- that use
+survives repetition; quoting an absolute reach figure does not.
 
 ## What would actually move the needle
 
