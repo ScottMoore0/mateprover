@@ -7,7 +7,8 @@
     "seed": 61,
     "corpus": "matetrack.epd",
     "status": "spent",
-    "measured": "159/200 = 79.5% at 15s default; budget curve 80.0% at 15s, 90.5% at 60s, 96.0% at 240s"
+    "measured": "159/200 = 79.5% at 15s default; budget curve 80.0% at 15s, 90.5% at 60s, 96.0% at 240s",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d10_eval60.jsonl",
@@ -17,7 +18,8 @@
     "seed": 61,
     "corpus": "matetrack.epd",
     "status": "spent",
-    "measured": "44/60 = 73.3% with portfolio, 29/60 = 48.3% without, 30s"
+    "measured": "44/60 = 73.3% with portfolio, 29/60 = 48.3% without, 30s",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d8_holdout60.jsonl",
@@ -26,7 +28,9 @@
     "count": 60,
     "corpus": "matetrack.epd",
     "status": "development",
-    "note": "consulted for ~10 promote-or-reject decisions; optimistic by ~7 points"
+    "note": "no seed was recorded when this set was minted, so it can be resampled but not reproduced exactly",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "rebuildable": false
   },
   {
     "name": "matetrack_d10_holdout24.jsonl",
@@ -35,25 +39,9 @@
     "count": 24,
     "corpus": "matetrack.epd",
     "status": "development",
-    "note": "consulted 2-3 times; close to the evaluation figure"
-  },
-  {
-    "name": "matetrack_d8_train60.jsonl",
-    "minted": "2026-08-01",
-    "depth": 8,
-    "count": 60,
-    "corpus": "matetrack.epd",
-    "status": "training",
-    "note": "the set the restriction portfolio was derived on (8f); never evidence"
-  },
-  {
-    "name": "matetrack_d10_train24.jsonl",
-    "minted": "2026-08-01",
-    "depth": 10,
-    "count": 24,
-    "corpus": "matetrack.epd",
-    "status": "training",
-    "note": "used for the depth-aware portfolio sweep (8y); never evidence"
+    "note": "no seed was recorded when this set was minted, so it can be resampled but not reproduced exactly",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "rebuildable": false
   },
   {
     "name": "matetrack_d8_eval150_dfpn.jsonl",
@@ -63,17 +51,8 @@
     "seed": 150,
     "corpus": "matetrack.epd",
     "pool_available": 700,
-    "status": "unused"
-  },
-  {
-    "name": "matetrack_d8_eval150_dfpn.jsonl",
-    "minted": "2026-08-02",
-    "depth": 8,
-    "count": 150,
-    "seed": 150,
-    "corpus": "matetrack.epd",
-    "status": "spent",
-    "measured": "depth-first default 117/150 = 78.0%; dfpn as default 108/150 = 72.0%, gaining 4 and losing 13 -- the promotion this set was minted to judge was rejected on it (22)"
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d8_eval200_dfpn.jsonl",
@@ -83,17 +62,8 @@
     "seed": 200,
     "corpus": "matetrack.epd",
     "pool_available": 550,
-    "status": "unused"
-  },
-  {
-    "name": "matetrack_d8_eval200_dfpn.jsonl",
-    "minted": "2026-08-02",
-    "depth": 8,
-    "count": 200,
-    "seed": 200,
-    "corpus": "matetrack.epd",
-    "status": "spent",
-    "measured": "default route 167/200 = 83.5%; --route dfpn 171/200 = 85.5%, gaining 6 and losing 2. Consistent with the development sets but not decisive (paired sign test p ~ 0.29), so the default was left unchanged (28)"
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d10_eval60_dfpn.jsonl",
@@ -103,17 +73,8 @@
     "seed": 60,
     "corpus": "matetrack.epd",
     "pool_available": 477,
-    "status": "unused"
-  },
-  {
-    "name": "matetrack_d10_eval60_dfpn.jsonl",
-    "minted": "2026-08-02",
-    "depth": 10,
-    "count": 60,
-    "seed": 60,
-    "corpus": "matetrack.epd",
-    "status": "spent",
-    "measured": "depth-first + portfolio 37/60 = 61.7%; dfpn + portfolio 54/60 = 90.0%, gaining 17 and losing 0, all certificates verified. Promoted dfpn to the default route (29)"
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d12_eval40.jsonl",
@@ -124,7 +85,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 332,
     "status": "spent",
-    "measured": "reach at depth, 30s shipped configuration (31)"
+    "measured": "reach at depth, 30s shipped configuration (31)",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d14_eval40.jsonl",
@@ -135,7 +97,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 148,
     "status": "spent",
-    "measured": "reach at depth, 30s shipped configuration (31)"
+    "measured": "reach at depth, 30s shipped configuration (31)",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d16_eval40.jsonl",
@@ -146,7 +109,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 101,
     "status": "spent",
-    "measured": "reach at depth, 30s shipped configuration (31)"
+    "measured": "reach at depth, 30s shipped configuration (31)",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d20_eval40.jsonl",
@@ -157,7 +121,8 @@
     "corpus": "matetrack.epd",
     "pool_available": 44,
     "status": "spent",
-    "measured": "reach at depth, 30s shipped configuration (31)"
+    "measured": "reach at depth, 30s shipped configuration (31)",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
     "name": "matetrack_d16_dev40.jsonl",
@@ -167,16 +132,31 @@
     "seed": 40,
     "corpus": "matetrack.epd",
     "pool_available": 61,
-    "status": "unused"
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630"
   },
   {
-    "name": "matetrack_d16_dev40.jsonl",
+    "name": "matetrack_d8_train60.jsonl",
     "minted": "2026-08-02",
-    "depth": 16,
-    "count": 40,
-    "seed": 40,
+    "depth": 8,
+    "count": 60,
+    "seed": 860,
     "corpus": "matetrack.epd",
-    "status": "development",
-    "note": "deep development set: the shallower ones now saturate, so they cannot show an improvement (30)"
+    "pool_available": 1020,
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set"
+  },
+  {
+    "name": "matetrack_d10_train24.jsonl",
+    "minted": "2026-08-02",
+    "depth": 10,
+    "count": 24,
+    "seed": 1024,
+    "corpus": "matetrack.epd",
+    "pool_available": 585,
+    "status": "unused",
+    "corpus_commit": "64914c01aa1f4deb2eb9774f4095e65bcfd61630",
+    "supersedes": "a set of the same name minted 2026-08-01 with no seed recorded, which cannot be rebuilt; the deterministic reference values were re-measured on this set"
   }
 ]

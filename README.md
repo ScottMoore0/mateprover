@@ -33,12 +33,21 @@ mine to assert:
 mateprover --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py
 ```
 
-The reach figures are reproducible, with one step of setup: the position sets are
-**not** distributed, but every set is fully determined by its corpus, depth,
-count and seed, and `benchmarks/MANIFEST.json` records all four. Rebuild them
-with `tools/mint_eval_set.py`, then `python tools/reproduce_results.py --engine
-build/mateprover` re-runs the measurements and prints them beside the documented
-values. `benchmarks/README.md` has the details.
+The reach figures are reproducible, with one step of setup. The position sets are
+**not** distributed — they are drawn from a separately-licensed corpus — but they
+are rebuildable:
+
+```
+python tools/fetch_corpus.py          # downloads the corpus, pinned and checksummed
+python tools/mint_eval_set.py ...     # arguments from benchmarks/MANIFEST.json
+python tools/reproduce_results.py --engine build/mateprover
+```
+
+A set is determined by its corpus *revision*, depth, count and seed;
+`benchmarks/MANIFEST.json` records all four, and the fetch is pinned because
+the corpus is maintained and drifts. Two early holdout sets predate the
+seed-recording discipline and are marked `rebuildable: false` — they can be
+resampled but not reproduced exactly. `benchmarks/README.md` has the details.
 
 [CHANGELOG.md](CHANGELOG.md) records what each version is and what it measured.
 

@@ -5,17 +5,32 @@ how to rebuild them.**
 
 They are drawn from a public mate-tracking EPD corpus that is published under a
 copyleft licence. Redistributing derived subsets of it would carry that
-licence's obligations into this tree; deriving them locally does not. Nothing is
-lost in reproducibility, because a set is fully determined by its corpus, depth,
-count and seed — and `MANIFEST.json` records all four for every set ever minted.
+licence's obligations into this tree; deriving them locally does not. Almost
+nothing is lost in reproducibility: a set is determined by its corpus revision,
+depth, count and seed, and `MANIFEST.json` records all four — except for two
+early sets minted before seeds were recorded, which are marked as such below.
 
-Rebuild any set with:
+Rebuild any set in two steps:
 
-    python ../tools/mint_eval_set.py --corpus <corpus.epd> \
+    python ../tools/fetch_corpus.py
+    python ../tools/mint_eval_set.py --corpus corpus/matetrack.epd \
         --depth <N> --count <N> --seed <N> --name <stem>
 
 taking the arguments from `MANIFEST.json`. One JSON object per line: `fen4` is
 the position, `mate` the true mate distance.
+
+**The corpus revision is part of the recipe.** The upstream corpus is
+maintained -- illegal positions removed, wrong mate values corrected -- so the
+same seed against a later revision draws a *different* set, silently.
+`fetch_corpus.py` therefore pins a commit and verifies a SHA-256, and
+`MANIFEST.json` records `corpus_commit` alongside the seed. A set is
+reproducible as (revision, depth, count, seed), not as (depth, count, seed).
+
+Two early sets, `d8_holdout60` and `d10_holdout24`, predate that discipline and
+carry `"rebuildable": false`: no seed was recorded, so they can be resampled but
+never reproduced. The two development sets were re-minted with seeds on
+2026-08-02 and their reference values re-measured; the numbers they had before
+described sets that no longer exist.
 
 ## Evaluation sets — used once
 

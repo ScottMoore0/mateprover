@@ -1,2 +1,11 @@
 build-cmake/
 build/tmp/
+
+# Benchmark corpus fetched by tools/fetch_corpus.py. Not distributed: it is a
+# separate project under its own licence. See benchmarks/README.md.
+benchmarks/corpus/
+
+# Derived position sets. Rebuilt locally by tools/mint_eval_set.py, never
+# committed: they are subsets of a separately-licensed corpus, and committing
+# them would re-create the redistribution obligation their removal eliminated.
+benchmarks/*.jsonl

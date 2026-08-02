@@ -66,19 +66,24 @@ def measure(engine, positions, args, budget, deterministic=False):
 # exactly reproducible: a wall-clock run of the same engine varies by several
 # positions between runs on one machine, which is the size of most of the
 # effects this project measures.
+# Reference values re-measured 2026-08-02 on re-minted development sets. The
+# originals were drawn without a recorded seed and could not be rebuilt, so
+# their numbers described sets that no longer exist. The new draw is slightly
+# easier across the board; what the table exists to show -- dfpn ahead of
+# depth-first at both depths -- is unchanged.
 # Every entry names its route explicitly. These originally relied on the default
 # being depth-first; when dfpn was promoted (architecture 29) the "depth-first"
 # rows silently began running dfpn, so the tool compared a route with itself and
 # still printed the old expected values beside it.
 DETERMINISTIC = [
     ("mate-8 dev set, depth-first, 2M nodes", "matetrack_d8_train60.jsonl",
-     ["--route", "depth-first"], 2000000, "10/60"),
+     ["--route", "depth-first"], 2000000, "12/60"),
     ("mate-8 dev set, dfpn, 2M nodes", "matetrack_d8_train60.jsonl",
-     ["--route", "dfpn"], 2000000, "17/60"),
+     ["--route", "dfpn"], 2000000, "19/60"),
     ("mate-10 dev set, depth-first, 4M nodes", "matetrack_d10_train24.jsonl",
-     ["--direct-depth", "--route", "depth-first"], 4000000, "4/24"),
+     ["--direct-depth", "--route", "depth-first"], 4000000, "5/24"),
     ("mate-10 dev set, dfpn, 4M nodes", "matetrack_d10_train24.jsonl",
-     ["--direct-depth", "--route", "dfpn"], 4000000, "18/24"),
+     ["--direct-depth", "--route", "dfpn"], 4000000, "22/24"),
 ]
 
 
@@ -122,14 +127,17 @@ def main():
         return rows[::3] if args.quick else rows
 
     scale = 3 if args.quick else 1
+    # Sets are loaded lazily. Building this list eagerly made --deterministic
+    # demand the evaluation sets it never reads, so a deterministic run failed
+    # on a missing file belonging to the other mode entirely.
     checks = [
         ("mate-in-8, default configuration, 15s",
-         load("matetrack_d8_eval200.jsonl"), [], 15 // scale, "159/200 = 79.5%"),
+         "matetrack_d8_eval200.jsonl", [], 15 // scale, "159/200 = 79.5%"),
         ("mate-in-10, 32 threads, --direct-depth, 30s",
-         load("matetrack_d10_eval60.jsonl"),
+         "matetrack_d10_eval60.jsonl",
          ["-M", "2048", "--threads", "32", "--direct-depth"], 30 // scale, "44/60 = 73.3%"),
         ("mate-in-10, no portfolio (the comparison)",
-         load("matetrack_d10_eval60.jsonl"),
+         "matetrack_d10_eval60.jsonl",
          ["-M", "2048", "--threads", "32", "--direct-depth", "--no-portfolio"], 30 // scale,
          "29/60 = 48.3%"),
     ]
@@ -150,7 +158,8 @@ def main():
     if args.quick:
         print("QUICK MODE: reduced positions and budget. Indicative only.\n")
     print(f"{'measurement':<46} {'measured':>10}   {'documented':>16}")
-    for label, positions, extra, budget, documented in checks:
+    for label, suite, extra, budget, documented in checks:
+        positions = load(suite)
         got = measure(args.engine, positions, extra, max(budget, 1))
         print(f"{label:<46} {f'{got}/{len(positions)}':>10}   {documented:>16}", flush=True)
 
