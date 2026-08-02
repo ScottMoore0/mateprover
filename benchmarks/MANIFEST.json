@@ -123,7 +123,8 @@
     "seed": 40,
     "corpus": "matetrack.epd",
     "pool_available": 332,
-    "status": "unused"
+    "status": "spent",
+    "measured": "reach at depth, 30s shipped configuration (31)"
   },
   {
     "name": "matetrack_d14_eval40.jsonl",
@@ -133,7 +134,8 @@
     "seed": 40,
     "corpus": "matetrack.epd",
     "pool_available": 148,
-    "status": "unused"
+    "status": "spent",
+    "measured": "reach at depth, 30s shipped configuration (31)"
   },
   {
     "name": "matetrack_d16_eval40.jsonl",
@@ -143,7 +145,8 @@
     "seed": 40,
     "corpus": "matetrack.epd",
     "pool_available": 101,
-    "status": "unused"
+    "status": "spent",
+    "measured": "reach at depth, 30s shipped configuration (31)"
   },
   {
     "name": "matetrack_d20_eval40.jsonl",
@@ -153,6 +156,27 @@
     "seed": 40,
     "corpus": "matetrack.epd",
     "pool_available": 44,
+    "status": "spent",
+    "measured": "reach at depth, 30s shipped configuration (31)"
+  },
+  {
+    "name": "matetrack_d16_dev40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 16,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "pool_available": 61,
     "status": "unused"
+  },
+  {
+    "name": "matetrack_d16_dev40.jsonl",
+    "minted": "2026-08-02",
+    "depth": 16,
+    "count": 40,
+    "seed": 40,
+    "corpus": "matetrack.epd",
+    "status": "development",
+    "note": "deep development set: the shallower ones now saturate, so they cannot show an improvement (30)"
   }
 ]

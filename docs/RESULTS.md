@@ -60,6 +60,19 @@ gap widens with depth: at mate-in-12 echest solves four times as many positions.
 Mean times are censored by the 30-second cap, so they understate the speed
 difference wherever Chest times out.
 
+On the positions **both** engines solve -- the fair way to compare speed, since it
+excludes everything Chest cannot do at all and therefore understates the gap:
+
+| depth | paired positions | time, Chest → echest | nodes, Chest → echest |
+|---|---|---|---|
+| mate-8 | 39 | 3.61 s → 1.02 s (3.6x mean, 20x median) | 5.20M → 0.74M (7.1x mean, 25x median) |
+| mate-10 | 17 | 9.40 s → 0.60 s (15.8x mean, 16x median) | 17.30M → 0.44M (39.8x mean, 38x median) |
+
+Mean and median differ because a few slow positions dominate the mean; the median
+is the typical case. Nodes-to-proof is the hardware-independent measure, and it
+is where the difference is largest: at mate-in-10 echest proves the same mates
+having examined about 2.5% of the positions Chest examines.
+
 Two things that comparison does not capture. echest emits a machine-checkable
 certificate for every proof and Chest does not, so the results are not merely
 faster but independently checkable. And the parallel columns are nearly identical

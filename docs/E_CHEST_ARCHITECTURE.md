@@ -2729,6 +2729,43 @@ program that in fact solves 39 of 40 mate-in-8 positions unaided. A comparison
 against someone else's work needs its failures to look like failures before its
 numbers mean anything.
 
+### 32. Root-Split Parallelism Now Contributes Nothing
+
+31 noted in passing that the 32-thread column matched the single-thread one.
+Those positions resolve in seconds, so the comparison proved little. At the
+frontier it proves a great deal. Forty fresh mate-in-16 development positions,
+30 s, 2 GB:
+
+| configuration | solved | mean time |
+|---|---|---|
+| portfolio, 1 root thread | 31/40 | 7.9 s |
+| portfolio, 8 root threads | 31/40 | 7.9 s |
+| portfolio, 32 root threads | 31/40 | 7.9 s |
+| no portfolio, 1 root thread | 26/40 | 12.1 s |
+| no portfolio, 8 root threads | 26/40 | 12.2 s |
+| no portfolio, 32 root threads | 26/40 | 12.2 s |
+
+**Root-split threading contributes nothing at all** -- identical solve counts and
+identical mean times at 1, 8 and 32 threads, with the portfolio on *or* off. The
+portfolio contributes five to six positions and cuts mean time by a third.
+
+Note that `--single-thread` sets the root-split width to one but leaves the
+portfolio running, so even that row uses eight cores, one per lane. The engine is
+parallel; the parallelism that matters is lane-level, and root splitting inside a
+lane is now inert.
+
+8d measured root splitting saturating around sixteen threads and still worth
+something against one. That is no longer true, and DFPN is why: a search that
+resolves a position in eight seconds instead of exhausting a thirty-second budget
+gives the extra workers nothing to do but duplicate. The mechanism that made
+splitting pay -- lots of independent root moves, each expensive -- is precisely
+what a better-directed search removes.
+
+Not acted on. `--threads` is inert rather than harmful, removing root splitting is
+a large change to working code, and the case for keeping it is that it costs
+nothing and may matter on hardware or problems unlike these. But the
+documentation should not imply it buys anything here, and it now does not.
+
 ## Promotion Rule
 
 No E search feature is promoted by intuition. A feature is promoted only after:
