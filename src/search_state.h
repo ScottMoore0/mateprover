@@ -78,6 +78,10 @@ struct SearchConfig {
     bool dfpn_final_depth_only = true;
     // Absolute floor, retained for experiments. 1 means no floor.
     int dfpn_min_depth = 1;
+    // Weight applied to an AND node's proof estimate when the defender is not
+    // in check, biasing DFPN toward forcing lines. 1 disables it. See
+    // architecture 46 for why per-ply selectivity is the lever that compounds.
+    int dfpn_check_bias = 1;
     int dfpn_epsilon_64 = 0;
     bool dfpn_sort = false;
     // Wall-clock budget in seconds. 0 means unlimited.

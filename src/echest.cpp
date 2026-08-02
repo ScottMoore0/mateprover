@@ -170,6 +170,9 @@ void print_usage() {
 "                                default: --dfpn-final-depth-only. Its work\n"
 "                                cannot carry across depths, so only the\n"
 "                                deepest iteration repays the cost\n"
+"  --dfpn-check-bias N           weight an AND node's proof estimate when the\n"
+"                                defender is not in check (default 1, off;\n"
+"                                measured harmful -- see architecture 47)\n"
 "  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
 "                                iterative deepening its work cannot carry\n"
 "                                across depths (default 1, no skipping)\n"
@@ -450,6 +453,14 @@ int main(int argc, char** argv) {
             config.dfpn_final_depth_only = true;
         } else if (arg == "--dfpn-every-depth") {
             config.dfpn_final_depth_only = false;
+        } else if (arg == "--dfpn-check-bias") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--dfpn-check-bias' requires a weight");
+            std::size_t value = 0;
+            if (!parse_size(v, value) || value < 1) {
+                return usage_error("option '--dfpn-check-bias' expects a number >= 1");
+            }
+            config.dfpn_check_bias = static_cast<int>(value);
         } else if (arg == "--dfpn-min-depth") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-min-depth' requires a depth");

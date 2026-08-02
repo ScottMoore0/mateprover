@@ -3360,3 +3360,48 @@ is forced) is the standard remedy in the df-pn literature and is not tried here.
 That is the last unexplored lever with a compounding payoff. If it fails, the
 performance work is finished and the remaining gap belongs to a different
 engine.
+
+
+## 47. Heuristic Proof-Number Initialisation: Tried And Rejected
+
+46 identified DFPN's proof-number initialisation as the last lever with a
+compounding payoff, and named the obvious first heuristic: the move count cannot
+tell a free choice from a forced one, so weight an AND node's proof estimate up
+when the defender is *not* in check and the search will prefer forcing lines.
+
+Implemented behind `--dfpn-check-bias N`, deterministic node budgets:
+
+| bias | mate-10 solved | nodes vs off | mate-16 solved | nodes vs off |
+|---|---|---|---|---|
+| 1 (off) | 18/24 | 1.00x | 24/40 | 1.00x |
+| 2 | 18/24 | 0.63x | 25/40 | 0.73x |
+| 3 | 18/24 | 0.54x | 24/40 | 0.84x |
+| 5 | 18/24 | 0.48x | 23/40 | 0.52x |
+| 8 | 17/24 | 0.39x | 22/40 | 0.46x |
+
+Ratios below 1.00x mean *more* nodes. Every setting is worse, monotonically so,
+and solve counts are flat or declining. The single 25/40 at bias 2 is one
+position against a paired node count that got worse and a second set that did
+not reproduce it.
+
+**Rejected**, and the reason is more useful than the result. The move count
+already encodes forcing-ness: a checking move is exactly one that leaves the
+defender few legal replies, so a forced position already receives a low proof
+estimate through the count itself. The bias re-applied a signal that was
+present, double-counting it, and the distortion grew with the weight -- which is
+the monotone degradation in the table.
+
+This qualifies 46's claim. Twelve quiet replies and twelve forced king moves are
+*not* actually indistinguishable to the count, because the forced case rarely
+has twelve replies. The count is a cruder signal than it could be, but it is not
+the blind one that section implied.
+
+The flag is kept at its measured-off default, as `--refutation-hints` is, so the
+negative result stays reproducible rather than becoming folklore.
+
+This rejects one heuristic, not the category: initialisation from king mobility,
+distance-to-mate estimates or threat structure is still untried. But the prior
+should now be lower. The cheapest and most obvious domain feature turned out to
+be redundant with what the count already measures, and the same objection --
+that move counts are already a proxy for confinement -- applies to king mobility
+and to most cheap features anyone would reach for next.

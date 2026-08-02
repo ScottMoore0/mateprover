@@ -133,8 +133,19 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // rather than a lookup. That is sound: the proof numbers only steer the
     // search, and every verdict still comes from the exact prover.
     if (!dfpn_seen(s, key)) {
+        // Move count alone cannot tell twelve quiet replies from twelve forced
+        // king moves in a mating net, yet it is the only signal steering every
+        // descent (architecture 46). A defender not in check is choosing freely
+        // and is correspondingly harder to refute, so weight the proof estimate
+        // against those nodes and the search prefers forcing lines. Sound for
+        // the same reason the estimate itself is: proof numbers only steer, and
+        // every verdict still comes from the exact prover.
+        std::size_t estimate = replies.size();
+        if (s.dfpn_check_bias > 1 && !in_check(b, b.stm)) {
+            estimate *= static_cast<std::size_t>(s.dfpn_check_bias);
+        }
         const PnDn guess{static_cast<std::uint32_t>(
-                             std::min<std::size_t>(replies.size(), DFPN_INF)),
+                             std::min<std::size_t>(estimate, DFPN_INF)),
                          1};
         if (guess.pn >= thpn || guess.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
             dfpn_store(s, key, guess);
