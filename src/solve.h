@@ -193,7 +193,41 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             v.push_back(df);
             return v;
         }();
-        const auto& entries = config.goal == Goal::Mate ? restriction_portfolio() : with_route;
+        const auto& all_entries = config.goal == Goal::Mate ? restriction_portfolio() : with_route;
+
+        // An optional cap on how many lanes run at once.
+        //
+        // Lanes contend for cores and memory bandwidth, so more is not
+        // monotonically better: the depth-first lane solves the last selfmate
+        // holdout in 7.4 s alone and 27 s against eight others, at every memory
+        // size, so the loss is contention and not table space. 0 means every
+        // lane, which stays the default.
+        //
+        // Lanes are kept in a priority order, not list order. Lane 0 -- the
+        // unrestricted search -- is the only lane that can settle "no mate
+        // exists" and survives everything. For the non-directmate goals the
+        // route-diversity lane comes second, ahead of every restriction,
+        // because it reaches positions no DFPN configuration reaches at any
+        // memory size (54). Restrictions then follow in greedy pick order,
+        // which is already descending marginal coverage.
+        std::vector<PortfolioEntry> capped;
+        if (config.portfolio_lanes > 0 &&
+            static_cast<std::size_t>(config.portfolio_lanes) < all_entries.size()) {
+            std::vector<std::size_t> order{0};
+            if (config.goal != Goal::Mate) {
+                for (std::size_t i = 1; i < all_entries.size(); ++i) {
+                    if (all_entries[i].route != RouteKind::Dfpn) order.push_back(i);
+                }
+            }
+            for (std::size_t i = 1; i < all_entries.size(); ++i) {
+                if (std::find(order.begin(), order.end(), i) == order.end()) order.push_back(i);
+            }
+            for (std::size_t rank : order) {
+                if (capped.size() >= static_cast<std::size_t>(config.portfolio_lanes)) break;
+                capped.push_back(all_entries[rank]);
+            }
+        }
+        const std::vector<PortfolioEntry>& entries = capped.empty() ? all_entries : capped;
         const int lanes = static_cast<int>(entries.size());
         const int total_threads = std::max(1, config.threads);
         // Threads follow the same weights as the time slices did. Splitting
@@ -201,27 +235,57 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // and the one whose answer is preferred: it dropped from 15 solved to
         // 13 while the restricted lanes added 4.
         //
-        // Directmate only. A lane with more than one thread root-splits, and on
-        // the non-directmate goals that split is not merely inert (53) but
-        // ruinous: at the default 16 threads it hands lanes 0-2 four, three and
-        // three threads, and selfmate's median position went from 0.29 s to
-        // 20.22 s -- the time limit -- for exactly the same 16 of 20 solved.
-        // Below 10 threads every lane already gets one and the defect is
-        // invisible, which is why it survived the earlier thread sweeps.
+        // The weights apply to DIRECTMATE only, and on the other goals the
+        // extra threads go somewhere else entirely -- because whether a second
+        // thread helps or ruins a lane depends on its ROUTE, not its weight.
         //
-        // So the extra threads are simply not handed out for these goals. This
-        // costs nothing measurable: one thread a lane solved the same positions
-        // in 16.1 s against 249.5 s, and stalemate improved too (34.5 s against
-        // 39.6 s). Restoring them is gated on the selfmate root split earning
-        // its keep, which it has never yet been measured to do.
+        // A lane with more than one thread root-splits. On the non-directmate
+        // goals, measured per route on the one position Chest still wins:
+        //
+        //   depth-first  1 thread 26.0 s -> 16 threads 7.2 s   (3.6x, scales)
+        //   dfpn         never solves it at any thread count
+        //
+        // and spreading threads over the dfpn lanes by weight took selfmate's
+        // median from 0.29 s to 20.22 s -- the time limit -- for identical
+        // coverage (56). So the threads are not withheld, they are aimed: every
+        // spare thread goes to the route-diversity lanes, which are the ones
+        // that turn them into speed, and the dfpn lanes stay at one apiece.
         std::vector<int> lane_threads(static_cast<std::size_t>(lanes), 1);
         int assigned = lanes;
-        for (int i = 0; i < lanes && assigned < total_threads && config.goal == Goal::Mate; ++i) {
-            const int want = static_cast<int>(
-                static_cast<double>(total_threads) * entries[static_cast<std::size_t>(i)].weight);
-            const int extra = std::min(std::max(0, want - 1), total_threads - assigned);
-            lane_threads[static_cast<std::size_t>(i)] += extra;
-            assigned += extra;
+        if (config.goal == Goal::Mate) {
+            for (int i = 0; i < lanes && assigned < total_threads; ++i) {
+                const int want = static_cast<int>(
+                    static_cast<double>(total_threads) * entries[static_cast<std::size_t>(i)].weight);
+                const int extra = std::min(std::max(0, want - 1), total_threads - assigned);
+                lane_threads[static_cast<std::size_t>(i)] += extra;
+                assigned += extra;
+            }
+        } else {
+            int splitters = 0;
+            for (const auto& e : entries) {
+                if (e.route != RouteKind::Dfpn) ++splitters;
+            }
+            if (splitters > 0 && assigned < total_threads) {
+                // Bounded, not "all that is spare". The split scales this lane
+                // but it competes with the eight lanes that resolve most
+                // positions quickly, so an unbounded share wins one position
+                // and loses many. See section 57 for the sweep.
+                // One spare thread, not four. Selfmate is flat in this number
+                // (49 of 60 at 1, 2 and 4) while stalemate falls monotonically
+                // as the split takes cores from the lanes resolving everything
+                // else: 47, 44, 43. The split is worth exactly enough threads
+                // to reach the positions single-threaded search cannot, and no
+                // more. See section 57.
+                const int cap = config.route_lane_threads > 0 ? config.route_lane_threads : 1;
+                const int share = std::min(cap, (total_threads - assigned) / splitters);
+                for (int i = 0; i < lanes && share > 0; ++i) {
+                    if (entries[static_cast<std::size_t>(i)].route != RouteKind::Dfpn) {
+                        const int extra = std::min(share, total_threads - assigned);
+                        lane_threads[static_cast<std::size_t>(i)] += extra;
+                        assigned += extra;
+                    }
+                }
+            }
         }
 
         // Spend a total budget where it changes the answer.

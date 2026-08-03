@@ -100,6 +100,35 @@ The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
 none** -- twenty-five points of solve rate from the one idea this engine has that
 is not a conventional search technique.
 
+### The stalemate and selfmate goals against Chest 3.19
+
+60 composed problems a goal, 20 s cap, **run sequentially** -- one position at a
+time, because a three-at-once harness puts 30 threads of a nine-lane portfolio
+against 3 of a single-threaded engine on 16 cores and measures itself rather
+than the engines. **Chest is given 2048 MB** against mateprover's shipped default
+of 256 MB a lane, so Chest's one search has eight times the table of any single
+mateprover lane:
+
+| | Chest 3.19 | mateprover | shared positions | only Chest |
+|---|---|---|---|---|
+| stalemate, depth 10-16 | 31/60 | **54/60** | 2.23x total, 1.15x median | **1** |
+| selfmate, s#5-s#10 | 35/60 | **49/60** | 4.71x total, 6.42x median | **0** |
+
+**The same comparison at an equal 256 MB TOTAL** instead, which is the figure a
+sceptic should be handed: stalemate 47/60 against 30/60 and selfmate 49/60
+against 35/60, with three positions going to Chest rather than one. Nine lanes
+sharing a total cannot each hold the whole of it, so an equal total does not ask
+the two engines the same question -- but it is the stricter number and it is
+reported rather than buried. Section 57 has the arithmetic.
+
+**Where mateprover is still behind, stated exactly.** One stalemate position is
+solved only by Chest (`8/p7/8/1k1K4/8/8/6P1/8`, depth 13). And "faster on the
+median" is not "faster everywhere": mateprover is slower on 14 of 30 shared
+stalemate positions and 5 of 35 shared selfmate positions. The stalemate margins
+are small in absolute terms -- the worst is 1.45 s against 3.94 s -- but the
+selfmate list contains one genuine outlier at 0.40 s against 13.90 s, the
+position that needs the route lane's split to be reached at all.
+
 **Mate-in-8 is budget-limited.** Measured on a different 200-position evaluation
 set, and **with the previous default route**, since it predates DFPN's promotion
 (29) -- the shape is the claim here, not the absolute numbers, which are now
@@ -221,7 +250,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 331 automated checks, including perft, negative controls, restriction
+- 333 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than

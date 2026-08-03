@@ -145,6 +145,15 @@ struct SearchConfig {
     // the entries solve different restricted problems, so unlike root-split
     // workers they do not duplicate each other's search.
     bool portfolio_parallel = true;
+    // Cap on concurrent portfolio lanes. 0 means "every lane". Lanes contend
+    // for cores and memory bandwidth, so more lanes is not monotonically
+    // better: a lane that solves a position in 7.4 s alone can take 27 s
+    // against eight others. See section 57.
+    int portfolio_lanes = 0;
+    // Threads given to each route-diversity lane. 0 takes the built-in default.
+    // The split scales that lane but steals cores from the lanes that resolve
+    // most positions quickly, so this is a bounded share. See section 57.
+    int route_lane_threads = 0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -188,6 +197,15 @@ struct Search : SearchConfig {
     // records that its result means "gave up", not "disproved" -- an aborted
     // result must never be stored in a proof table or read as a refutation.
     const std::atomic<bool>* cancel = nullptr;
+    // A second, outer cancellation flag.
+    //
+    // A root-split worker's own `cancel` is its slot's flag, set by a sibling
+    // that proved a better root move. That says nothing about whether the
+    // SEARCH THIS SPLIT BELONGS TO has been abandoned -- a portfolio lane that
+    // lost the race, say. Without this the workers ran on to their deadline,
+    // and since their deadline is the run's time limit, a position whose answer
+    // was already in hand still took the full limit to report. See section 57.
+    const std::atomic<bool>* external_cancel = nullptr;
     bool aborted = false;
 
     // Absolute node ceiling for this search. Zero means unbounded. Used by the
@@ -262,6 +280,10 @@ inline bool search_cancelled(Search& s) {
         }
     }
     if (s.cancel != nullptr && s.cancel->load(std::memory_order_relaxed)) {
+        s.aborted = true;
+        return true;
+    }
+    if (s.external_cancel != nullptr && s.external_cancel->load(std::memory_order_relaxed)) {
         s.aborted = true;
         return true;
     }

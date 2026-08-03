@@ -107,6 +107,13 @@ void print_usage() {
 "                                splitting saturates on\n"
 "  --no-portfolio                single unrestricted search. The portfolio\n"
 "                                is the default whenever --time-limit is set\n"
+"  --portfolio-lanes N           cap concurrent lanes (0 = all, the default).\n"
+"                                Lanes contend for cores, so fewer can be\n"
+"                                faster on a small machine\n"
+"  --route-lane-threads N        threads for each route-diversity lane on the\n"
+"                                non-directmate goals (default 1). The split\n"
+"                                reaches positions a single thread cannot, but\n"
+"                                takes cores from the lanes doing the rest\n"
 "\n"
 "Resources:\n"
 "  -M N                          total table budget in MB across every table\n"
@@ -434,6 +441,18 @@ int main(int argc, char** argv) {
             config.portfolio_parallel = true;
         } else if (arg == "--no-portfolio") {
             config.portfolio = false;
+        } else if (arg == "--portfolio-lanes") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--portfolio-lanes' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--portfolio-lanes' expects a number");
+            config.portfolio_lanes = static_cast<int>(value); // 0 means every lane
+        } else if (arg == "--route-lane-threads") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--route-lane-threads' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--route-lane-threads' expects a number");
+            config.route_lane_threads = static_cast<int>(value); // 0 means the default
         } else if (arg == "--direct-depth") {
             config.direct_depth = true;
         } else if (arg == "--iterative-depth") {

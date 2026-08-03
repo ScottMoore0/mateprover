@@ -90,6 +90,14 @@ bool run_selfmate_root_split(Search& s, std::vector<std::unique_ptr<Search>>& wo
             if (i >= n || i > best_index.load(std::memory_order_acquire)) {
                 break;
             }
+            // Stop taking new root moves once the enclosing search is
+            // abandoned. Without this the split ran to its deadline, which is
+            // the run's time limit, so a portfolio lane that had already lost
+            // the race still held the whole process until the limit expired.
+            if (ws.external_cancel != nullptr &&
+                ws.external_cancel->load(std::memory_order_relaxed)) {
+                break;
+            }
             slot.current_root.store(i, std::memory_order_release);
             slot.cancel.store(false, std::memory_order_release);
             ws.aborted = false;
@@ -285,6 +293,14 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
         for (;;) {
             int i = next_index.fetch_add(1, std::memory_order_relaxed);
             if (i >= n || i > best_index.load(std::memory_order_acquire)) {
+                break;
+            }
+            // Stop taking new root moves once the enclosing search is
+            // abandoned. Without this the split ran to its deadline, which is
+            // the run's time limit, so a portfolio lane that had already lost
+            // the race still held the whole process until the limit expired.
+            if (ws.external_cancel != nullptr &&
+                ws.external_cancel->load(std::memory_order_relaxed)) {
                 break;
             }
             slot.current_root.store(i, std::memory_order_release);

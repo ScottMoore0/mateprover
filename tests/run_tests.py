@@ -1010,8 +1010,30 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
         elapsed = time.time() - t0
         res.check("a 16-thread selfmate does not collapse to the time limit",
                   bool(SFM_RE.search(out)) and elapsed < 10.0, f"{elapsed:.1f}s")
+
+        # An abandoned lane must not hold the process to the deadline.
+        #
+        # A root-split worker polls its own slot's cancel, set by a sibling that
+        # beat its root move. Nothing pointed at the flag of the SEARCH the
+        # split serves, so a cancelled portfolio lane ran its workers to their
+        # deadline -- the run's time limit -- with the answer already in hand.
+        # The signature is a solve time equal to the cap, so that is what this
+        # measures. A generous limit makes the check unambiguous: the position
+        # resolves in well under a second, so anything near 30 s is the defect
+        # and not a slow machine.
+        for goal, flag, rx in (("selfmate", "--selfmate", SFM_RE), ("stalemate", "--stalemate", SM_RE)):
+            probe = ("8/8/8/4B3/p7/8/1R1R4/k1KB4 w - - sfm 7\n" if goal == "selfmate"
+                     else "7k/8/3Q3K/8/8/8/8/8 w - - sm 1\n")
+            t0 = time.time()
+            out = run(engine, [flag, "--direct-depth", "--route-lane-threads", "4",
+                               "--time-limit", "30", "-"], probe)
+            elapsed = time.time() - t0
+            res.check(f"a cancelled {goal} lane does not hold the deadline",
+                      bool(rx.search(out)) and elapsed < 15.0, f"{elapsed:.1f}s")
     else:
         res.skip("a 16-thread selfmate does not collapse to the time limit", "slow")
+        res.skip("a cancelled selfmate lane does not hold the deadline", "slow")
+        res.skip("a cancelled stalemate lane does not hold the deadline", "slow")
 
 
 def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:

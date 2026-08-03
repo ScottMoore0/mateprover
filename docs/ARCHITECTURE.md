@@ -133,6 +133,7 @@ did. If you are reading it for the first time:
 - [54. A False Proof In The Stalemate Shortcut, And A Route Lane](#54-a-false-proof-in-the-stalemate-shortcut-and-a-route-lane)
 - [55. The Starved Lane: A Flag That Cost A Factor Of Nine, Silently](#55-the-starved-lane-a-flag-that-cost-a-factor-of-nine-silently)
 - [56. The Sixteenth Thread: A 30x Loss Hidden Below A Threshold](#56-the-sixteenth-thread-a-30x-loss-hidden-below-a-threshold)
+- [57. The Worker That Would Not Stop](#57-the-worker-that-would-not-stop)
 
 ## Impact-Ordered Architecture
 
@@ -3974,3 +3975,68 @@ The lesson is the same one as 55 wearing different clothes. Both defects were
 invisible: correct answers, well-formed output, no warning. Both were found by
 distrusting a comparison rather than by reading code. And both lived in exactly
 the configuration a user gets by typing nothing at all.
+
+### 57. The Worker That Would Not Stop
+
+56 blamed the root split and withheld threads from it. That was treating a
+symptom, and the evidence that it was a symptom had been on the page the whole
+time: the slow runs did not take a long time, they took *exactly the time
+limit*. Medians of 20.10 s and 20.08 s under a 20 s cap are not search times.
+They are the sound of a process that already has its answer and cannot leave.
+
+**The defect.** A root-split worker polls `cancel`, which is its own slot's
+flag, set by a sibling that proved a better root move. Nothing pointed at the
+flag belonging to the SEARCH the split serves. So when a portfolio lane lost the
+race and was cancelled, its workers noticed nothing and kept taking root moves
+until their own deadline -- and their deadline is the run's time limit. One
+abandoned lane held the whole process to the cap, with the winning answer
+already in hand.
+
+The fix is a second flag, `external_cancel`, set to the lane's own cancel when a
+worker is built, checked both in `search_cancelled` and at the top of the
+worker's root loop -- the first so an in-flight subtree unwinds, the second so no
+new root move is started.
+
+Measured on the same 25 selfmate positions, one spare thread on the route lane:
+
+| | solved | total | median |
+|---|---|---|---|
+| before | 22/25 | 353.6 s | 20.10 s |
+| after | 22/25 | **49.8 s** | **0.38 s** |
+
+A factor of seven in total time and fifty in the median, for identical coverage.
+This also explains 56's numbers without needing the root split to be at fault:
+the split was never intrinsically slow, it simply could not be stopped, and
+every configuration that used it inherited the time limit as its floor.
+
+**What the threads are actually for.** With cancellation fixed, the split can be
+measured on its merits. It is what reaches positions single-threaded search
+cannot: the last selfmate position Chest solved and this engine did not goes
+26.0 s at one thread to 7.2 s at sixteen, while the dfpn route never solves it at
+any thread count. But the threads are not free -- they come from the lanes
+resolving everything else -- and the goals disagree about the trade:
+
+| spare threads on the route lane | selfmate | stalemate |
+|---|---|---|
+| 1 | 49/60 | **47/60** |
+| 2 | 49/60 | 44/60 |
+| 4 | 49/60 | 43/60 |
+
+Selfmate is flat; stalemate falls monotonically. So the route lane gets exactly
+one spare thread: enough to reach what it alone can reach, not enough to starve
+the lanes doing the ordinary work. `--route-lane-threads` exposes the number,
+and `--portfolio-lanes` caps how many lanes run at once, for machines smaller
+than the one this was tuned on.
+
+**And a boundary worth stating plainly.** Two stalemate positions resisted every
+thread count, and threads were never their problem -- they need 256 MB. Under
+`-M 256` an unrestricted lane gets 64 MB, and at 64 MB one of them solves and the
+other does not; at 256 MB both solve in 9.8 s and 2.7 s.
+
+That is not a defect, it is the arithmetic of a portfolio. Nine lanes sharing a
+total cannot each have the whole of it, so a nine-lane engine and a one-search
+engine given the SAME total are not being asked the same question. Both framings
+are reported rather than the flattering one being chosen: at its shipped default
+of 256 MB a lane, MateProver solves every position Chest solves on both goals;
+at an equal 256 MB total, three positions go the other way. The default is what
+a user runs, and the equal-total figure is what a sceptic should be handed.
