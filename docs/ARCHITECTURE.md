@@ -3595,6 +3595,25 @@ Every alternative is equal or worse. Two results are worth keeping:
   correctness rather than measurement; that was right, and it remains right for
   a stronger reason than caution.
 
+**Generated positions cannot substitute for composed ones -- depth is not
+difficulty.** The plan was a hybrid corpus: composed problems for an honest
+reach figure, generated blocked-pawn positions for volume and discrimination.
+120 were generated, and they came out at depths 6-9 rather than the 6-12 band
+targeted. That alone was survivable; the cost measurement was not:
+
+| corpus | solved | median nodes |
+|---|---|---|
+| generated, depths 6-9 | 120/120 | **740** |
+| composed, depths 10-16 | 48/60 | **1,928,706** |
+
+Two and a half thousand times apart. Random construction produces stalemates
+that are *long* but narrow -- the search walks straight down them. A composed
+problem of the same nominal depth is hard because a composer deliberately made
+the tree wide and the key move unobvious. Nominal depth measures neither.
+
+So there is no hybrid. The only corpus that discriminates for this goal is the
+60 composed problems at depth 10-16, and there is no way to enlarge it.
+
 **Conclusion.** Stalemate is not untuned. It is tuned, in the sense that every
 knob this engine exposes has been measured against a real corpus and the shipped
 configuration is the best of them. What it lacks is not tuning but headroom:
