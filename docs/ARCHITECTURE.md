@@ -128,6 +128,7 @@ did. If you are reading it for the first time:
 - [49. Stalemate Tuning: The Levers Are Already Pulled](#49-stalemate-tuning-the-levers-are-already-pulled)
 - [50. Selfmate Goal](#50-selfmate-goal)
 - [51. Selfmate Preconditioner: +124 Positions Of 200](#51-selfmate-preconditioner-124-positions-of-200)
+- [52. The Restriction Portfolio Transfers To Selfmate](#52-the-restriction-portfolio-transfers-to-selfmate)
 
 ## Impact-Ordered Architecture
 
@@ -3708,3 +3709,40 @@ about EVERY defence, so the depth is the worst line and not the first one. The
 search was correct and the number it printed was not, which is precisely the
 class of error an independent checker exists to find. The PV is now the longest
 branch, and 26 of 26 sampled certificates verify.
+
+
+### 52. The Restriction Portfolio Transfers To Selfmate
+
+For stalemate the portfolio was worth nothing: every lane's solutions were a
+subset of the unrestricted search's, and `-C 1` scored 0 of 60 because a checked
+king is never stalemated (49). Selfmate is the opposite, and for the reason that
+prediction rested on -- selfmates are reached by FORCING play, so restrictions
+that prune toward force prune toward the goal.
+
+200 sampled problems from s#5-s#10, 3M-node budget:
+
+| lane | solved | adds over unrestricted |
+|---|---|---|
+| unrestricted | 131/200 | -- |
+| `-K 3` | **136/200** | +6 |
+| `-C 1` | 27/200 | **+7** |
+| `-X 3` | 97/200 | +6 |
+| `-R 1` | 59/200 | +2 |
+| **union** | **148/200** | **+17** |
+
+`-K 3` beats the unrestricted search outright, and `-C 1` earns its place by
+solving seven problems nothing else solves while solving only 27 overall --
+which is exactly what a portfolio lane is for and why coverage, not individual
+score, is the right selection criterion. Greedy set cover orders them
+`C1(+7) X3(+6) K3(+3) R1(+1)`.
+
++17 of 200 is the same shape of result as the directmate portfolio's +15 of 60
+(8f), on a goal where the mechanism was in genuine doubt after stalemate.
+
+**Ordering, by contrast, is measured out.** Disabling the check term and forcing
+`--order-all` both leave the count at exactly 131/200. As with stalemate, the
+check term stays for correctness rather than for speed, and there is no ordering
+lever here that this engine exposes.
+
+**Proof hints remain the dominant single factor**: 131/200 with them, 7/200
+without.
