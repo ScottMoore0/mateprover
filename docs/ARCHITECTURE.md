@@ -131,6 +131,8 @@ did. If you are reading it for the first time:
 - [52. The Restriction Portfolio Transfers To Selfmate](#52-the-restriction-portfolio-transfers-to-selfmate)
 - [53. Root Splitting For Selfmate: Correct, Deterministic, And Inert](#53-root-splitting-for-selfmate-correct-deterministic-and-inert)
 - [54. A False Proof In The Stalemate Shortcut, And A Route Lane](#54-a-false-proof-in-the-stalemate-shortcut-and-a-route-lane)
+- [55. The Starved Lane: A Flag That Cost A Factor Of Nine, Silently](#55-the-starved-lane-a-flag-that-cost-a-factor-of-nine-silently)
+- [56. The Sixteenth Thread: A 30x Loss Hidden Below A Threshold](#56-the-sixteenth-thread-a-30x-loss-hidden-below-a-threshold)
 
 ## Impact-Ordered Architecture
 
@@ -3839,3 +3841,136 @@ The speed regression on stalemate is gone. Nine stalemate positions and one
 selfmate position are still solved only by Chest, so neither goal dominates it
 outright; the portfolio lane helps in isolation but is memory-starved sharing a
 budget nine ways, which is the next thing to test rather than a conclusion.
+
+### 55. The Starved Lane: A Flag That Cost A Factor Of Nine, Silently
+
+The memory-starvation hypothesis at the end of 54 was right, and the fault was
+in the measurement as much as in the engine.
+
+Those head-to-head runs passed `-M 256` to both engines to hold memory equal.
+For Chest that is one table for one search. For this engine an explicit `-M` is
+a TOTAL (42, 44), divided across the nine lanes -- 28 MB each. The flag that
+looked like it granted a quarter gigabyte in fact took away a factor of nine.
+
+The nine positions, at a fixed 20 s cap:
+
+| per-lane budget | recovered (of 9) |
+|---|---|
+| `-M 256` as a total, 28 MB a lane | **0** |
+| default, 256 MB a lane | **8** |
+
+Nothing about the search changed between those two rows. Eight of the nine
+"losses to Chest" were an artifact of how the benchmark invoked its own engine.
+
+**The cliff is sharp, and 64 MB is the whole of it.** Sweeping per-lane memory
+over the nine positions and over 40 easy ones, two workers so the harness's own
+concurrency does not multiply table memory:
+
+| per lane | recovered | easy solved | easy median | easy total |
+|---|---|---|---|---|
+| 16 MB | 0 | 36/40 | 2.80 s | 319.2 s |
+| 32 MB | 0 | 36/40 | 2.73 s | 299.7 s |
+| **64 MB** | **8** | 36/40 | 1.40 s | 296.2 s |
+| 128 MB | 8 | 36/40 | 2.07 s | 291.8 s |
+| 256 MB | 8 | 37/40 | 1.35 s | 301.4 s |
+
+Recovery is a step function: nothing below 64 MB, everything at and above it.
+Throughput on easy positions is flat across the whole range, so the floor is
+free -- 64 MB is not a compromise between capability and speed, it is the point
+where capability appears at no cost.
+
+**A rejected fix, recorded because it measured well on the wrong axis.** The
+first attempt funded the floor by DROPPING lanes: `kMinLaneMb` is 64, so
+`-M 256` bought four lanes of 64 MB instead of nine of 28. It recovered the
+eight positions and honoured the cap exactly. It was still wrong. Paying for
+them cost five restriction lanes, and restrictions are what make selfmate fast
+(52) -- the selfmate median went to 0.20x of Chest, five times SLOWER, buying
+one position's coverage with a broad speed loss. Coverage and speed are not the
+same axis and a fix may not be evaluated on only one of them.
+
+**The shipped fix: charge the floor only where it buys something.** A lane is
+UNRESTRICTED when it removes no attacker options -- lane 0 and the route-
+diversity lanes. Those search the whole space, so their tables must hold a whole
+search, and they are the lanes that fall off the 64 MB cliff. A restricted lane
+searches a deliberately smaller space and does not need as much table to hold
+it. So the unrestricted lanes take `kMinLaneMb` and the restricted lanes divide
+what is left: at `-M 256`, two lanes of 64 MB and seven of 18 MB. Every lane
+still runs, the cap is honoured exactly, and recovery is 8 of 9 at `-M 256`,
+`-M 512` and the default alike.
+
+The asymmetry is the whole point. Spreading a budget evenly over lanes with
+unequal appetites is what created the cliff; spending it where it changes an
+answer is what removes it.
+
+**Why this one matters beyond its own numbers.** Every output stayed
+well-formed throughout. No error, no warning, no wrong answer -- only a quieter
+engine, losing eight positions it could solve, in response to a flag a careful
+user would type precisely because they were being careful. A false proof (54)
+announces itself to the verifier. This did not announce itself at all, and it
+was found only by disbelieving a benchmark that flattered the comparison's
+other side. The regression guard in `run_tests.py` is therefore a solving check
+at `-M 256`, not a configuration check: nothing about the reported config was
+ever wrong.
+
+### 56. The Sixteenth Thread: A 30x Loss Hidden Below A Threshold
+
+Fixing the memory (55) left selfmate still five to six times SLOWER than Chest
+on the median shared position, which the memory work was supposed to explain
+and did not. The restriction-lane hypothesis was wrong -- restoring every lane
+changed nothing -- so the cause was elsewhere.
+
+`--no-portfolio` solved the same set in **5.9 s against 254 s**: a factor of 43,
+on identical positions, from a flag that only removes lanes. The portfolio's
+median was 20.1 s, which is not a search time at all. It is the time limit.
+
+The cause is thread assignment. Lane threads follow the entry weights, so at the
+default 16 threads lanes 0-2 receive four, three and three. A selfmate lane with
+more than one thread ROOT-SPLITS, and the selfmate root split -- recorded as
+merely inert at 53 -- is ruinous here:
+
+| threads | `--no-portfolio` | portfolio |
+|---|---|---|
+| 1 | 0.57 s | 0.68 s |
+| 2 | 0.56 s | 0.67 s |
+| 4 | 0.57 s | 0.71 s |
+| 8 | 0.58 s | 0.69 s |
+| **16** | **0.57 s** | **19.37 s** |
+
+The cliff is at ten threads, and it is an artifact of the assignment arithmetic:
+below ten, every lane already gets exactly one thread and the extra-thread loop
+never runs. Every thread sweep this engine had been through stayed under that
+threshold, so a 30x defect sat in the DEFAULT configuration, on a machine whose
+default thread count is 16, without appearing in a single measurement.
+
+Extra per-lane threads were then measured against what they cost, over 20
+positions a goal:
+
+| | solved | total | median |
+|---|---|---|---|
+| selfmate, default 16 threads | 16/20 | 249.5 s | 20.22 s |
+| selfmate, one thread a lane | 16/20 | **16.1 s** | **0.29 s** |
+| stalemate, default 16 threads | 20/20 | 39.6 s | 0.50 s |
+| stalemate, one thread a lane | 20/20 | **34.5 s** | **0.43 s** |
+
+Identical coverage at a fifteenth of the time. The extra threads are therefore
+not handed out for the non-directmate goals at all; directmate keeps the tuned
+weights, which were measured on a path that does not root-split this way.
+Restoring them is gated on the selfmate root split earning its keep, which it
+has never yet been measured to do.
+
+**Head to head after 55 and 56**, 60 problems each, 20 s, 256 MB total to both:
+
+| | Chest 3.19 | MateProver | on shared positions |
+|---|---|---|---|
+| stalemate, depth 10-16 | 30/60 | **52/60** | 1.51x total, **1.09x median** |
+| selfmate, s#5-s#10 | 34/60 | **48/60** | 8.86x total, **6.35x median** |
+
+Stalemate solves everything Chest solves -- **only-Chest is 0** -- and its median
+has crossed from 0.91x (slower) to 1.09x. Selfmate is at its best measured
+margin, 6.35x median against 3.99x before. One selfmate position remains solved
+only by Chest.
+
+The lesson is the same one as 55 wearing different clothes. Both defects were
+invisible: correct answers, well-formed output, no warning. Both were found by
+distrusting a comparison rather than by reading code. And both lived in exactly
+the configuration a user gets by typing nothing at all.

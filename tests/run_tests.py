@@ -32,6 +32,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
+# Set by --quick. Checks that cost tens of seconds consult it and skip rather
+# than shorten their time limit, so a quick run never reports a weakened check
+# as a passing one.
+QUICK = False
+
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
 SFM_RE = re.compile(r"\bsfm\s+(\d+)\b")
@@ -967,6 +972,47 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
         res.check(f"the default budget is per table at {workers} workers",
                   '"memory_mb":256' in d and '"memory_is_total":false' in d)
 
+    # A total budget must buy fewer lanes, never thinner ones.
+    #
+    # This is the regression guard for the worst kind of defect this engine can
+    # have: one that costs solving power while every visible output stays
+    # well-formed. Dividing 256 MB across nine lanes left 28 MB each, and 28 MB
+    # solved NONE of the eight stalemate positions that 64 MB solves -- so
+    # "-M 256", the obvious thing to type when matching another engine's 256 MB,
+    # silently cost a factor of nine in capability and reported nothing wrong.
+    #
+    # The position below is one of those eight. It is slow by construction, so
+    # the check is skipped in --quick runs rather than weakened.
+    if not QUICK:
+        starved = "8/8/R5r1/3k4/8/8/8/K7 w - - sm 16\n"
+        out = run(engine, ["--stalemate", "--direct-depth", "-M", "256",
+                           "--time-limit", "30", "-"], starved)
+        res.check("an explicit total does not starve lanes below the floor",
+                  bool(SM_RE.search(out)), out.strip()[:90])
+    else:
+        res.skip("an explicit total does not starve lanes below the floor", "slow")
+
+    # Extra per-lane threads must not reach the non-directmate goals.
+    #
+    # A lane with more than one thread root-splits, and the selfmate root split
+    # costs a factor of 30 (56). The assignment only hands out extras above nine
+    # threads, so every earlier sweep ran below the threshold and saw nothing --
+    # the defect lived in the DEFAULT configuration of a 16-thread machine. The
+    # check therefore forces a high thread count explicitly rather than trusting
+    # whatever this machine happens to have.
+    if not QUICK:
+        # Behavioural, not configurational: this position takes 0.6 s with one
+        # thread a lane and hits the time limit without it.
+        quick_sfm = "8/8/8/4B3/p7/8/1R1R4/k1KB4 w - - sfm 7\n"
+        t0 = time.time()
+        out = run(engine, ["--selfmate", "--direct-depth", "--threads", "16",
+                           "--time-limit", "20", "-"], quick_sfm)
+        elapsed = time.time() - t0
+        res.check("a 16-thread selfmate does not collapse to the time limit",
+                  bool(SFM_RE.search(out)) and elapsed < 10.0, f"{elapsed:.1f}s")
+    else:
+        res.skip("a 16-thread selfmate does not collapse to the time limit", "slow")
+
 
 def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
     """A UTF-8 BOM must not swallow the first position.
@@ -1743,6 +1789,8 @@ def main() -> int:
         return 2
 
     if args.quick:
+        global QUICK
+        QUICK = True
         for i, (name, fen, counts) in enumerate(PERFT_CASES):
             PERFT_CASES[i] = (name, fen, counts[:3])
 

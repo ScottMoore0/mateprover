@@ -59,6 +59,29 @@ const std::vector<PortfolioEntry>& restriction_portfolio() {
     return entries;
 }
 
+// The smallest table worth giving a lane, in MB.
+//
+// Measured on the eight stalemate positions that Chest solved and this engine
+// did not (section 55): a lane recovers them at 64 MB and above and recovers
+// none at 32 MB, so the cliff sits between the two and the floor is placed at
+// the first size on the working side of it. This bounds how thin an explicit
+// total budget may be spread, not how much memory a lane may have.
+const std::size_t kMinLaneMb = 64;
+
+// Which lanes need the floor, and which can run thin.
+//
+// A lane is UNRESTRICTED when it removes no attacker options: lane 0, and the
+// route-diversity lanes. Those search the whole space, so their tables hold a
+// whole search and they are the lanes that fall off the 64 MB cliff.
+//
+// A restricted lane searches a deliberately smaller space and does not need as
+// much table to hold it. That asymmetry is what makes the floor affordable: it
+// is charged only where it buys something.
+bool lane_is_unrestricted(const PortfolioEntry& e) {
+    return e.checks_mask == 0 && e.king_squares == 0 &&
+           e.max_defender_moves == 0 && e.threat_depth == 0;
+}
+
 // Solve one position, writing the result line to `out`.
 //
 // The stream is a parameter so that several positions can be solved at once,
@@ -177,14 +200,69 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // them equally starved the unrestricted lane, which is the most general
         // and the one whose answer is preferred: it dropped from 15 solved to
         // 13 while the restricted lanes added 4.
+        //
+        // Directmate only. A lane with more than one thread root-splits, and on
+        // the non-directmate goals that split is not merely inert (53) but
+        // ruinous: at the default 16 threads it hands lanes 0-2 four, three and
+        // three threads, and selfmate's median position went from 0.29 s to
+        // 20.22 s -- the time limit -- for exactly the same 16 of 20 solved.
+        // Below 10 threads every lane already gets one and the defect is
+        // invisible, which is why it survived the earlier thread sweeps.
+        //
+        // So the extra threads are simply not handed out for these goals. This
+        // costs nothing measurable: one thread a lane solved the same positions
+        // in 16.1 s against 249.5 s, and stalemate improved too (34.5 s against
+        // 39.6 s). Restoring them is gated on the selfmate root split earning
+        // its keep, which it has never yet been measured to do.
         std::vector<int> lane_threads(static_cast<std::size_t>(lanes), 1);
         int assigned = lanes;
-        for (int i = 0; i < lanes && assigned < total_threads; ++i) {
+        for (int i = 0; i < lanes && assigned < total_threads && config.goal == Goal::Mate; ++i) {
             const int want = static_cast<int>(
                 static_cast<double>(total_threads) * entries[static_cast<std::size_t>(i)].weight);
             const int extra = std::min(std::max(0, want - 1), total_threads - assigned);
             lane_threads[static_cast<std::size_t>(i)] += extra;
             assigned += extra;
+        }
+
+        // Spend a total budget where it changes the answer.
+        //
+        // An explicit -M is a total (42, 44), so it is divided among the lanes.
+        // Divided EQUALLY, "-M 256" -- the obvious thing to type when matching
+        // another engine's 256 MB -- left 28 MB a lane, and 28 MB solved none of
+        // the eight stalemate positions that 64 MB solves. The flag that looked
+        // like it granted a quarter gigabyte took away a factor of nine in
+        // solving power, silently, with every output still well-formed.
+        //
+        // Funding the floor by dropping lanes instead was measured and rejected:
+        // it recovered the eight, but paying for them with five restriction
+        // lanes made selfmate 5x SLOWER than Chest on the median position, since
+        // restrictions are exactly what make selfmate fast (52).
+        //
+        // So the floor is charged only to the lanes that fall off the cliff --
+        // the unrestricted ones -- and the restricted lanes divide what is left.
+        // Every lane still runs, the cap is still honoured exactly, and the
+        // memory goes where it changes an answer rather than being spread evenly
+        // over lanes that do not need it. See section 55.
+        std::vector<std::size_t> lane_memory(static_cast<std::size_t>(lanes),
+                                             memory_share(static_cast<std::size_t>(lanes)));
+        if (config.memory_mb != 0 && config.memory_is_total) {
+            std::size_t unrestricted = 0;
+            for (const auto& e : entries) {
+                if (lane_is_unrestricted(e)) ++unrestricted;
+            }
+            const std::size_t per_worker = std::max<std::size_t>(1, config.memory_mb / memory_workers);
+            const std::size_t floored = unrestricted * kMinLaneMb;
+            // Only worth doing if the floor both binds and leaves something over
+            // for the restricted lanes; otherwise fall back to an equal split.
+            if (unrestricted > 0 && unrestricted < static_cast<std::size_t>(lanes) &&
+                floored < per_worker && kMinLaneMb > per_worker / static_cast<std::size_t>(lanes)) {
+                const std::size_t rest = static_cast<std::size_t>(lanes) - unrestricted;
+                const std::size_t thin = std::max<std::size_t>(1, (per_worker - floored) / rest);
+                for (int i = 0; i < lanes; ++i) {
+                    lane_memory[static_cast<std::size_t>(i)] =
+                        lane_is_unrestricted(entries[static_cast<std::size_t>(i)]) ? kMinLaneMb : thin;
+                }
+            }
         }
 
         std::vector<std::unique_ptr<Search>> searches;
@@ -215,7 +293,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
             t.route = entries[static_cast<std::size_t>(i)].route;
             t.cancel = cancels.back().get();
-            t.memory_mb = memory_share(static_cast<std::size_t>(lanes));
+            t.memory_mb = lane_memory[static_cast<std::size_t>(i)];
             t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
             if (config.time_limit > 0.0) {
                 t.has_deadline = true;
