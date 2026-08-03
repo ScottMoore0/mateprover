@@ -387,8 +387,26 @@ Proof prove_help(Search& s, const Board& b, int plies) {
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
 
+    // On the LAST ply, only a move that can reach the terminal is worth making.
+    //
+    // A helpmate ends in checkmate, and only a checking move can deliver one; a
+    // helpstalemate ends in stalemate, which no checking move can. The ordering
+    // pass already computed that bit, so the whole final ply reduces to a scan
+    // of the candidates instead of make-move-and-test on every legal move --
+    // and the final ply is the widest one, since it is the deepest.
+    //
+    // Gated exactly as 54 requires. The score only means "gives check" when the
+    // moves were actually SCORED and the check term was actually applied; an
+    // unscored move scores 0, which reads as "not a check" and would accept a
+    // checkmate as a stalemate. `moves_scored && s.score_checks` is that gate,
+    // and `!s.score_mates` keeps the +1000000 mate bonus from swamping the sign
+    // the test depends on.
+    const bool last_ply_prune = plies == 1 && scored && s.score_checks && !s.score_mates;
     for (const Move& m : moves) {
         ++s.stats.attacker_candidates;
+        if (last_ply_prune && !move_can_reach_goal(m.score, s.goal)) {
+            continue;
+        }
         const Board nb = make_move(b, m);
         Proof child = prove_help(s, nb, plies - 1);
         if (s.aborted) {
