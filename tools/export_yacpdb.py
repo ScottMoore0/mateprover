@@ -156,7 +156,22 @@ def main() -> int:
                 if fen is None:
                     skipped += 1
                     continue
-                lines.append(f"{fen} w - - {args.stip}{depth}; id \"yacpdb-{e.get('id')}\";")
+                # Side to move follows the STIPULATION, not a default.
+                #
+                # In a directmate, stalemate, selfmate or selfstalemate the
+                # attacker moves first and the attacker is White, so `w` is
+                # right. In a HELPMATE or helpstalemate BLACK moves first, by
+                # the convention every one of these diagrams is composed and
+                # published under -- h#2 is Black, White, Black, White-mates.
+                #
+                # Hardcoding `w` for all of them silently posed the mirror
+                # problem: the engine was asked to help-mate WHITE, found
+                # unrelated cooperative sequences, and reported a solve rate of
+                # 80.4% against a stipulation none of those solutions answered.
+                # Every certificate verified, because each was a true statement
+                # about the wrong question.
+                stm = "b" if args.stip.startswith("h") else "w"
+                lines.append(f"{fen} {stm} - - {args.stip}{depth}; id \"yacpdb-{e.get('id')}\";")
                 kept += 1
             time.sleep(args.delay)
         stats[depth] = (kept, skipped)

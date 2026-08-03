@@ -40,6 +40,11 @@ QUICK = False
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
 SFM_RE = re.compile(r"\bsfm\s+(\d+)\b")
+# The \b is what keeps these disjoint: there is no word boundary inside "ssm"
+# or "hsm", so \bsm cannot match within either of them.
+SSM_RE = re.compile(r"\bssm\s+(\d+)\b")
+HM_RE = re.compile(r"\bhm\s+(\d+)\b")
+HSM_RE = re.compile(r"\bhsm\s+(\d+)\b")
 BM_RE = re.compile(r"\bbm\s+([^;]+);")
 PV_RE = re.compile(r"\bpv\s+([^;]+);")
 NODES_RE = re.compile(r"\bnodes\s+(\d+)\b")
@@ -928,6 +933,84 @@ def test_stalemate_goal(engine: Path, res: Results) -> None:
                   (proc.stdout + proc.stderr).decode().strip()[:150])
     else:
         res.skip("stalemate certificates verify independently", "python-chess absent")
+
+
+def test_new_goals(engine: Path, res: Results) -> None:
+    """Selfstalemate and the two cooperative goals.
+
+    Every case here was brute forced with python-chess before being written
+    down, so the expected answers do not come from this engine agreeing with
+    itself. The NEGATIVE cases carry the weight: an engine that answers "yes"
+    to everything passes a positives-only suite, and the defect these goals are
+    most exposed to -- a terminal predicate with its sense inverted -- produces
+    exactly that.
+    """
+    print("\n[goals] selfstalemate, helpmate and helpstalemate")
+
+    # h#1, with the solution each was brute forced to have. These are taken
+    # from the exhaustive python-chess sweep rather than composed by hand: two
+    # hand-written candidates went in first and BOTH were wrong, asserted as
+    # "verified by exhaustive search" when they had only been eyeballed.
+    #   8/8/8/q7/2K5/k7/8/7R  ->  a3a4 h1a1
+    #   3K4/r7/4k3/8/8/5pR1/8/8  ->  d8e8 a7a8
+    HM1 = ["8/8/8/q7/2K5/k7/8/7R b - -",
+           "3K4/r7/4k3/8/8/5pR1/8/8 w - -"]
+    for fen in HM1:
+        out = run(engine, ["--helpmate", "--direct-depth", "--time-limit", "20", "-"],
+                  f"{fen} hm 1\n")
+        res.check(f"helpmate in 1 found: {fen[:26]}", bool(HM_RE.search(out)), out.strip()[:90])
+        # Goals never borrow each other's token.
+        res.check(f"helpmate reports hm, not dm/sm: {fen[:20]}",
+                  " dm " not in out and re.search(r"\bsm\s", out) is None)
+
+    # A mate goal and a help goal are different questions about one position:
+    # h#1 asks for cooperation, #1 asks the mated side to resist.
+    out = run(engine, ["--time-limit", "10", "-"], f"{HM1[0]} dm 1\n")
+    res.check("a helpmate position is not automatically a directmate",
+              not DM_RE.search(out), out.strip()[:90])
+
+    # Cooperative goals are disjoint from each other: a helpmate line ends in
+    # CHECKmate, so it must fail a helpstalemate stipulation and vice versa.
+    for fen in HM1:
+        out = run(engine, ["--helpstalemate", "--direct-depth", "--time-limit", "20", "-"],
+                  f"{fen} hsm 1\n")
+        res.check(f"a helpmate is not accepted as a helpstalemate: {fen[:20]}",
+                  not HSM_RE.search(out), out.strip()[:90])
+
+    # h=1, brute forced: g2h1 then d1g4 stalemates.
+    out = run(engine, ["--helpstalemate", "--direct-depth", "--time-limit", "20", "-"],
+              "8/8/8/8/8/8/6k1/K2Q1N2 b - - hsm 1\n")
+    res.check("helpstalemate in 1 found", bool(HSM_RE.search(out)), out.strip()[:90])
+
+    # An empty-handed position has no cooperative solution at any length. This
+    # is the check that a terminal predicate stuck at "true" would fail.
+    for flag, tok, rx in (("--helpmate", "hm", HM_RE), ("--helpstalemate", "hsm", HSM_RE)):
+        out = run(engine, [flag, "--direct-depth", "--time-limit", "20", "-"],
+                  f"8/8/8/3k4/8/3K4/8/8 b - - {tok} 2\n")
+        res.check(f"bare kings have no {tok} in 2", not rx.search(out), out.strip()[:90])
+
+    # Selfstalemate: the defender must STALEMATE the attacker, so a selfmate
+    # -- the defender mating him -- must fail the stipulation.
+    out = run(engine, ["--selfstalemate", "--direct-depth", "--time-limit", "20", "-"],
+              "b7/8/8/6p1/6P1/1RQ3PK/k6P/8 w - - ssm 2\n")
+    res.check("selfstalemate in 2 found (composed, yacpdb-416045)",
+              bool(SSM_RE.search(out)), out.strip()[:90])
+    res.check("selfstalemate reports ssm, never sfm",
+              " sfm " not in out)
+
+    # Certificates for all three must survive the independent checker, which
+    # rejects a leaf claiming the wrong goal.
+    tool = HERE.parent / "tools" / "verify_proof.py"
+    if HAVE_CHESS and tool.exists():
+        raw = "".join(f"{f} hm 1\n" for f in HM1)
+        out = run(engine, ["--helpmate", "--direct-depth", "--emit-proof",
+                           "--time-limit", "20", "-"], raw)
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "--require-proof", "-"],
+                              input=out.encode(), capture_output=True, timeout=180)
+        res.check("cooperative certificates verify independently", proc.returncode == 0,
+                  (proc.stdout + proc.stderr).decode().strip()[:150])
+    else:
+        res.skip("cooperative certificates verify independently", "python-chess absent")
 
 
 def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
@@ -1846,6 +1929,7 @@ def main() -> int:
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)
+    test_new_goals(args.engine, res)
     test_stalemate_goal(args.engine, res)
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
