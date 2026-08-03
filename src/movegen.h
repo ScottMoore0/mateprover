@@ -251,6 +251,19 @@ bool is_checkmate(const Board& b, bool move_reserve = false, std::size_t move_re
     return in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
+// Stalemate: the side to move has no legal move and is NOT in check. The second
+// clause is what makes this disjoint from checkmate rather than a superset of
+// it, and it is why a stalemate goal cannot reuse a mate search's verdicts.
+bool is_stalemate(const Board& b, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    return !in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
+}
+
+bool is_goal(const Board& b, Goal goal, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    return goal == Goal::Stalemate
+        ? is_stalemate(b, move_reserve, move_reserve_capacity, static_pseudo)
+        : is_checkmate(b, move_reserve, move_reserve_capacity, static_pseudo);
+}
+
 // Occupancy planes only: enough to answer attack queries, without the mailbox,
 // packed TT words, castling rights or side-to-move that a full Board carries.
 struct Planes {

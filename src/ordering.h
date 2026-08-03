@@ -28,25 +28,52 @@ int static_move_terms(const Board& b, const Move& m) {
     return score;
 }
 
+// The check term's SIGN carries the goal.
+//
+// For mate, a check is progress and scores +50000. For stalemate a check is
+// disqualifying -- a checked side to move is either mated or has a reply, and
+// neither is stalemate -- so it scores -50000 instead. Ordering then prefers
+// quiet, mobility-removing moves without any extra machinery.
+//
+// The magnitude is load-bearing beyond ordering: the shortcut in prove.h reads
+// |score| >= 50000 as "this move gives check" and skips a terminal test it can
+// already decide. Keeping the same magnitude keeps that flag intact under both
+// goals, which is why this is a sign flip rather than a separate field.
+int check_term(bool gives_check, Goal goal) {
+    if (!gives_check) return 0;
+    return goal == Goal::Stalemate ? -50000 : 50000;
+}
+
+// Can a move with this ordering score possibly reach the goal?
+//
+// Mate requires the defender to be in check; stalemate requires that he is not.
+// So the same check bit that admits a move under one goal excludes it under the
+// other, and both terminal scans use this rather than testing the score's sign
+// directly -- getting that test backwards once silently skipped every candidate,
+// and getting it backwards the other way would accept a checkmate as a stalemate.
+bool move_can_reach_goal(int score, Goal goal) {
+    return goal == Goal::Stalemate ? score > -50000 : score >= 50000;
+}
+
 // Ordering terms that require the child board, given that board.
-int child_move_terms(const Board& nb, bool score_mates, bool score_checks,
+int child_move_terms(const Board& nb, bool score_mates, bool score_checks, Goal goal,
                      bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
     int score = 0;
     if (score_mates) {
-        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
-        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+        if (is_goal(nb, goal, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
+        if (score_checks) score += check_term(in_check(nb, nb.stm), goal);
     } else if (score_checks) {
-        if (in_check(nb, nb.stm)) score += 50000;
+        score += check_term(in_check(nb, nb.stm), goal);
     }
     return score;
 }
 
-int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, Goal goal, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
     int score = 0;
     if (score_mates) {
         Board nb = make_move(b, m);
-        if (is_checkmate(nb, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
-        if (score_checks && in_check(nb, nb.stm)) score += 50000;
+        if (is_goal(nb, goal, move_reserve, move_reserve_capacity, static_pseudo)) score += 1000000;
+        if (score_checks) score += check_term(in_check(nb, nb.stm), goal);
     } else if (score_checks) {
         bool gives_check = false;
         if (fast_check_score) {
@@ -55,7 +82,7 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
             Board nb = make_move(b, m);
             gives_check = in_check(nb, nb.stm);
         }
-        if (gives_check) score += 50000;
+        score += check_term(gives_check, goal);
     }
     return score + static_move_terms(b, m);
 }
@@ -86,13 +113,13 @@ void stable_bucket_order(std::vector<Move>& moves) {
     moves.swap(ordered);
 }
 
-void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo, bool inplace_order, bool bucket_order) {
+void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, Goal goal, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo, bool inplace_order, bool bucket_order) {
     if (moves.size() < 2) {
         return;
     }
     if (inplace_order) {
         for (Move& move : moves) {
-            move.score = move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo);
+            move.score = move_score(b, move, score_mates, score_checks, goal, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo);
         }
         if (bucket_order) {
             stable_bucket_order(moves);
@@ -110,7 +137,7 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     std::vector<ScoredMove> scored;
     scored.reserve(moves.size());
     for (const Move& move : moves) {
-        scored.push_back({move, move_score(b, move, score_mates, score_checks, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo)});
+        scored.push_back({move, move_score(b, move, score_mates, score_checks, goal, fast_check_score, move_reserve, move_reserve_capacity, static_pseudo)});
     }
     std::stable_sort(scored.begin(), scored.end(), [](const ScoredMove& a, const ScoredMove& c) {
         return a.score > c.score;
@@ -120,7 +147,11 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     }
 }
 
-TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
+// The goal is part of the key. Tables are per-search and a run has one goal, so
+// nothing can mix them today -- but a stalemate verdict satisfying a mate query
+// would be a false proof, which is the one class of bug this engine exists to
+// make impossible. It costs a bit of an already-spare word.
+TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
     TTKey k;
     k.board = b.packed;
     std::uint64_t ep = static_cast<std::uint64_t>(b.ep + 1);
@@ -129,12 +160,13 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker) {
         | (static_cast<std::uint64_t>(attacker) << 33)
         | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 34)
         | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 35)
-        | (ep << 39);
+        | (ep << 39)
+        | (static_cast<std::uint64_t>(goal == Goal::Stalemate ? 1 : 0) << 47);
     return k;
 }
 
-TTKey move_hint_key(const Board& b, char kind, Color attacker) {
-    return tt_key(b, 0, kind, attacker);
+TTKey move_hint_key(const Board& b, char kind, Color attacker, Goal goal) {
+    return tt_key(b, 0, kind, attacker, goal);
 }
 
 bool same_move(const Move& a, const Move& b) {
@@ -215,7 +247,7 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
                 continue;
             }
             if (want_scores) {
-                m.score = child_move_terms(nb, cfg.score_mates, cfg.score_checks,
+                m.score = child_move_terms(nb, cfg.score_mates, cfg.score_checks, cfg.goal,
                                            cfg.move_reserve, cfg.move_reserve_capacity,
                                            cfg.static_pseudo)
                         + static_move_terms(b, m);
@@ -271,7 +303,7 @@ std::vector<Move> generate_ordered_moves(Search& s, const Board& b, bool& moves_
     if (moves.size() >= std::max<std::size_t>(2, s.order_min_size)) {
         ++s.stats.order_calls;
         s.stats.order_moves += moves.size();
-        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score,
+        order_moves(b, moves, s.score_mates, s.score_checks, s.goal, s.fast_check_score,
                     s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
                     s.inplace_order, s.bucket_order);
         moves_scored = true;

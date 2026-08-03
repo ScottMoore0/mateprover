@@ -173,7 +173,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
     // Depth is not part of the key; it is supplied to probe/store instead.
-    TTKey key = tt_key(b, 0, 'D', s.attacker);
+    TTKey key = tt_key(b, 0, 'D', s.attacker, s.goal);
     Proof exact_cached;
     if (probe_exact_proof_table(s, key, depth, exact_cached)) {
         return exact_cached;
@@ -182,7 +182,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     bool have_hint_key = false;
     auto get_hint_key = [&]() -> const TTKey& {
         if (!have_hint_key) {
-            hint_key = move_hint_key(b, 'D', s.attacker);
+            hint_key = move_hint_key(b, 'D', s.attacker, s.goal);
             have_hint_key = true;
         }
         return hint_key;
@@ -290,7 +290,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return {};
     }
     // Depth is not part of the key; it is supplied to probe/store instead.
-    TTKey key = tt_key(b, 0, 'A', s.attacker);
+    TTKey key = tt_key(b, 0, 'A', s.attacker, s.goal);
     Proof exact_cached;
     if (probe_exact_proof_table(s, key, depth, exact_cached)) {
         return exact_cached;
@@ -299,7 +299,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     bool have_hint_key = false;
     auto get_hint_key = [&]() -> const TTKey& {
         if (!have_hint_key) {
-            hint_key = move_hint_key(b, 'A', s.attacker);
+            hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
             have_hint_key = true;
         }
         return hint_key;
@@ -326,22 +326,28 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         ++s.stats.immediate_mate_tests;
         bool mate = false;
         if (can_use_ordered_check_shortcut) {
+            // The shortcut reads the check bit the ordering pass already
+            // computed. It inverts cleanly for a stalemate goal: mate needs
+            // check, stalemate forbids it, so the same bit decides which side
+            // of the test can be skipped outright.
             ++s.stats.ordered_check_shortcut_uses;
-            if (amove.score >= 50000) {
+            if (move_can_reach_goal(amove.score, s.goal)) {
+                // Goal-compatible: the only remaining question is whether the
+                // defender has a reply.
                 ++s.stats.ordered_check_shortcut_checks;
                 mate = !has_legal_move(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
             } else {
                 ++s.stats.ordered_check_shortcut_skips;
             }
         } else {
-            mate = is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+            mate = is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
         }
         if (mate) {
             ++s.stats.immediate_mates;
             std::vector<Move> pv{amove};
             std::string cert;
             if (s.emit_proof) {
-                cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"mate\":true}";
+                cert = "{\"a\":" + json_quote(move_uci(amove)) + (s.goal == Goal::Stalemate ? ",\"stalemate\":true}" : ",\"mate\":true}");
             }
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;

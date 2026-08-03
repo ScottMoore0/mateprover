@@ -37,6 +37,10 @@ struct SearchConfig {
     // Still a preconditioner, never an output authority: every accepted proof,
     // PV and certificate comes from the exact prover.
     RouteKind route = RouteKind::Dfpn;
+    // Directmate unless asked otherwise. See types.h: the goals are disjoint,
+    // so nothing computed for one is valid for the other, and the goal is part
+    // of the transposition key for exactly that reason.
+    Goal goal = Goal::Mate;
     bool debug = false;
     bool emit_proof = false;
     bool score_mates = false;

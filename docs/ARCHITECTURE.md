@@ -124,6 +124,7 @@ did. If you are reading it for the first time:
 - [45. Two Ceilings: Tables Are Finished, Ordering Is Not](#45-two-ceilings-tables-are-finished-ordering-is-not)
 - [46. The Waste Is Per-Ply, Not At The Root](#46-the-waste-is-per-ply-not-at-the-root)
 - [47. Heuristic Proof-Number Initialisation: Tried And Rejected](#47-heuristic-proof-number-initialisation-tried-and-rejected)
+- [48. Stalemate Goal](#48-stalemate-goal)
 
 ## Impact-Ordered Architecture
 
@@ -3465,3 +3466,60 @@ should now be lower. The cheapest and most obvious domain feature turned out to
 be redundant with what the count already measures, and the same objection --
 that move counts are already a proxy for confinement -- applies to king mobility
 and to most cheap features anyone would reach for next.
+
+
+### 48. Stalemate Goal
+
+The attacker forces a stalemate rather than a mate. Chest solves six job types;
+this is the second of them, and the cheapest, because the AND/OR structure is
+identical -- attacker needs one move, defender must have every reply refuted --
+and only the terminal predicate changes.
+
+**The goals are disjoint, not nested.** A checkmate FAILS a stalemate goal and a
+stalemate FAILS a mate goal, so nothing computed for one is valid for the other.
+The goal is therefore part of the transposition key, in a spare bit of the
+context word. Tables are per-search and a run has one goal, so nothing can mix
+them today -- but a stalemate verdict satisfying a mate query is a false proof,
+which is the one class of bug this engine exists to make impossible.
+
+**The check term carries the goal in its sign.** Ordering scores a checking move
++50000 under a mate goal and -50000 under a stalemate goal, because a check is
+progress toward one and disqualifying for the other. The magnitude is
+load-bearing beyond ordering: both terminal scans read |score| >= 50000 as "this
+move gives check" and skip a test they can already decide.
+
+That coupling produced two bugs during implementation, in opposite directions,
+and both are now covered by tests:
+
+- The DFPN scan tested `score < 50000` to mean "cannot mate". Under a stalemate
+  goal the check term is negative, so **every** move was skipped and the search
+  never saw a stalemate at all. Symptom: positions with a verified stalemate in
+  one returned nothing on the default route while `--route depth-first` solved
+  them.
+- The exact prover's shortcut had the mirror error: it would have treated a
+  checking move as goal-compatible and asked only whether replies existed --
+  **accepting a checkmate as a stalemate**. A false proof, caught before it
+  could produce one.
+
+Both now call one predicate, `move_can_reach_goal(score, goal)`, so the test
+exists in a single place rather than twice with opposite polarity.
+
+Results are reported as `sm N`, never `dm N`, and `verify_proof.py` checks a
+stalemate certificate against `is_stalemate` and a mate certificate against
+`is_checkmate` -- a leaf claiming the wrong one is rejected even if the position
+satisfies the other.
+
+**Optimisation status: implemented and validated, not yet tuned.** 40 generated
+positions at depths 1 to 5 all solve, and all 40 certificates verify
+independently. But the check-term inversion, measured against disabling the
+term entirely, gives **identical node counts -- 27,353 either way**. The corpus
+is too easy to discriminate: 275 random attempts produced 40 positions, so
+forced stalemates are common and shallow in sparse endgames, and ordering
+barely matters at depth 5.
+
+So the inversion is justified by correctness, not by measurement, and this
+section should not pretend otherwise. Tuning stalemate to the standard the
+directmate mode reached needs a corpus with hard, deep problems, and generating
+one is a different problem from generating easy ones. No public stalemate corpus
+was usable: YACPDB holds the problems but exposes no reachable API, and its
+compositions carry their own rights.

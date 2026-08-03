@@ -153,14 +153,14 @@ Proof prove_shallow_mate1(Search& s, const Board& b) {
     if (should_order(s, moves.size())) {
         ++s.stats.order_calls;
         s.stats.order_moves += moves.size();
-        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+        order_moves(b, moves, s.score_mates, s.score_checks, s.goal, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
         moves_scored = true;
     }
     TTKey hint_key;
     bool have_hint_key = false;
     auto get_hint_key = [&]() -> const TTKey& {
         if (!have_hint_key) {
-            hint_key = move_hint_key(b, 'A', s.attacker);
+            hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
             have_hint_key = true;
         }
         return hint_key;
@@ -221,7 +221,7 @@ Proof prove_shallow_mate2(Search& s, const Board& b) {
     if (should_order(s, moves.size())) {
         ++s.stats.order_calls;
         s.stats.order_moves += moves.size();
-        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+        order_moves(b, moves, s.score_mates, s.score_checks, s.goal, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
     }
 
     for (const Move& amove : moves) {
@@ -238,7 +238,7 @@ Proof prove_shallow_mate2(Search& s, const Board& b) {
         if (should_order(s, replies.size())) {
             ++s.stats.order_calls;
             s.stats.order_moves += replies.size();
-            order_moves(defender_board, replies, s.score_mates, s.score_checks, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
+            order_moves(defender_board, replies, s.score_mates, s.score_checks, s.goal, s.fast_check_score, s.move_reserve, s.move_reserve_capacity, s.static_pseudo, s.inplace_order, s.bucket_order);
         }
 
         std::vector<Move> representative;

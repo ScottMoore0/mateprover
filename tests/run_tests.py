@@ -33,6 +33,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
+SM_RE = re.compile(r"\bsm\s+(\d+)\b")
 BM_RE = re.compile(r"\bbm\s+([^;]+);")
 PV_RE = re.compile(r"\bpv\s+([^;]+);")
 NODES_RE = re.compile(r"\bnodes\s+(\d+)\b")
@@ -802,6 +803,62 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
                "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -\n")
     twice = run(engine, ["-5", "--time-limit", "10", "-"], once)
     res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
+
+
+def test_stalemate_goal(engine: Path, res: Results) -> None:
+    """A stalemate goal is a different problem, not an easier mate.
+
+    The two goals are disjoint: a checkmate FAILS a stalemate goal and a
+    stalemate FAILS a mate goal. Getting that wrong in either direction is a
+    false proof, and both directions were live during implementation -- the
+    terminal scan skips moves by their check bit, and that bit's meaning
+    inverts. One sign error skipped every candidate and found nothing; the
+    mirror error would have accepted a checkmate as a stalemate.
+    """
+    print("\n[stalemate] the stalemate goal is disjoint from the mate goal")
+
+    # Verified with python-chess when generated: White to move, stalemate in 1.
+    STALEMATE_1 = ["7k/8/3Q3K/8/8/8/8/8 w - -",
+                   "8/8/8/8/8/2QK4/8/3k4 w - -",
+                   "k7/8/1Q6/K7/8/8/8/8 w - -"]
+    # Mate in 1, and no stalemate available in 1.
+    MATE_ONLY = ["8/4R3/8/1K6/8/8/2R5/k7 w - -"]
+
+    for fen in STALEMATE_1:
+        out = run(engine, ["--stalemate", "--time-limit", "10", "-"], f"{fen} sm 1\n")
+        res.check(f"stalemate in 1 found: {fen[:24]}", bool(SM_RE.search(out)), out.strip()[:90])
+        res.check(f"reported as sm, never dm: {fen[:24]}", " dm " not in out)
+        # Some of these positions also happen to have a mate in 1 -- that is a
+        # property of the position, not a defect. What must hold is that the
+        # goals never borrow each other's token: a mate run says dm and never
+        # sm, so no consumer can read one result as the other.
+        mate = run(engine, ["--time-limit", "10", "-"], f"{fen} dm 1\n")
+        res.check(f"mate goal never reports sm: {fen[:24]}", " sm " not in mate)
+
+    for fen in MATE_ONLY:
+        out = run(engine, ["--stalemate", "--time-limit", "10", "-"], f"{fen} sm 1\n")
+        res.check("a mate-in-1 is not accepted as a stalemate",
+                  not SM_RE.search(out), out.strip()[:90])
+
+    # Every route must agree: the preconditioner reads the same check bit and
+    # had its own copy of the sign error.
+    for route in ("dfpn", "depth-first"):
+        out = run(engine, ["--stalemate", "--route", route, "--no-portfolio",
+                           "--time-limit", "10", "-"], f"{STALEMATE_1[0]} sm 1\n")
+        res.check(f"route {route} finds the stalemate", bool(SM_RE.search(out)))
+
+    # Certificates must verify against the stalemate predicate, checked by the
+    # shipped verifier rather than by the engine agreeing with itself.
+    tool = HERE.parent / "tools" / "verify_proof.py"
+    if HAVE_CHESS and tool.exists():
+        raw = "".join(f"{f} sm 1\n" for f in STALEMATE_1)
+        out = run(engine, ["--stalemate", "--emit-proof", "--time-limit", "10", "-"], raw)
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "-"],
+                              input=out.encode(), capture_output=True, timeout=120)
+        res.check("stalemate certificates verify independently", proc.returncode == 0,
+                  (proc.stdout + proc.stderr).decode().strip()[:150])
+    else:
+        res.skip("stalemate certificates verify independently", "python-chess absent")
 
 
 def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
@@ -1654,6 +1711,7 @@ def main() -> int:
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
+    test_stalemate_goal(args.engine, res)
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)

@@ -52,6 +52,16 @@ enum class RouteKind {
     Dfpn,
 };
 
+// What the attacker is trying to force. The AND/OR structure is identical for
+// both -- attacker needs one move, defender must have every reply refuted --
+// and only the terminal predicate differs. Stalemate is not a weaker mate: a
+// position that is checkmate FAILS a stalemate goal, so the two are disjoint
+// rather than nested, and a search cannot be reused between them.
+enum class Goal {
+    Mate,
+    Stalemate,
+};
+
 struct Move {
     int from = -1;
     int to = -1;

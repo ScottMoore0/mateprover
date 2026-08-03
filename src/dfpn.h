@@ -100,7 +100,7 @@ void dfpn_store(Search& s, const TTKey& key, const PnDn& v) {
 void dfpn_publish(Search& s, const Board& b, int depth, char kind, const PnDn& v) {
     if (v.dn == 0 && s.dfpn_share_disproofs) {
         ++s.stats.dfpn_disproved;
-        store_exact_proof_table(s, tt_key(b, 0, kind, s.attacker), depth, {});
+        store_exact_proof_table(s, tt_key(b, 0, kind, s.attacker, s.goal), depth, {});
     }
 }
 
@@ -113,7 +113,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // itself by hiding the preconditioner's cost entirely.
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
-    const TTKey key = tt_key(b, depth, 'D', s.attacker);
+    const TTKey key = tt_key(b, depth, 'D', s.attacker, s.goal);
 
     bool scored = false;
     std::vector<Move> replies = dfpn_moves(s, b, scored);
@@ -169,7 +169,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     child_keys.reserve(replies.size());
     for (const Move& r : replies) {
         child_boards.push_back(make_move(b, r));
-        child_keys.push_back(tt_key(child_boards.back(), depth, 'A', s.attacker));
+        child_keys.push_back(tt_key(child_boards.back(), depth, 'A', s.attacker, s.goal));
     }
 
     for (;;) {
@@ -226,7 +226,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // passing 0, so every depth shared one entry -- a position stored as
     // {INF, 0} at depth 0 read back as unprovable at every depth, and the
     // proof numbers stopped meaning anything.
-    const TTKey key = tt_key(b, depth, 'A', s.attacker);
+    const TTKey key = tt_key(b, depth, 'A', s.attacker, s.goal);
 
     if (depth <= 0 || b.stm != s.attacker) {
         const PnDn v{DFPN_INF, 0};
@@ -251,17 +251,22 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     const bool mate_shortcut = scored && s.score_checks && !s.score_mates;
     for (std::size_t i = 0; i < moves.size(); ++i) {
         const Move& m = moves[i];
-        if (mate_shortcut && m.score < 50000) {
+        // Which moves can possibly reach the goal, read off the check term the
+        // ordering pass already computed. Mate needs a check; stalemate forbids
+        // one. Testing `score < 50000` unconditionally was correct for mate and
+        // skipped EVERY move under a stalemate goal, since the check term is
+        // negative there -- the search then never saw a stalemate at all.
+        if (mate_shortcut && !move_can_reach_goal(m.score, s.goal)) {
             continue;
         }
         ++s.stats.dfpn_mate_tests;
         const Board nb = make_move(b, m);
-        if (is_checkmate(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+        if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
             const PnDn v{0, DFPN_INF};
             dfpn_store(s, key, v);
             ++s.stats.dfpn_proved;
             if (s.proof_hints) {
-                s.attacker_proofs[move_hint_key(b, 'A', s.attacker)] = m;
+                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = m;
             }
             return v;
         }
@@ -292,7 +297,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     child_keys.reserve(moves.size());
     for (const Move& m : moves) {
         child_boards.push_back(make_move(b, m));
-        child_keys.push_back(tt_key(child_boards.back(), depth - 1, 'D', s.attacker));
+        child_keys.push_back(tt_key(child_boards.back(), depth - 1, 'D', s.attacker, s.goal));
     }
 
     for (;;) {
@@ -319,7 +324,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             dfpn_store(s, key, here);
             dfpn_publish(s, b, depth, 'A', here);
             if (here.pn == 0 && s.proof_hints) {
-                s.attacker_proofs[move_hint_key(b, 'A', s.attacker)] = moves[best];
+                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = moves[best];
             }
             return here;
         }

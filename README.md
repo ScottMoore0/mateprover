@@ -207,7 +207,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-301 automated checks covering:
+314 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -307,12 +307,17 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- **Scope: directmates only.** MateProver proves "White to move mates in N" and
-  nothing else. Chest, the program it is measured against, also solves
-  stalemate, selfmate, self-stalemate, helpmate and help-stalemate problems.
-  On those five families MateProver has no answer at all, and the speed and
-  reach figures above say nothing about them. It is faster and deeper on one
-  problem type, not a replacement for a general problem solver.
+- **Scope: directmates and stalemates.** MateProver proves "White to move mates
+  in N" (`dm N`) and "White to move forces stalemate in N" (`--stalemate`,
+  reported as `sm N`). Chest, the program it is measured against, also solves
+  selfmate, self-stalemate, helpmate and help-stalemate. On those four families
+  MateProver has no answer at all.
+- **The stalemate goal is implemented and validated, but not tuned.** Every
+  generated test position solves and every certificate verifies independently,
+  but the reach and speed figures on this page are directmate figures and say
+  nothing about stalemate. The ordering work that makes the directmate mode fast
+  has no measured equivalent there yet, because the generated corpus is too easy
+  to discriminate between orderings.
 - Reach: see the table above. The two depths behave differently and the
   difference is measured, not assumed. At mate-in-8 the engine is
   budget-limited, so time buys reach. At mate-in-10 it is not: time and memory

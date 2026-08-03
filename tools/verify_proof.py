@@ -48,6 +48,9 @@ except ImportError:
     raise SystemExit(2)
 
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
+# `sm N` is a forced STALEMATE in N -- a different claim about the position,
+# checked against a different terminal predicate.
+SM_RE = re.compile(r"\bsm\s+(\d+)\b")
 PV_RE = re.compile(r"\bpv\s+([^;]+);")
 PROOF_RE = re.compile(r"\bproof\s+(\{.*\})\s*;", re.DOTALL)
 
@@ -56,7 +59,8 @@ class Failure(Exception):
     pass
 
 
-def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
+def verify_node(board: chess.Board, node: dict, path: list[str],
+                goal: str = "mate") -> int:
     """Verify one attacker node. Returns the depth in attacker moves."""
     where = " ".join(path) if path else "<root>"
 
@@ -72,9 +76,22 @@ def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
 
     board.push(move)
     try:
-        if node.get("mate"):
-            if not board.is_checkmate():
-                raise Failure(f"after {where} {move_uci}: leaf is not checkmate")
+        # A leaf must claim the goal that was asked for, and be it. A stalemate
+        # leaf in a mate proof -- or the reverse -- is exactly the confusion the
+        # two goals make possible, so the claim and the test are both checked.
+        if node.get("mate") or node.get("stalemate"):
+            if goal == "stalemate":
+                if not node.get("stalemate"):
+                    raise Failure(f"after {where} {move_uci}: leaf claims mate in a "
+                                  f"stalemate proof")
+                if not board.is_stalemate():
+                    raise Failure(f"after {where} {move_uci}: leaf is not stalemate")
+            else:
+                if not node.get("mate"):
+                    raise Failure(f"after {where} {move_uci}: leaf claims stalemate in "
+                                  f"a mate proof")
+                if not board.is_checkmate():
+                    raise Failure(f"after {where} {move_uci}: leaf is not checkmate")
             return 1
 
         branches = node.get("d")
@@ -118,7 +135,7 @@ def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
             board.push(chess.Move.from_uci(reply))
             try:
                 worst = max(worst, verify_node(board, branch["p"],
-                                               path + [move_uci, reply]))
+                                               path + [move_uci, reply], goal))
             finally:
                 board.pop()
         return worst + 1
@@ -126,7 +143,8 @@ def verify_node(board: chess.Board, node: dict, path: list[str]) -> int:
         board.pop()
 
 
-def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int) -> None:
+def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int,
+              goal: str = "mate") -> None:
     replay = board.copy()
     for token in pv:
         try:
@@ -136,7 +154,10 @@ def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int) -> None:
         if move not in replay.legal_moves:
             raise Failure(f"illegal pv move {token}")
         replay.push(move)
-    if not replay.is_checkmate():
+    if goal == "stalemate":
+        if not replay.is_stalemate():
+            raise Failure("pv does not end in stalemate")
+    elif not replay.is_checkmate():
         raise Failure("pv does not end in checkmate")
     expected = 2 * claimed_depth - 1
     if len(pv) != expected:
@@ -170,6 +191,10 @@ def main() -> int:
             continue
         fen = line.split(";", 1)[0].strip()
         depth_match = DM_RE.search(line)
+        goal = "mate"
+        if not depth_match:
+            depth_match = SM_RE.search(line)
+            goal = "stalemate"
         if not depth_match:
             skipped += 1          # no mate reported: nothing to verify
             continue
@@ -185,18 +210,18 @@ def main() -> int:
             pv_match = PV_RE.search(line)
             if not pv_match:
                 raise Failure("solved position has no pv")
-            verify_pv(board, pv_match.group(1).split(), depth)
+            verify_pv(board, pv_match.group(1).split(), depth, goal)
 
             proof_match = PROOF_RE.search(line)
             if proof_match:
                 node = json.loads(proof_match.group(1))
-                proved = verify_node(board.copy(), node, [])
+                proved = verify_node(board.copy(), node, [], goal)
                 if proved != depth:
                     raise Failure(f"certificate proves mate in {proved}, "
                                   f"reported {depth}")
                 checked += 1
                 if not args.quiet:
-                    print(f"  ok   mate in {depth}  {fen[:44]}")
+                    print(f"  ok   {goal} in {depth}  {fen[:44]}")
             elif args.require_proof:
                 raise Failure("no certificate (run the engine with --emit-proof)")
             else:

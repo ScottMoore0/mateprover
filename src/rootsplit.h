@@ -40,7 +40,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     }
     bool moves_scored = false;
     if (should_order(s, moves.size())) {
-        order_moves(b, moves, s.score_mates, s.score_checks, s.fast_check_score,
+        order_moves(b, moves, s.score_mates, s.score_checks, s.goal, s.fast_check_score,
                     s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
                     s.inplace_order, s.bucket_order);
         moves_scored = true;
@@ -60,7 +60,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
         return false;
     }
     if (s.proof_hints) {
-        TTKey hint_key = move_hint_key(b, 'A', s.attacker);
+        TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
         if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
             move_to_front(moves, hint->second);
         }
@@ -106,7 +106,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 found.ok = true;
                 found.pv.push_back(moves[static_cast<std::size_t>(i)]);
                 if (probe.emit_proof) {
-                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + ",\"mate\":true}";
+                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + (s.goal == Goal::Stalemate ? ",\"stalemate\":true}" : ",\"mate\":true}");
                 }
             } else if (depth > 1) {
                 Proof all_replies = prove_defender(probe, nb, depth - 1);
@@ -173,7 +173,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 found.ok = true;
                 found.pv.push_back(moves[static_cast<std::size_t>(i)]);
                 if (ws.emit_proof) {
-                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + ",\"mate\":true}";
+                    found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + (s.goal == Goal::Stalemate ? ",\"stalemate\":true}" : ",\"mate\":true}");
                 }
             } else if (depth > 1) {
                 Proof all_replies = prove_defender(ws, nb, depth - 1);

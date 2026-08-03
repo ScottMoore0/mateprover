@@ -103,6 +103,15 @@ int infer_mate_depth(const std::string& line) {
         return any ? value : 0;
     };
 
+    // Stalemate spellings first: `=N` is the problemist convention and `sm N`
+    // mirrors this engine's own output. Checked before `#` so a line carrying
+    // both cannot be read as a mate job.
+    if (auto pos = line.find("sm "); pos != std::string::npos) {
+        if (int d = read_digits(pos + 3); d > 0) return d;
+    }
+    if (auto pos = line.find('='); pos != std::string::npos) {
+        if (int d = read_digits(pos + 1); d > 0) return d;
+    }
     if (auto pos = line.find('#'); pos != std::string::npos) {
         return read_digits(pos + 1);
     }

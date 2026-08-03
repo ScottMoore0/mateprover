@@ -83,6 +83,11 @@ void print_usage() {
 "  -z N                          requested mate depth. Without it the depth is\n"
 "                                read from a #N or 'dm N' token on the input\n"
 "                                line; lines beginning with # are comments\n"
+"  --goal mate|stalemate         what the attacker must force (default mate).\n"
+"                                Stalemate is a different problem, not an easier\n"
+"                                one: a checkmate FAILS a stalemate goal. Results\n"
+"                                are reported as 'sm N', never 'dm N'\n"
+"  --stalemate                   shorthand for --goal stalemate\n"
 "  --route NAME                  dfpn (default) | depth-first | shallow-fast\n"
 "  --direct-depth                prove \"a mate within N\" by searching at N\n"
 "                                directly; better solve rate at a fixed\n"
@@ -458,6 +463,19 @@ int main(int argc, char** argv) {
             config.dfpn_final_depth_only = true;
         } else if (arg == "--dfpn-every-depth") {
             config.dfpn_final_depth_only = false;
+        } else if (arg == "--goal") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--goal' requires mate or stalemate");
+            const std::string g(v);
+            if (g == "mate") {
+                config.goal = Goal::Mate;
+            } else if (g == "stalemate") {
+                config.goal = Goal::Stalemate;
+            } else {
+                return usage_error("option '--goal' expects mate or stalemate");
+            }
+        } else if (arg == "--stalemate") {
+            config.goal = Goal::Stalemate;
         } else if (arg == "--dfpn-check-bias") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-check-bias' requires a weight");
