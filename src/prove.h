@@ -226,6 +226,21 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
 
+    // Consult the ordering hint. Without this the selfmate preconditioner was
+    // inert: it computed proof numbers and stored the move they favoured, and
+    // nothing ever read it. Hints cannot change a verdict -- they only decide
+    // which move is tried first -- so this is the safe half of what the
+    // preconditioner offers.
+    const TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
+    if (s.proof_hints) {
+        ++s.stats.proof_hint_probes;
+        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
+            if (move_to_front(moves, hint->second)) {
+                ++s.stats.proof_hint_hits;
+            }
+        }
+    }
+
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         const Board nb = make_move(b, amove);
@@ -242,6 +257,10 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
             }
             Proof proof{true, pv, cert};
             store_exact_proof_table(s, key, depth, proof);
+            if (s.proof_hints) {
+                ++s.stats.proof_hint_stores;
+                s.attacker_proofs[hint_key] = amove;
+            }
             return proof;
         }
     }
@@ -266,9 +285,13 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
+    // The reported depth must be the WORST line, not the first one. Taking the
+    // first reply's variation understated it whenever another defence held out
+    // longer, and the independent verifier caught exactly that: "certificate
+    // proves mate in 6, reported 2". A selfmate in N is a claim about every
+    // defence, so the PV has to be the longest of them.
     std::vector<Move> pv;
     std::vector<std::string> branch_certs;
-    bool first = true;
     for (const Move& r : replies) {
         ++s.stats.defender_replies_tried;
         const Board rb = make_move(b, r);
@@ -279,10 +302,10 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         if (!child.ok) {
             return {};            // one surviving defence refutes the whole line
         }
-        if (first) {
+        if (child.pv.size() + 1 > pv.size()) {
+            pv.clear();
             pv.push_back(r);
             pv.insert(pv.end(), child.pv.begin(), child.pv.end());
-            first = false;
         }
         if (s.emit_proof) {
             branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
@@ -489,6 +512,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
             Proof proof{true, pv, cert};
             store_exact_proof_table(s, key, depth, proof);
+            if (s.proof_hints) {
+                ++s.stats.proof_hint_stores;
+                s.attacker_proofs[hint_key] = amove;
+            }
             return proof;
         }
         if (s.debug && depth == 1 && in_check(nb, nb.stm)) {

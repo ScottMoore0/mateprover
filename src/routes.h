@@ -378,6 +378,15 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
     const int start = s.direct_depth ? max_depth : 1;
     for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
+        // Precondition with the selfmate walker, on the same terms as the
+        // directmate route: it only warms the tables and the ordering hints,
+        // and the verdict below is still the exact prover's.
+        if (s.route == RouteKind::Dfpn && depth >= s.dfpn_min_depth &&
+            (!s.dfpn_final_depth_only || depth >= max_depth)) {
+            s.dfpn_tt.clear();
+            dfpn_selfmate_attacker(s, b, depth, DFPN_INF, DFPN_INF);
+            s.aborted = false;
+        }
         Proof p = prove_selfmate_attacker(s, b, depth);
         if (s.aborted) {
             return result;

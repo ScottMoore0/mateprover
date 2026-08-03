@@ -127,6 +127,7 @@ did. If you are reading it for the first time:
 - [48. Stalemate Goal](#48-stalemate-goal)
 - [49. Stalemate Tuning: The Levers Are Already Pulled](#49-stalemate-tuning-the-levers-are-already-pulled)
 - [50. Selfmate Goal](#50-selfmate-goal)
+- [51. Selfmate Preconditioner: +124 Positions Of 200](#51-selfmate-preconditioner-124-positions-of-200)
 
 ## Impact-Ordered Architecture
 
@@ -3669,3 +3670,41 @@ generated, only sourced, which is why the corpus mattered before the code did.
 Not yet done: certificate verification (`verify_proof.py` does not know the
 `selfmated` leaf), root splitting, and the preconditioner. Reach at greater
 depths is unmeasured.
+
+
+### 51. Selfmate Preconditioner: +124 Positions Of 200
+
+Selfmate is the first goal since the directmate work with real headroom. 904
+composed problems at s#5 to s#10, measured at a 10 s cap: **319/903 = 35.3%**,
+with 584 unsolved. Stalemate had 30 unsolved problems in the world's entire
+collection; this has 584 in one export.
+
+The AND/OR structure survives the goal change, so proof and disproof numbers
+still mean what they mean -- what moves is the terminal, from "after an attacker
+move, is the defender mated" to "at an attacker node, is the attacker mated".
+`dfpn_selfmate_attacker` and `dfpn_selfmate_defender` are that walker.
+
+**Measured on 200 sampled problems at a 3M-node budget:**
+
+| configuration | solved |
+|---|---|
+| exact search only | 7/200 = 3.5% |
+| with the preconditioner | **131/200 = 65.5%** |
+
++124 positions. The largest single improvement measured anywhere in this
+project -- larger than promoting DFPN for directmate, which was worth +17 of 60.
+
+**It was inert on first measurement, and the reason is worth keeping.** The
+first run scored 7/200 both ways, identical. The preconditioner was running --
+645 DFPN nodes, 14 proved -- and storing the move its numbers favoured, but
+`prove_selfmate_attacker` never read the hint table. A preconditioner whose only
+consumer does not consult it is an expensive no-op, and it looked exactly like
+"measured, no effect".
+
+**The verifier then caught a reporting bug the search could not see.**
+Certificates failed with "certificate proves mate in 6, reported 2": the
+defender node built its PV from the FIRST reply, but a selfmate in N is a claim
+about EVERY defence, so the depth is the worst line and not the first one. The
+search was correct and the number it printed was not, which is precisely the
+class of error an independent checker exists to find. The PV is now the longest
+branch, and 26 of 26 sampled certificates verify.

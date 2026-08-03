@@ -104,6 +104,182 @@ void dfpn_publish(Search& s, const Board& b, int depth, char kind, const PnDn& v
     }
 }
 
+// ---------------------------------------------------------------------------
+// Selfmate preconditioner.
+//
+// The AND/OR structure survives the goal change -- the attacker still needs one
+// move to work and the defender still needs every reply refuted -- so proof and
+// disproof numbers still mean what they mean. What changes is where the
+// terminal sits and what the degenerate cases decide, and those cannot be
+// shared with the directmate walker: its terminal asks whether the DEFENDER is
+// mated, and this goal asks the opposite.
+//
+// Same safety property as the directmate preconditioner: it steers only. Every
+// verdict still comes from prove_selfmate_attacker, and the goal is part of the
+// transposition key, so a number computed here can never answer a directmate
+// query.
+PnDn dfpn_selfmate_attacker(Search& s, const Board& b, int depth,
+                            std::uint32_t thpn, std::uint32_t thdn);
+
+PnDn dfpn_selfmate_defender(Search& s, const Board& b, int depth,
+                            std::uint32_t thpn, std::uint32_t thdn) {
+    if (search_cancelled(s) || dfpn_budget_exhausted(s)) {
+        return PnDn{1, 1};
+    }
+    ++s.stats.dfpn_nodes;
+    ++s.stats.nodes;
+    const TTKey key = tt_key(b, depth, 'D', s.attacker, s.goal);
+
+    bool scored = false;
+    std::vector<Move> replies = dfpn_moves(s, b, scored);
+    if (replies.empty()) {
+        // The defender is mated or stalemated, so he has not mated the
+        // attacker. Disproved.
+        const PnDn v{DFPN_INF, 0};
+        dfpn_store(s, key, v);
+        return v;
+    }
+    if (!dfpn_seen(s, key)) {
+        const PnDn guess{static_cast<std::uint32_t>(
+                             std::min<std::size_t>(replies.size(), DFPN_INF)), 1};
+        if (guess.pn >= thpn || guess.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, guess);
+            return guess;
+        }
+    }
+
+    std::vector<Board> kids;
+    std::vector<TTKey> keys;
+    kids.reserve(replies.size());
+    keys.reserve(replies.size());
+    for (const Move& r : replies) {
+        kids.push_back(make_move(b, r));
+        keys.push_back(tt_key(kids.back(), depth - 1, 'A', s.attacker, s.goal));
+    }
+
+    for (;;) {
+        PnDn total{0, DFPN_INF};
+        std::size_t best = 0;
+        std::uint32_t best_dn = DFPN_INF;
+        std::uint32_t second_dn = DFPN_INF;
+        for (std::size_t i = 0; i < kids.size(); ++i) {
+            const PnDn v = dfpn_lookup(s, keys[i]);
+            total.pn = sat_add(total.pn, v.pn);
+            if (v.dn < best_dn) {
+                second_dn = best_dn;
+                best_dn = v.dn;
+                best = i;
+            } else if (v.dn < second_dn) {
+                second_dn = v.dn;
+            }
+        }
+        total.dn = best_dn;
+        if (total.pn >= thpn || total.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, total);
+            return total;
+        }
+        const PnDn chosen = dfpn_lookup(s, keys[best]);
+        const std::uint32_t child_thpn =
+            thpn > total.pn ? sat_add(chosen.pn, thpn - total.pn) : chosen.pn;
+        const std::uint32_t child_thdn =
+            std::min<std::uint32_t>(thdn, sat_add(second_dn, 1));
+        dfpn_selfmate_attacker(s, kids[best], depth - 1, child_thpn, child_thdn);
+        if (s.aborted) {
+            return PnDn{1, 1};
+        }
+    }
+}
+
+PnDn dfpn_selfmate_attacker(Search& s, const Board& b, int depth,
+                            std::uint32_t thpn, std::uint32_t thdn) {
+    if (search_cancelled(s) || dfpn_budget_exhausted(s)) {
+        return PnDn{1, 1};
+    }
+    ++s.stats.dfpn_nodes;
+    ++s.stats.nodes;
+    const TTKey key = tt_key(b, depth, 'A', s.attacker, s.goal);
+
+    // The terminal is here rather than after an attacker move: "the attacker is
+    // mated" is a statement about the side to move.
+    const bool have_move = has_legal_move(b, s.move_reserve, s.move_reserve_capacity,
+                                          s.static_pseudo);
+    if (!have_move) {
+        const bool mated = in_check(b, b.stm);
+        const PnDn v = mated ? PnDn{0, DFPN_INF} : PnDn{DFPN_INF, 0};
+        dfpn_store(s, key, v);
+        if (mated) {
+            ++s.stats.dfpn_proved;
+        }
+        return v;
+    }
+    if (depth <= 0) {
+        const PnDn v{DFPN_INF, 0};
+        dfpn_store(s, key, v);
+        return v;
+    }
+
+    bool scored = false;
+    std::vector<Move> moves = dfpn_moves(s, b, scored);
+    restrict_attacker_moves(s, b, moves);
+    if (moves.empty()) {
+        const PnDn v{DFPN_INF, 0};
+        dfpn_store(s, key, v);
+        return v;
+    }
+    if (!dfpn_seen(s, key)) {
+        const PnDn guess{1, static_cast<std::uint32_t>(
+                                std::min<std::size_t>(moves.size(), DFPN_INF))};
+        if (guess.pn >= thpn || guess.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, guess);
+            return guess;
+        }
+    }
+
+    std::vector<Board> kids;
+    std::vector<TTKey> keys;
+    kids.reserve(moves.size());
+    keys.reserve(moves.size());
+    for (const Move& m : moves) {
+        kids.push_back(make_move(b, m));
+        keys.push_back(tt_key(kids.back(), depth, 'D', s.attacker, s.goal));
+    }
+
+    for (;;) {
+        PnDn total{DFPN_INF, 0};
+        std::size_t best = 0;
+        std::uint32_t best_pn = DFPN_INF;
+        std::uint32_t second_pn = DFPN_INF;
+        for (std::size_t i = 0; i < kids.size(); ++i) {
+            const PnDn v = dfpn_lookup(s, keys[i]);
+            total.dn = sat_add(total.dn, v.dn);
+            if (v.pn < best_pn) {
+                second_pn = best_pn;
+                best_pn = v.pn;
+                best = i;
+            } else if (v.pn < second_pn) {
+                second_pn = v.pn;
+            }
+        }
+        total.pn = best_pn;
+        if (total.pn >= thpn || total.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
+            dfpn_store(s, key, total);
+            if (total.pn == 0 && s.proof_hints) {
+                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = moves[best];
+            }
+            return total;
+        }
+        const PnDn chosen = dfpn_lookup(s, keys[best]);
+        const std::uint32_t child_thpn =
+            std::min<std::uint32_t>(thpn, sat_add(second_pn, 1));
+        const std::uint32_t child_thdn =
+            thdn > total.dn ? sat_add(chosen.dn, thdn - total.dn) : chosen.dn;
+        dfpn_selfmate_defender(s, kids[best], depth, child_thpn, child_thdn);
+        if (s.aborted) {
+            return PnDn{1, 1};
+        }
+    }
+}
+
 PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std::uint32_t thdn) {
     if (search_cancelled(s) || dfpn_budget_exhausted(s)) {
         return PnDn{1, 1};
