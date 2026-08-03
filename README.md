@@ -312,12 +312,14 @@ immediately. Perft is a permanent gate for that reason.
   reported as `sm N`). Chest, the program it is measured against, also solves
   selfmate, self-stalemate, helpmate and help-stalemate. On those four families
   MateProver has no answer at all.
-- **The stalemate goal is implemented and validated, but not tuned.** Every
-  generated test position solves and every certificate verifies independently,
-  but the reach and speed figures on this page are directmate figures and say
-  nothing about stalemate. The ordering work that makes the directmate mode fast
-  has no measured equivalent there yet, because the generated corpus is too easy
-  to discriminate between orderings.
+- **The stalemate goal is measured, and it is at its ceiling.** On 579 composed
+  problems from a public collection the engine solves 94.7%, with a real
+  frontier: 100% through `=9`, 28.6% at `=12`, 9.1% at `=16`. Every restriction
+  lane and every search setting was then measured against the 60 problems at
+  depth 10-16, and **none beats the shipped default** — the restriction
+  portfolio that gives the directmate mode +15 positions of 60 contributes
+  exactly nothing here (architecture 49). The reach and speed figures elsewhere
+  on this page are directmate figures and do not describe stalemate.
 - Reach: see the table above. The two depths behave differently and the
   difference is measured, not assumed. At mate-in-8 the engine is
   budget-limited, so time buys reach. At mate-in-10 it is not: time and memory

@@ -44,6 +44,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
@@ -104,6 +105,9 @@ def main() -> int:
     ap.add_argument("--input", type=pathlib.Path, required=True)
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--time-limit", type=float, default=30.0)
+    ap.add_argument("--workers", type=int, default=8,
+                    help="positions in flight; each is independent, so this "
+                         "changes wall clock and nothing else")
     ap.add_argument("--verify", action="store_true",
                     help="re-check every solved problem with tools/verify_proof.py")
     args = ap.parse_args()
@@ -122,22 +126,20 @@ def main() -> int:
 
     tally = {"solved": 0, "unsolved": 0, "shorter": 0, "refuted": 0,
              "unsupported": 0, "illegal": 0}
-    rows, proofs = [], []
-    for fen4, goal, depth in problems:
-        if goal in ("h#", "s#"):
-            tally["unsupported"] += 1
-            rows.append({"fen4": fen4, "goal": goal, "mate": depth,
-                         "status": "unsupported"})
-            continue
 
+    def classify(item):
+        fen4, goal, depth = item
+        if goal in ("h#", "s#"):
+            return {"fen4": fen4, "goal": goal, "mate": depth,
+                    "status": "unsupported"}, None
         timed_out, found, out, illegal = solve(args.engine, fen4, goal, depth,
                                                args.time_limit, args.verify)
         if illegal:
             # Not orthodox chess -- kingless diagrams and the like. The database
             # holds them legitimately; this engine cannot express them.
-            tally["illegal"] += 1
-            rows.append({"fen4": fen4, "goal": goal, "mate": depth, "status": "illegal"})
-            continue
+            return {"fen4": fen4, "goal": goal, "mate": depth,
+                    "status": "illegal"}, None
+        proof = None
         if found:
             status = "solved"
             # Is the stipulation right? A shallower proof means the published
@@ -149,13 +151,20 @@ def main() -> int:
                 if shallower:
                     status = "shorter"
             if args.verify:
-                proofs.append(out.strip())
+                proof = out.strip()
         elif timed_out:
             status = "unsolved"     # kept: this is what makes reach measurable
         else:
             status = "refuted"      # searched to completion, no solution exists
-        tally[status] += 1
-        rows.append({"fen4": fen4, "goal": goal, "mate": depth, "status": status})
+        return {"fen4": fen4, "goal": goal, "mate": depth, "status": status}, proof
+
+    rows, proofs = [], []
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        for row, proof in pool.map(classify, problems):
+            rows.append(row)
+            tally[row["status"]] += 1
+            if proof:
+                proofs.append(proof)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as fh:

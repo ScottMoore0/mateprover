@@ -125,6 +125,7 @@ did. If you are reading it for the first time:
 - [46. The Waste Is Per-Ply, Not At The Root](#46-the-waste-is-per-ply-not-at-the-root)
 - [47. Heuristic Proof-Number Initialisation: Tried And Rejected](#47-heuristic-proof-number-initialisation-tried-and-rejected)
 - [48. Stalemate Goal](#48-stalemate-goal)
+- [49. Stalemate Tuning: The Levers Are Already Pulled](#49-stalemate-tuning-the-levers-are-already-pulled)
 
 ## Impact-Ordered Architecture
 
@@ -3523,3 +3524,80 @@ directmate mode reached needs a corpus with hard, deep problems, and generating
 one is a different problem from generating easy ones. No public stalemate corpus
 was usable: YACPDB holds the problems but exposes no reachable API, and its
 compositions carry their own rights.
+
+
+### 49. Stalemate Tuning: The Levers Are Already Pulled
+
+48 shipped the stalemate goal untuned, because the generated corpus could not
+tell two orderings apart. A real corpus now exists, and the answer it gives is
+that there is nothing left to tune.
+
+**The corpus.** PDB holds 579 direct stalemate problems -- not the 20,000 a
+naive query suggests, because its `STIP` field is a substring match and `=8`
+also selects `ser-=8`, `h=8` and retro reconstructions like `Orthorek. n=81,5`.
+Filtering those leaves a distribution concentrated at the shallow end: 329 at
+`=2`, and 60 at depth 10 or more.
+
+Measured across all 579 at a 10 s cap: 505 solved, 33 shorter, 30 unsolved,
+10 refuted, 1 illegal -- **538/568 = 94.7%**. The shape is what matters:
+
+| depth | solve rate |
+|---|---|
+| `=2` to `=9` | 100% |
+| `=10`, `=11` | 87.5%, 90.9% |
+| `=12` | 28.6% |
+| `=13` | 50.0% |
+| `=15`, `=16` | 25.0%, 9.1% |
+
+So a frontier exists, and the 60 problems at depth 10-16 sit at 51.7% -- the
+mid-range that discriminates between builds.
+
+**The restriction portfolio contributes nothing.** On those 60 problems at a
+10M-node budget, every lane was measured against the unrestricted search:
+
+| lane | solved | adds over unrestricted |
+|---|---|---|
+| unrestricted | 48/60 | -- |
+| `-P 2` | 48/60 | +0 |
+| `-X 4` | 15/60 | +0 |
+| `-K 3` | 12/60 | +0 |
+| `-R 1` | 1/60 | +0 |
+| `-C 1` | **0/60** | +0 |
+
+The union of every lane is 48/60: exactly the unrestricted set. This is the
+single largest difference from directmate, where the portfolio is worth +15 of
+60 (8f). The reason is visible in the `-C 1` row: restrictions prune toward
+forcing play, and a stalemate is reached by quiet moves. `-C 1` admits only
+checking moves and therefore solves nothing at all, since a checked king is
+never stalemated.
+
+**No search setting beats the shipped default either.** Same 60 problems:
+
+| configuration | solved | nodes |
+|---|---|---|
+| default (dfpn, check term inverted) | 48/60 | 1.00x |
+| check term disabled | 48/60 | 1.00x |
+| dfpn every depth | 48/60 | 1.00x |
+| scored-vector order / order-all / eager defender | 48/60 | 1.00x |
+| route depth-first | 42/60 | 1.30x |
+| route shallow-fast | 42/60 | 1.30x |
+| **no proof hints** | **27/60** | 0.68x |
+
+Every alternative is equal or worse. Two results are worth keeping:
+
+- **Proof hints are worth +21 positions of 60.** By far the largest single
+  contributor for this goal, and already on by default.
+- **The check-term inversion is neutral for ordering, on hard positions as well
+  as easy ones.** 47 identical solves and identical node counts. It stays
+  because it is required for CORRECTNESS -- both terminal scans read its sign to
+  decide which moves can reach the goal (48) -- but the claim that it improves
+  the search is now measured and false. 48 said the inversion was justified by
+  correctness rather than measurement; that was right, and it remains right for
+  a stronger reason than caution.
+
+**Conclusion.** Stalemate is not untuned. It is tuned, in the sense that every
+knob this engine exposes has been measured against a real corpus and the shipped
+configuration is the best of them. What it lacks is not tuning but headroom:
+directmate could be improved because matetrack has thousands of problems it
+failed and a portfolio that converted; stalemate has 30 unsolved problems in the
+world's collection and no lever that moves them.
