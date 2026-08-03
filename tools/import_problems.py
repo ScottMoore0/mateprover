@@ -87,8 +87,14 @@ def solve(engine, fen4, goal, depth, seconds, emit_proof=False):
     token = "sm" if goal == "stalemate" else "dm"
     out = subprocess.run(args, input=f"{fen4} {token} {depth}\n".encode(),
                          capture_output=True, timeout=seconds * 8).stdout.decode()
+    # An unparseable position makes the engine echo the WHOLE input line back,
+    # and that line ends in the stipulation -- "... sm 3". Searching the output
+    # for `sm N` therefore matched the echo and scored illegal positions as
+    # solved. Check for the error marker before looking for a result.
+    if "error input" in out:
+        return False, False, out, True
     rx = SM_RE if goal == "stalemate" else DM_RE
-    return ("timeout" in out), bool(rx.search(out)), out
+    return ("timeout" in out), bool(rx.search(out)), out, False
 
 
 def main() -> int:
@@ -114,7 +120,8 @@ def main() -> int:
             continue
         problems.append(parsed)
 
-    tally = {"solved": 0, "unsolved": 0, "shorter": 0, "refuted": 0, "unsupported": 0}
+    tally = {"solved": 0, "unsolved": 0, "shorter": 0, "refuted": 0,
+             "unsupported": 0, "illegal": 0}
     rows, proofs = [], []
     for fen4, goal, depth in problems:
         if goal in ("h#", "s#"):
@@ -123,16 +130,22 @@ def main() -> int:
                          "status": "unsupported"})
             continue
 
-        timed_out, found, out = solve(args.engine, fen4, goal, depth,
-                                      args.time_limit, args.verify)
+        timed_out, found, out, illegal = solve(args.engine, fen4, goal, depth,
+                                               args.time_limit, args.verify)
+        if illegal:
+            # Not orthodox chess -- kingless diagrams and the like. The database
+            # holds them legitimately; this engine cannot express them.
+            tally["illegal"] += 1
+            rows.append({"fen4": fen4, "goal": goal, "mate": depth, "status": "illegal"})
+            continue
         if found:
             status = "solved"
             # Is the stipulation right? A shallower proof means the published
             # depth is not the shortest, which is a real and known failure mode
             # of problem collections.
             if depth > 1:
-                _, shallower, _ = solve(args.engine, fen4, goal, depth - 1,
-                                        args.time_limit)
+                _, shallower, _, _ = solve(args.engine, fen4, goal, depth - 1,
+                                           args.time_limit)
                 if shallower:
                     status = "shorter"
             if args.verify:
@@ -151,7 +164,7 @@ def main() -> int:
 
     total = len(rows)
     print(f"read {total} problems ({skipped} lines skipped)")
-    for key in ("solved", "shorter", "unsolved", "refuted", "unsupported"):
+    for key in ("solved", "shorter", "unsolved", "refuted", "unsupported", "illegal"):
         if tally[key]:
             print(f"  {key:<12} {tally[key]:>5}"
                   f"{'   <-- kept as evidence of reach' if key == 'unsolved' else ''}"
