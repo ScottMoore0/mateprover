@@ -60,6 +60,11 @@ enum class RouteKind {
 enum class Goal {
     Mate,
     Stalemate,
+    // The attacker forces the DEFENDER to mate him. Structurally different from
+    // the other two, not just a different terminal predicate: the goal is tested
+    // at an attacker node BEFORE moving, rather than after each attacker move,
+    // and four degenerate cases each carry a distinct verdict.
+    Selfmate,
 };
 
 struct Move {

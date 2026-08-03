@@ -166,6 +166,140 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
 
 
 
+// ---------------------------------------------------------------------------
+// Selfmate: the attacker forces the defender to mate him.
+//
+// A separate recursion rather than another terminal predicate, because the
+// shape differs. For a directmate the goal is tested after each ATTACKER move;
+// here it is tested at an attacker node before moving, since "the attacker is
+// mated" is a statement about the side to move. Chest documents four degenerate
+// cases and they do not collapse into one another:
+//
+//     attacker is mated      -> solution, possibly shorter than asked
+//     attacker is stalemated -> no solution
+//     defender is mated      -> no solution (he must mate US, not be mated)
+//     defender is stalemated -> no solution
+//
+// Kept out of the directmate path deliberately. That path is validated by 314
+// checks and a corpus of 264 compositions; threading a third goal with a
+// different control flow through it would put all of that at risk to save some
+// duplication. The preconditioner is not used here either -- DFPN's proof
+// numbers are defined against the directmate terminal, and reusing them would
+// be unsound rather than merely unhelpful.
+Proof prove_selfmate_defender(Search& s, const Board& b, int depth);
+
+Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
+    if (search_cancelled(s)) {
+        return {};
+    }
+    ++s.stats.nodes;
+    ++s.stats.attacker_nodes;
+    if (b.stm != s.attacker) {
+        return {};
+    }
+    const bool have_move = has_legal_move(b, s.move_reserve, s.move_reserve_capacity,
+                                          s.static_pseudo);
+    if (!have_move) {
+        // No legal move: mated is the goal, stalemated is failure.
+        if (in_check(b, b.stm)) {
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"selfmated\":true}";
+            }
+            return Proof{true, {}, cert};
+        }
+        return {};
+    }
+    if (depth <= 0) {
+        return {};
+    }
+
+    TTKey key = tt_key(b, 0, 'A', s.attacker, s.goal);
+    Proof cached;
+    if (probe_exact_proof_table(s, key, depth, cached)) {
+        return cached;
+    }
+
+    bool scored = false;
+    auto moves = generate_ordered_moves(s, b, scored);
+    restrict_attacker_moves(s, b, moves);
+    ++s.stats.attacker_move_lists;
+    s.stats.attacker_moves += moves.size();
+
+    for (const Move& amove : moves) {
+        ++s.stats.attacker_candidates;
+        const Board nb = make_move(b, amove);
+        Proof replies = prove_selfmate_defender(s, nb, depth);
+        if (s.aborted) {
+            return {};
+        }
+        if (replies.ok) {
+            std::vector<Move> pv{amove};
+            pv.insert(pv.end(), replies.pv.begin(), replies.pv.end());
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + replies.cert + "}";
+            }
+            Proof proof{true, pv, cert};
+            store_exact_proof_table(s, key, depth, proof);
+            return proof;
+        }
+    }
+    store_exact_proof_table(s, key, depth, {});
+    return {};
+}
+
+Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
+    if (search_cancelled(s)) {
+        return {};
+    }
+    ++s.stats.nodes;
+    ++s.stats.defender_nodes;
+
+    std::vector<Move> replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity,
+                                            s.static_pseudo);
+    ++s.stats.defender_move_lists;
+    s.stats.defender_moves += replies.size();
+    if (replies.empty()) {
+        // The defender is mated or stalemated. Either way he has not mated the
+        // attacker, so this line fails.
+        return {};
+    }
+
+    std::vector<Move> pv;
+    std::vector<std::string> branch_certs;
+    bool first = true;
+    for (const Move& r : replies) {
+        ++s.stats.defender_replies_tried;
+        const Board rb = make_move(b, r);
+        Proof child = prove_selfmate_attacker(s, rb, depth - 1);
+        if (s.aborted) {
+            return {};
+        }
+        if (!child.ok) {
+            return {};            // one surviving defence refutes the whole line
+        }
+        if (first) {
+            pv.push_back(r);
+            pv.insert(pv.end(), child.pv.begin(), child.pv.end());
+            first = false;
+        }
+        if (s.emit_proof) {
+            branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
+        }
+    }
+    std::string cert;
+    if (s.emit_proof) {
+        cert = "[";
+        for (std::size_t i = 0; i < branch_certs.size(); ++i) {
+            if (i) cert.push_back(',');
+            cert += branch_certs[i];
+        }
+        cert.push_back(']');
+    }
+    return Proof{true, pv, cert};
+}
+
 Proof prove_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};

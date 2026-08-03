@@ -126,6 +126,7 @@ did. If you are reading it for the first time:
 - [47. Heuristic Proof-Number Initialisation: Tried And Rejected](#47-heuristic-proof-number-initialisation-tried-and-rejected)
 - [48. Stalemate Goal](#48-stalemate-goal)
 - [49. Stalemate Tuning: The Levers Are Already Pulled](#49-stalemate-tuning-the-levers-are-already-pulled)
+- [50. Selfmate Goal](#50-selfmate-goal)
 
 ## Impact-Ordered Architecture
 
@@ -3620,3 +3621,51 @@ configuration is the best of them. What it lacks is not tuning but headroom:
 directmate could be improved because matetrack has thousands of problems it
 failed and a portfolio that converted; stalemate has 30 unsolved problems in the
 world's collection and no lever that moves them.
+
+
+### 50. Selfmate Goal
+
+The attacker forces the DEFENDER to mate him. `--goal selfmate` / `--selfmate`,
+reported as `sfm N`. The third of Chest's six job types.
+
+Structurally different from the other two goals, not just another terminal
+predicate. For a directmate or a stalemate the goal is tested after each
+*attacker* move; here it is "the attacker is mated", which is a statement about
+the side to move, so it is tested at an attacker node before moving. Chest's
+four degenerate cases stay distinct: attacker mated is a solution, attacker
+stalemated is not, defender mated is not, defender stalemated is not.
+
+**It has its own recursion and its own route, deliberately.** The first attempt
+reused the depth-first route and redirected the two
+`result.proof = prove_attacker(...)` call sites. That was not enough, because
+the route also reaches the exact prover through the ROOT SPLIT, whose workers
+call `prove_attacker` directly. So the selfmate goal ran the DIRECTMATE search
+without saying so.
+
+The symptom is worth recording. All 260 composed selfmates came back `refuted`,
+and the single one that came back solved was a position that happens to contain
+a mate in one -- reported as `sfm 1` with certificate
+`{"a":"d6f6","mate":true}`, the directmate leaf format. A goal running the wrong
+search and reporting the wrong goal's certificate is the worst failure this
+engine can have, and it was caught only because a corpus of real problems
+disagreed with it 260 times.
+
+So `run_selfmate_route` shares nothing it cannot be shown to share safely: no
+root split, no preconditioner. DFPN's proof numbers are defined against the
+directmate terminal and inverting who must be mated makes them meaningless, so
+running it would publish disproofs answering a different question. Both are open
+work rather than impossibilities.
+
+A second and quieter bug followed: the engine could not infer a depth from its
+own `sfm N` token, so every problem was searched at depth 1 and refuted again.
+`infer_mate_depth` now reads `sfm` before `sm` and `#`, because a selfmate line
+also carries an `s#N` and reading that as a directmate searches the wrong goal.
+
+**Measured: 259 of 260 composed selfmates from a public collection, at s#2 to
+s#4, solved within 20 s. One refuted.** For comparison, a random position
+contains a selfmate in one about once in 71,000 -- this genre cannot be
+generated, only sourced, which is why the corpus mattered before the code did.
+
+Not yet done: certificate verification (`verify_proof.py` does not know the
+`selfmated` leaf), root splitting, and the preconditioner. Reach at greater
+depths is unmeasured.

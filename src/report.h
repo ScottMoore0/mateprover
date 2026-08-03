@@ -106,6 +106,12 @@ int infer_mate_depth(const std::string& line) {
     // Stalemate spellings first: `=N` is the problemist convention and `sm N`
     // mirrors this engine's own output. Checked before `#` so a line carrying
     // both cannot be read as a mate job.
+    // `sfm N` is this engine's own selfmate spelling, so its own output round
+    // trips as input. Checked before `sm` and `#`: a selfmate line carries an
+    // `s#N` too, and reading that as a directmate would search the wrong goal.
+    if (auto pos = line.find("sfm "); pos != std::string::npos) {
+        if (int d = read_digits(pos + 4); d > 0) return d;
+    }
     if (auto pos = line.find("sm "); pos != std::string::npos) {
         if (int d = read_digits(pos + 3); d > 0) return d;
     }

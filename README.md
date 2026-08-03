@@ -307,11 +307,15 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- **Scope: directmates and stalemates.** MateProver proves "White to move mates
-  in N" (`dm N`) and "White to move forces stalemate in N" (`--stalemate`,
-  reported as `sm N`). Chest, the program it is measured against, also solves
-  selfmate, self-stalemate, helpmate and help-stalemate. On those four families
-  MateProver has no answer at all.
+- **Scope: directmates, stalemates and selfmates.** MateProver proves "White to
+  move mates in N" (`dm N`), "White forces stalemate in N" (`--stalemate`, `sm
+  N`) and "White forces Black to mate White in N" (`--selfmate`, `sfm N`).
+  Chest, the program it is measured against, also solves self-stalemate,
+  helpmate and help-stalemate. On those three families MateProver has no answer.
+- **The selfmate goal is new and less finished than the others.** 259 of 260
+  composed selfmates solve, but it runs an exact route of its own with no root
+  split and no preconditioner, its certificates are not yet checked by
+  `tools/verify_proof.py`, and its reach beyond `s#4` is unmeasured.
 - **The stalemate goal is measured, and it is at its ceiling.** On 579 composed
   problems from a public collection the engine solves 94.7%, with a real
   frontier: 100% through `=9`, 28.6% at `=12`, 9.1% at `=16`. Every restriction

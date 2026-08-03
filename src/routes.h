@@ -347,7 +347,9 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         }
         s.aborted = false;
 
-        result.proof = prove_attacker(s, b, depth);
+        result.proof = s.goal == Goal::Selfmate
+                         ? prove_selfmate_attacker(s, b, depth)
+                         : prove_attacker(s, b, depth);
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
             break;
@@ -359,7 +361,48 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
     return result;
 }
 
+// A selfmate gets its own route, deliberately plain.
+//
+// The first attempt reused the depth-first route and only redirected the two
+// `result.proof = prove_attacker(...)` call sites. That was not enough: the
+// route also reaches the exact prover through the ROOT SPLIT, which calls
+// prove_attacker directly from its workers. The selfmate goal therefore ran the
+// DIRECTMATE search without saying so -- 260 composed selfmates came back
+// "refuted", and the one that came back solved was a position that happens to
+// contain a mate in 1, certificate `{"a":"d6f6","mate":true}` and all.
+//
+// A silently wrong search is worse than a missing feature, so this route does
+// not share machinery it cannot yet be shown to share safely: no root split,
+// no preconditioner. Both are open work rather than impossibilities.
+RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
+    RouteResult result;
+    const int start = s.direct_depth ? max_depth : 1;
+    for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
+        Proof p = prove_selfmate_attacker(s, b, depth);
+        if (s.aborted) {
+            return result;
+        }
+        if (p.ok) {
+            result.proof = p;
+            result.proved_depth = static_cast<int>((p.pv.size() + 1) / 2);
+            return result;
+        }
+    }
+    return result;
+}
+
 RouteResult run_route(Search& s, const Board& b, int max_depth) {
+    // A selfmate always takes the exact route, whatever --route asked for.
+    //
+    // DFPN's proof and disproof numbers are defined against the directmate
+    // terminal -- "the defender is mated" -- and a selfmate inverts who must be
+    // mated. Running it here does not merely waste effort: it publishes
+    // disproofs into the exact table that answer a different question, so the
+    // search silently finds nothing. That is exactly what it did before this
+    // guard, while --route depth-first solved the same positions.
+    if (s.goal == Goal::Selfmate) {
+        return run_selfmate_route(s, b, max_depth);
+    }
     switch (s.route) {
         case RouteKind::DepthFirst:
             return run_depth_first_route(s, b, max_depth);

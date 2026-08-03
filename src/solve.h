@@ -336,7 +336,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // position, and every consumer that greps for `dm` -- this project's own
         // tools among them -- would otherwise read one as the other.
         out << "; bm " << move_uci(proof.pv.front())
-                  << (config.goal == Goal::Stalemate ? "; sm " : "; dm ") << proved_depth
+                  << (config.goal == Goal::Stalemate ? "; sm "
+                      : config.goal == Goal::Selfmate ? "; sfm " : "; dm ") << proved_depth
                   << "; pv " << pv_uci(proof.pv);
         if (s.emit_proof && !proof.cert.empty()) {
             out << "; proof " << proof.cert;
