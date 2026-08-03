@@ -31,6 +31,138 @@ struct WorkerSlot {
 // A worker whose index can no longer win (a lower index already succeeded) is
 // cancelled and unwinds without recording a verdict, so an abandoned subtree
 // is never mistaken for a disproof.
+// Root split for the selfmate goal.
+//
+// A separate function rather than a branch inside the directmate splitter. That
+// splitter's body tests whether the DEFENDER is mated after the attacker's move
+// and then calls prove_defender; both are wrong here, and the last time this
+// goal borrowed directmate machinery it ran the directmate search in silence
+// (50). The parts worth sharing -- worker construction, the shared table, the
+// atomic claim counter, lowest-index acceptance -- are shared; the body is not.
+//
+// Lowest-index acceptance is what keeps the answer deterministic: whichever
+// worker finishes first, the proof reported is the one from the lowest root
+// index that proved, so the result does not depend on thread timing.
+bool run_selfmate_root_split(Search& s, std::vector<std::unique_ptr<Search>>& workers,
+                             std::vector<std::unique_ptr<WorkerSlot>>& slots,
+                             const Board& b, int depth, Proof& out) {
+    auto moves = legal_moves(b, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+    if (moves.empty()) {
+        return false;
+    }
+    if (should_order(s, moves.size())) {
+        order_moves(b, moves, s.score_mates, s.score_checks, s.goal, s.fast_check_score,
+                    s.move_reserve, s.move_reserve_capacity, s.static_pseudo,
+                    s.inplace_order, s.bucket_order);
+    }
+    restrict_attacker_moves(s, b, moves);
+    if (moves.empty()) {
+        return false;               // no permitted move: no proof here, not a disproof
+    }
+    if (s.proof_hints) {
+        const TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
+        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
+            move_to_front(moves, hint->second);
+        }
+    }
+
+    const int n = static_cast<int>(moves.size());
+    const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
+    if (worker_count <= 0) {
+        return false;
+    }
+
+    std::atomic<int> next_index{0};
+    std::atomic<int> best_index{n};
+    std::mutex result_mutex;
+    std::vector<Proof> results(static_cast<std::size_t>(n));
+
+    for (int w = 0; w < worker_count; ++w) {
+        slots[static_cast<std::size_t>(w)]->current_root.store(n, std::memory_order_relaxed);
+        slots[static_cast<std::size_t>(w)]->cancel.store(false, std::memory_order_relaxed);
+    }
+
+    auto worker_body = [&](int w) {
+        Search& ws = *workers[static_cast<std::size_t>(w)];
+        WorkerSlot& slot = *slots[static_cast<std::size_t>(w)];
+        for (;;) {
+            int i = next_index.fetch_add(1, std::memory_order_relaxed);
+            if (i >= n || i > best_index.load(std::memory_order_acquire)) {
+                break;
+            }
+            slot.current_root.store(i, std::memory_order_release);
+            slot.cancel.store(false, std::memory_order_release);
+            ws.aborted = false;
+            if (i > best_index.load(std::memory_order_acquire)) {
+                continue;
+            }
+
+            const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
+            Proof replies = prove_selfmate_defender(ws, nb, depth);
+            if (ws.aborted) {
+                continue;           // abandoned: no verdict, nothing recorded
+            }
+            if (!replies.ok) {
+                continue;
+            }
+            Proof found;
+            found.ok = true;
+            found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+            found.pv.insert(found.pv.end(), replies.pv.begin(), replies.pv.end());
+            if (ws.emit_proof) {
+                found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)]))
+                           + ",\"d\":" + replies.cert + "}";
+            }
+
+            std::lock_guard<std::mutex> lock(result_mutex);
+            results[static_cast<std::size_t>(i)] = std::move(found);
+            int prev = best_index.load(std::memory_order_acquire);
+            while (i < prev && !best_index.compare_exchange_weak(prev, i, std::memory_order_acq_rel)) {
+            }
+            const int best = best_index.load(std::memory_order_acquire);
+            for (const auto& other : slots) {
+                if (other->current_root.load(std::memory_order_acquire) > best) {
+                    other->cancel.store(true, std::memory_order_release);
+                }
+            }
+        }
+        slot.current_root.store(n, std::memory_order_release);
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(static_cast<std::size_t>(std::max(0, worker_count - 1)));
+    for (int w = 1; w < worker_count; ++w) {
+        // A refused thread must not escape: coverage is unaffected because root
+        // moves are claimed from a shared counter, so worker 0 alone still
+        // visits every index. Only speed is lost, never a verdict.
+        try {
+            pool.emplace_back(worker_body, w);
+        } catch (const std::system_error&) {
+            break;
+        }
+    }
+    worker_body(0);
+    for (std::thread& t : pool) {
+        t.join();
+    }
+
+    for (int w = 0; w < worker_count; ++w) {
+        s.stats += workers[static_cast<std::size_t>(w)]->stats;
+        workers[static_cast<std::size_t>(w)]->stats = Stats{};
+        workers[static_cast<std::size_t>(w)]->aborted = false;
+        if (workers[static_cast<std::size_t>(w)]->timed_out) {
+            s.timed_out = true;
+        }
+    }
+
+    const int best = best_index.load(std::memory_order_acquire);
+    if (best < n && results[static_cast<std::size_t>(best)].ok) {
+        out = std::move(results[static_cast<std::size_t>(best)]);
+        return true;
+    }
+    return false;
+}
+
 bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& workers,
                           std::vector<std::unique_ptr<WorkerSlot>>& slots,
                           const Board& b, int depth, Proof& out) {

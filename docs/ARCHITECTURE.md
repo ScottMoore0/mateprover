@@ -129,6 +129,7 @@ did. If you are reading it for the first time:
 - [50. Selfmate Goal](#50-selfmate-goal)
 - [51. Selfmate Preconditioner: +124 Positions Of 200](#51-selfmate-preconditioner-124-positions-of-200)
 - [52. The Restriction Portfolio Transfers To Selfmate](#52-the-restriction-portfolio-transfers-to-selfmate)
+- [53. Root Splitting For Selfmate: Correct, Deterministic, And Inert](#53-root-splitting-for-selfmate-correct-deterministic-and-inert)
 
 ## Impact-Ordered Architecture
 
@@ -3746,3 +3747,44 @@ lever here that this engine exposes.
 
 **Proof hints remain the dominant single factor**: 131/200 with them, 7/200
 without.
+
+
+### 53. Root Splitting For Selfmate: Correct, Deterministic, And Inert
+
+Selfmate now has a root split. `run_selfmate_root_split` is a separate function
+rather than a branch in the directmate splitter, whose body tests whether the
+DEFENDER is mated and then calls `prove_defender` -- both wrong here, and the
+last time this goal borrowed directmate machinery it ran the directmate search
+in silence (50). Worker construction, the shared table, the atomic claim counter
+and lowest-index acceptance are shared; the body is not.
+
+**It made the engine four times worse before it made it faster.** First
+measurement: 9 of 60 at eight threads against 37 of 60 at one. The workers are
+fresh `Search` objects, so they never received the preconditioner's ordering
+hints -- and hints are worth +124 positions of 200 on this goal (51). The split
+was parallelising precisely the work the hints exist to make unnecessary.
+Handing `attacker_proofs` to each worker before the split fixed it.
+
+After the handoff, on 60 sampled problems at a 3M-node budget:
+
+| | solved | identical result |
+|---|---|---|
+| 1 thread | 37/60 | -- |
+| 8 threads | 37/60 | **60/60** |
+
+Every position returns the same move and the same depth at both thread counts,
+which is what lowest-index acceptance is for.
+
+**And it buys nothing.** Wall clock on 24 problems, 20 s cap, the 15 solved by
+both: 18.1 s against 17.1 s, **1.06x total and 1.04x median**.
+
+That is the directmate result again (32), and for the same reason. A proof needs
+every sibling refuted, so dividing the root moves between threads removes no
+work -- and here the hints usually put the winning move first, which
+concentrates the whole search in one root subtree that the split cannot divide
+at all.
+
+So it ships correct rather than useful: `--threads` no longer silently does
+nothing for selfmate, and it still does nothing measurable. Parallelism for this
+goal, as for the others, would have to happen inside the tree rather than at its
+root.

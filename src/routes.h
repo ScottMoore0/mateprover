@@ -376,6 +376,40 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
 // no preconditioner. Both are open work rather than impossibilities.
 RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
+
+    // Workers are built once for the route and lazily, exactly as the directmate
+    // route does: a position resolved without ever splitting pays nothing for
+    // threads it never uses.
+    std::vector<std::unique_ptr<Search>> workers;
+    std::vector<std::unique_ptr<WorkerSlot>> slots;
+    std::unique_ptr<SharedProofTable> shared_table;
+    const int thread_count = std::max(1, s.threads);
+    auto ensure_workers = [&]() {
+        if (!workers.empty()) {
+            return;
+        }
+        if (s.shared_tt) {
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve,
+                                                    entry_capacity_for_mb(s.memory_mb)));
+        }
+        workers.reserve(static_cast<std::size_t>(thread_count));
+        slots.reserve(static_cast<std::size_t>(thread_count));
+        for (int w = 0; w < thread_count; ++w) {
+            slots.emplace_back(new WorkerSlot());
+            auto ws = std::unique_ptr<Search>(new Search());
+            static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
+            ws->attacker = s.attacker;
+            ws->has_deadline = s.has_deadline;
+            ws->deadline = s.deadline;
+            ws->cancel = &slots.back()->cancel;
+            ws->shared_table = shared_table.get();
+            if (ws->shared_table == nullptr) {
+                ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+            }
+            workers.push_back(std::move(ws));
+        }
+    };
+
     const int start = s.direct_depth ? max_depth : 1;
     for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
         // Precondition with the selfmate walker, on the same terms as the
@@ -387,7 +421,31 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             dfpn_selfmate_attacker(s, b, depth, DFPN_INF, DFPN_INF);
             s.aborted = false;
         }
-        Proof p = prove_selfmate_attacker(s, b, depth);
+        Proof p;
+        // Depth 1 is a flat scan; the split would cost more in thread setup
+        // than it saves, as on the directmate route.
+        if (thread_count > 1 && depth > 1) {
+            ensure_workers();
+            // Hand the preconditioner's ordering hints to the workers.
+            //
+            // They are fresh Search objects, so without this they start blind
+            // and the split discards the single largest contributor this goal
+            // has: hints are worth +124 positions of 200 (51). Measured before
+            // the handoff, eight threads solved 9 of 60 where one thread solved
+            // 37 -- parallelism making the engine four times worse, because the
+            // work it parallelised was the work the hints made unnecessary.
+            if (s.proof_hints) {
+                for (auto& ws : workers) {
+                    ws->attacker_proofs = s.attacker_proofs;
+                }
+            }
+            Proof split;
+            if (run_selfmate_root_split(s, workers, slots, b, depth, split)) {
+                p = std::move(split);
+            }
+        } else {
+            p = prove_selfmate_attacker(s, b, depth);
+        }
         if (s.aborted) {
             return result;
         }

@@ -315,9 +315,10 @@ immediately. Perft is a permanent gate for that reason.
 - **The selfmate goal is newer than the others and single-threaded.** It has its
   own preconditioner (worth +124 positions of 200 on hard problems), its own
   verified certificates, and a restriction portfolio that measurably helps
-  (+17 of 200) — but it does not use the root split, so `--threads` does
-  nothing for it. Measured reach at s#5–s#10 is 35.3% before the preconditioner;
-  the tuned figure has not been re-measured across the full corpus.
+  (+17 of 200). It does use the root split, which is deterministic across thread
+  counts but measurably worthless — 1.06x — exactly as for directmate. Measured
+  reach at s#5–s#10 is 35.3% before the preconditioner; the tuned figure has not
+  been re-measured across the full corpus.
 - **The stalemate goal is measured, and it is at its ceiling.** On 579 composed
   problems from a public collection the engine solves 94.7%, with a real
   frontier: 100% through `=9`, 28.6% at `=12`, 9.1% at `=16`. Every restriction
