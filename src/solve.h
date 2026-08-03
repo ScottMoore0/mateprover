@@ -109,7 +109,17 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // The sequential portfolio slices wall-clock time, so it needs a time
     // limit. The parallel form gives every lane the whole budget and works with
     // either kind.
-    const bool use_portfolio = config.portfolio &&
+    // The cooperative goals get no portfolio.
+    //
+    // Every lane in it is a RESTRICTION on the attacker, sound because removing
+    // attacker options cannot invent a forced mate: a restricted search that
+    // finds one has found a real one. That argument needs an adversary. When
+    // both sides cooperate, a "restriction" removes moves from a helper, and a
+    // helpmate solution can run straight through the move it removed -- so a
+    // restricted lane would not be an incomplete search for the same answer, it
+    // would be a search for a different problem. Running one lane, unrestricted,
+    // is the whole portfolio here. See section 58.
+    const bool use_portfolio = config.portfolio && !goal_is_help(config.goal) &&
                                (config.time_limit > 0.0 ||
                                 (config.node_limit > 0 && config.portfolio_parallel));
     const char* winning_entry_name = nullptr;
@@ -500,9 +510,20 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // `sm N`, not `dm N`. A forced stalemate is a different claim about the
         // position, and every consumer that greps for `dm` -- this project's own
         // tools among them -- would otherwise read one as the other.
-        out << "; bm " << move_uci(proof.pv.front())
-                  << (config.goal == Goal::Stalemate ? "; sm "
-                      : config.goal == Goal::Selfmate ? "; sfm " : "; dm ") << proved_depth
+        // One token a goal, all distinct, none a prefix of another once the
+        // trailing space is counted. Six goals now share this line and a
+        // consumer that grepped for the wrong one would read a solved
+        // helpstalemate as a solved directmate.
+        const char* token = "; dm ";
+        switch (config.goal) {
+            case Goal::Stalemate:     token = "; sm ";  break;
+            case Goal::Selfmate:      token = "; sfm "; break;
+            case Goal::Selfstalemate: token = "; ssm "; break;
+            case Goal::Helpmate:      token = "; hm ";  break;
+            case Goal::Helpstalemate: token = "; hsm "; break;
+            case Goal::Mate:          break;
+        }
+        out << "; bm " << move_uci(proof.pv.front()) << token << proved_depth
                   << "; pv " << pv_uci(proof.pv);
         if (s.emit_proof && !proof.cert.empty()) {
             out << "; proof " << proof.cert;

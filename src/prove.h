@@ -200,11 +200,16 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     const bool have_move = has_legal_move(b, s.move_reserve, s.move_reserve_capacity,
                                           s.static_pseudo);
     if (!have_move) {
-        // No legal move: mated is the goal, stalemated is failure.
-        if (in_check(b, b.stm)) {
+        // No legal move, so the attacker is mated or stalemated -- and which of
+        // those is the goal and which is failure is the ONLY difference between
+        // a selfmate and a selfstalemate. The two verdicts are exact opposites
+        // here, so reading the wrong one proves the wrong problem while every
+        // output stays well-formed.
+        if (in_check(b, b.stm) == goal_wants_check(s.goal)) {
             std::string cert;
             if (s.emit_proof) {
-                cert = "{\"selfmated\":true}";
+                cert = s.goal == Goal::Selfmate ? "{\"selfmated\":true}"
+                                                : "{\"selfstalemated\":true}";
             }
             return Proof{true, {}, cert};
         }
@@ -321,6 +326,88 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         cert.push_back(']');
     }
     return Proof{true, pv, cert};
+}
+
+// The cooperative prover: helpmate and helpstalemate.
+//
+// Every other search in this engine is AND/OR -- the attacker picks a move that
+// works and the defender must have none that escapes. A helpmate has no
+// defender at all. Both sides want the same terminal, so EVERY node is an OR
+// node and the whole question is existential: does some sequence of `plies`
+// legal moves end in the goal?
+//
+// That is why none of the adversarial machinery is reused rather than adapted.
+// Proof and disproof numbers measure how much work an ADVERSARY can force; with
+// no adversary they carry no meaning. The restriction portfolio is sound only
+// because removing attacker options cannot invent a mate, an argument that says
+// nothing about a side which is helping. The root split parallelises a
+// disjunction over root moves whose children are conjunctions. None of the
+// three has a cooperative analogue, so this is a plain depth-first search with
+// a table, which is also what the shape of the problem wants: helpmates are
+// short and wide, not long and narrow.
+//
+// EXACT LENGTH, not "within". `h#3` asks for a mate on move three, not by move
+// three, so a solution at a shorter length does not answer it. The table key
+// therefore carries `plies`, which makes each length its own entry and reduces
+// the usual "proved within N implies proved within M>N" bound to an exact
+// match. Reusing the monotone bound directly would have been unsound.
+Proof prove_help(Search& s, const Board& b, int plies) {
+    if (search_cancelled(s)) {
+        return {};
+    }
+    ++s.stats.nodes;
+    if (plies <= 0) {
+        // The line is complete. The side to move is the one the stipulation
+        // requires to be mated or stalemated; both sides cooperated to get here,
+        // but the terminal is still an ordinary mate or stalemate.
+        if (goal_terminal(b, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+            std::string cert;
+            if (s.emit_proof) {
+                cert = s.goal == Goal::Helpmate ? "{\"helpmated\":true}"
+                                                : "{\"helpstalemated\":true}";
+            }
+            return Proof{true, {}, cert};
+        }
+        return {};
+    }
+
+    // `plies` is in the key, so this is an exact-length entry. See above.
+    TTKey key = tt_key(b, plies, 'H', s.attacker, s.goal);
+    Proof cached;
+    if (probe_exact_proof_table(s, key, plies, cached)) {
+        return cached;
+    }
+
+    bool scored = false;
+    auto moves = generate_ordered_moves(s, b, scored);
+    // No restriction is applied. `restrict_attacker_moves` exists to remove
+    // options from an adversary's opponent; here both sides are on the same
+    // side, and a restriction that removed a helper's move would remove
+    // solutions without the soundness argument that justifies it elsewhere.
+    ++s.stats.attacker_move_lists;
+    s.stats.attacker_moves += moves.size();
+
+    for (const Move& m : moves) {
+        ++s.stats.attacker_candidates;
+        const Board nb = make_move(b, m);
+        Proof child = prove_help(s, nb, plies - 1);
+        if (s.aborted) {
+            return {};
+        }
+        if (child.ok) {
+            std::vector<Move> pv{m};
+            pv.insert(pv.end(), child.pv.begin(), child.pv.end());
+            std::string cert;
+            if (s.emit_proof) {
+                cert = "{\"h\":" + json_quote(move_uci(m)) + ",\"n\":" + child.cert + "}";
+            }
+            Proof proof{true, pv, cert};
+            store_exact_proof_table(s, key, plies, proof);
+            return proof;
+        }
+    }
+    store_exact_proof_table(s, key, plies, {});
+    return {};
 }
 
 Proof prove_defender(Search& s, const Board& b, int depth) {

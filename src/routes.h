@@ -350,7 +350,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         }
         s.aborted = false;
 
-        result.proof = s.goal == Goal::Selfmate
+        result.proof = goal_is_self(s.goal)
                          ? prove_selfmate_attacker(s, b, depth)
                          : prove_attacker(s, b, depth);
         if (result.proof.ok) {
@@ -377,6 +377,38 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
 // A silently wrong search is worse than a missing feature, so this route does
 // not share machinery it cannot yet be shown to share safely: no root split,
 // no preconditioner. Both are open work rather than impossibilities.
+// The cooperative route.
+//
+// No preconditioner, no root split, no restriction lanes -- see prove_help for
+// why none of the three has a meaning without an adversary. What is left is the
+// iterative-deepening frame the other routes use, which does still apply: a
+// shorter cooperative line is a better answer than a longer one, and
+// --direct-depth still means "search the asked length only".
+//
+// A help problem's length is counted in MOVES BY EACH SIDE, so `h#3` is six
+// plies. Passing the move count where the prover wants plies would have
+// searched half the problem and reported no solution, which reads exactly like
+// a hard position rather than like a bug.
+RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
+    RouteResult result;
+    const int start = s.direct_depth ? max_depth : 1;
+    for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
+        Proof p = prove_help(s, b, depth * 2);
+        if (s.aborted) {
+            return result; // abandoned, so its failure is not a verdict
+        }
+        if (p.ok) {
+            result.proof = p;
+            result.proved_depth = static_cast<int>((p.pv.size() + 1) / 2);
+            break;
+        }
+        if (s.timed_out) {
+            break;
+        }
+    }
+    return result;
+}
+
 RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
 
@@ -473,8 +505,13 @@ RouteResult run_route(Search& s, const Board& b, int max_depth) {
     // disproofs into the exact table that answer a different question, so the
     // search silently finds nothing. That is exactly what it did before this
     // guard, while --route depth-first solved the same positions.
-    if (s.goal == Goal::Selfmate) {
+    if (goal_is_self(s.goal)) {
         return run_selfmate_route(s, b, max_depth);
+    }
+    // The same argument applies with more force to the cooperative goals: DFPN
+    // measures what an adversary can force, and a helpmate has no adversary.
+    if (goal_is_help(s.goal)) {
+        return run_help_route(s, b, max_depth);
     }
     switch (s.route) {
         case RouteKind::DepthFirst:

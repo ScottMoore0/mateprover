@@ -57,15 +57,47 @@ enum class RouteKind {
 // and only the terminal predicate differs. Stalemate is not a weaker mate: a
 // position that is checkmate FAILS a stalemate goal, so the two are disjoint
 // rather than nested, and a search cannot be reused between them.
+// What the search must establish. The value is part of every table key, so a
+// verdict recorded under one goal can never be read back under another.
+//
+// Three shapes, not six variations. The distinction decides which prover runs:
+//
+//   Mate, Stalemate            adversarial. Attacker maximises, defender
+//                              resists. Goal tested AFTER each attacker move.
+//   Selfmate, Selfstalemate    adversarial, inverted. The attacker forces the
+//                              DEFENDER to end it. Goal tested at an attacker
+//                              node BEFORE moving, and four degenerate cases
+//                              each carry a distinct verdict.
+//   Helpmate, Helpstalemate    COOPERATIVE. Both sides are OR nodes; there is
+//                              no defender and no AND layer anywhere. Proof
+//                              numbers, the restriction portfolio and the
+//                              root split are all defined against an adversary
+//                              and none of them apply. See section 58.
 enum class Goal {
     Mate,
     Stalemate,
-    // The attacker forces the DEFENDER to mate him. Structurally different from
-    // the other two, not just a different terminal predicate: the goal is tested
-    // at an attacker node BEFORE moving, rather than after each attacker move,
-    // and four degenerate cases each carry a distinct verdict.
     Selfmate,
+    Selfstalemate,
+    Helpmate,
+    Helpstalemate,
 };
+
+// Is this goal reached by the ATTACKER being unable to move, rather than the
+// defender? True for the self- goals, which invert who is trapped.
+inline bool goal_is_self(Goal g) {
+    return g == Goal::Selfmate || g == Goal::Selfstalemate;
+}
+
+// Is this goal cooperative -- both sides working toward the same end?
+inline bool goal_is_help(Goal g) {
+    return g == Goal::Helpmate || g == Goal::Helpstalemate;
+}
+
+// Does the terminal position require the trapped side to be IN CHECK (mate) or
+// NOT in check (stalemate)? The whole difference between each pair.
+inline bool goal_wants_check(Goal g) {
+    return g == Goal::Mate || g == Goal::Selfmate || g == Goal::Helpmate;
+}
 
 struct Move {
     int from = -1;

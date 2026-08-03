@@ -270,12 +270,31 @@ bool is_goal(const Board& b, Goal goal, bool move_reserve = false, std::size_t m
     switch (goal) {
         case Goal::Stalemate:
             return is_stalemate(b, move_reserve, move_reserve_capacity, static_pseudo);
+        // The self- goals want the ATTACKER trapped, which cannot hold in a
+        // position where the defender is to move, and the help- goals test
+        // their terminal at the end of the cooperative line rather than after
+        // any one move. Answering "no" is the correct answer to the question
+        // this function asks, not a stub for those goals.
         case Goal::Selfmate:
+        case Goal::Selfstalemate:
+        case Goal::Helpmate:
+        case Goal::Helpstalemate:
             return false;
         case Goal::Mate:
             break;
     }
     return is_checkmate(b, move_reserve, move_reserve_capacity, static_pseudo);
+}
+
+// The terminal predicate for a goal, applied to the side to move.
+//
+// One place, so the mate/stalemate distinction cannot drift between the
+// adversarial, inverted and cooperative provers that all need it.
+bool goal_terminal(const Board& b, Goal goal, bool move_reserve = false,
+                   std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
+    return goal_wants_check(goal)
+        ? is_checkmate(b, move_reserve, move_reserve_capacity, static_pseudo)
+        : is_stalemate(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
 // Occupancy planes only: enough to answer attack queries, without the mailbox,

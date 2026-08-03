@@ -497,13 +497,26 @@ int main(int argc, char** argv) {
                 config.goal = Goal::Stalemate;
             } else if (g == "selfmate") {
                 config.goal = Goal::Selfmate;
+            } else if (g == "selfstalemate") {
+                config.goal = Goal::Selfstalemate;
+            } else if (g == "helpmate") {
+                config.goal = Goal::Helpmate;
+            } else if (g == "helpstalemate") {
+                config.goal = Goal::Helpstalemate;
             } else {
-                return usage_error("option '--goal' expects mate, stalemate or selfmate");
+                return usage_error("option '--goal' expects mate, stalemate, selfmate, "
+                                   "selfstalemate, helpmate or helpstalemate");
             }
         } else if (arg == "--stalemate") {
             config.goal = Goal::Stalemate;
         } else if (arg == "--selfmate") {
             config.goal = Goal::Selfmate;
+        } else if (arg == "--selfstalemate") {
+            config.goal = Goal::Selfstalemate;
+        } else if (arg == "--helpmate") {
+            config.goal = Goal::Helpmate;
+        } else if (arg == "--helpstalemate") {
+            config.goal = Goal::Helpstalemate;
         } else if (arg == "--dfpn-check-bias") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-check-bias' requires a weight");

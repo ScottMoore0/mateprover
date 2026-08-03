@@ -109,8 +109,23 @@ int infer_mate_depth(const std::string& line) {
     // `sfm N` is this engine's own selfmate spelling, so its own output round
     // trips as input. Checked before `sm` and `#`: a selfmate line carries an
     // `s#N` too, and reading that as a directmate would search the wrong goal.
+    // Longest token first. `ssm ` and `hsm ` both CONTAIN `sm `, and `hm ` is
+    // contained in nothing but matches no other rule, so a shorter probe run
+    // first would read a selfstalemate or a helpstalemate as a stalemate. The
+    // digits happen to agree in every case today, which is exactly why this
+    // ordering has to be deliberate rather than lucky: it stops agreeing the
+    // moment any token grows a second field.
+    if (auto pos = line.find("hsm "); pos != std::string::npos) {
+        if (int d = read_digits(pos + 4); d > 0) return d;
+    }
+    if (auto pos = line.find("ssm "); pos != std::string::npos) {
+        if (int d = read_digits(pos + 4); d > 0) return d;
+    }
     if (auto pos = line.find("sfm "); pos != std::string::npos) {
         if (int d = read_digits(pos + 4); d > 0) return d;
+    }
+    if (auto pos = line.find("hm "); pos != std::string::npos) {
+        if (int d = read_digits(pos + 3); d > 0) return d;
     }
     if (auto pos = line.find("sm "); pos != std::string::npos) {
         if (int d = read_digits(pos + 3); d > 0) return d;

@@ -41,7 +41,11 @@ int static_move_terms(const Board& b, const Move& m) {
 // goals, which is why this is a sign flip rather than a separate field.
 int check_term(bool gives_check, Goal goal) {
     if (!gives_check) return 0;
-    return goal == Goal::Stalemate ? -50000 : 50000;
+    // Negative wherever the terminal wants the trapped side NOT in check, so a
+    // checking move sorts last instead of first. The sign is not cosmetic: with
+    // it positive under a stalemate goal, an unscored move read as "not a
+    // check" and a CHECKMATE was accepted as a stalemate (54).
+    return goal_wants_check(goal) ? 50000 : -50000;
 }
 
 // Can a move with this ordering score possibly reach the goal?
@@ -64,7 +68,7 @@ bool move_can_reach_goal(int score, Goal goal) {
     //
     // Signs separate the two cleanly: with the check term negative, every
     // checking move scores below zero and every other move at or above it.
-    return goal == Goal::Stalemate ? score >= 0 : score >= 50000;
+    return goal_wants_check(goal) ? score >= 50000 : score >= 0;
 }
 
 // Ordering terms that require the child board, given that board.
@@ -173,7 +177,15 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
         | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 34)
         | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 35)
         | (ep << 39)
-        | (static_cast<std::uint64_t>(goal == Goal::Stalemate ? 1 : 0) << 47);
+        // THREE bits, not one. This used to be `goal == Stalemate ? 1 : 0`,
+        // which gave Mate and Selfmate the same encoding -- harmless only
+        // because no table has ever spanned two goals, since a Search fixes its
+        // goal for life and every portfolio lane shares it. With six goals that
+        // latent collision would have become a live one, and the symptom would
+        // have been a verdict proved under one goal returned as another: a
+        // false proof with nothing wrong in the output to see. ep occupies bits
+        // 39-45, so 47-49 are free.
+        | (static_cast<std::uint64_t>(goal) << 47);
     return k;
 }
 
