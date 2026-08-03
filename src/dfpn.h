@@ -424,7 +424,9 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // generator already computed that bit, so the child board is built inside
     // the test rather than for every move up front: at ~0.6 tests per node,
     // pre-building all of them meant ~24 make_move calls to examine one.
-    const bool mate_shortcut = scored && s.score_checks && !s.score_mates;
+    // Mate goal only; see the note in prove.h. Here a wrong skip would cost
+    // only search quality, but the flag is unreliable for the same reason.
+    const bool mate_shortcut = scored && s.score_checks && !s.score_mates && s.goal == Goal::Mate;
     for (std::size_t i = 0; i < moves.size(); ++i) {
         const Move& m = moves[i];
         // Which moves can possibly reach the goal, read off the check term the

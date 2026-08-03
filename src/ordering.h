@@ -52,7 +52,19 @@ int check_term(bool gives_check, Goal goal) {
 // directly -- getting that test backwards once silently skipped every candidate,
 // and getting it backwards the other way would accept a checkmate as a stalemate.
 bool move_can_reach_goal(int score, Goal goal) {
-    return goal == Goal::Stalemate ? score > -50000 : score >= 50000;
+    // The thresholds must clear static_move_terms, which adds up to 18050
+    // (capture 10000 + promotion 8000 + piece 50) on top of the check term.
+    //
+    // For a mate goal that is already true: a check scores at least 50000 and a
+    // non-check at most 18050, so `>= 50000` separates them. For a stalemate
+    // goal it was NOT: a check scores -50000 plus statics, so a checking rook
+    // move scored -49960 -- above the -50000 threshold, read as "not a check",
+    // and then accepted as a stalemate because the defender had no reply. That
+    // is a CHECKMATE reported as `sm 1`, a false proof.
+    //
+    // Signs separate the two cleanly: with the check term negative, every
+    // checking move scores below zero and every other move at or above it.
+    return goal == Goal::Stalemate ? score >= 0 : score >= 50000;
 }
 
 // Ordering terms that require the child board, given that board.

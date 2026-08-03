@@ -476,7 +476,22 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
-    const bool can_use_ordered_check_shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates;
+    // Mate goal only, and that restriction is not conservatism.
+    //
+    // The shortcut infers "this move gives check" from the ordering score. For
+    // a mate goal that is safe: the check term is +50000 and every other term
+    // sums to at most 18050, so a score of 50000 or more means a check and an
+    // unscored move (0) simply fails the test and gets the full check.
+    //
+    // Under a stalemate goal the check term is NEGATIVE, so the safe direction
+    // inverts and an unscored move -- score 0 -- reads as "not a check", passes
+    // the test, and is accepted the moment the defender has no reply. That is a
+    // CHECKMATE reported as `sm 1`: a false proof, produced from a position the
+    // suite already tests. No threshold fixes it, because 0 is a legitimate
+    // score for a quiet move and an illegitimate one for an unscored check.
+    //
+    // So the goals that cannot carry the flag safely pay for the terminal test.
+    const bool can_use_ordered_check_shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates && s.goal == Goal::Mate;
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);

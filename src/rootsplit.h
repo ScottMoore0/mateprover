@@ -197,7 +197,8 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             move_to_front(moves, hint->second);
         }
     }
-    const bool shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates;
+    // Mate goal only; see the note in prove.h.
+    const bool shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates && s.goal == Goal::Mate;
 
     const int n = static_cast<int>(moves.size());
     const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
@@ -224,13 +225,19 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             ++probe.stats.root_sequential_tried;
 
             const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
+            // Goal-aware, and it was not. This tested is_checkmate whatever the
+            // goal while the certificate beside it already said "stalemate",
+            // so a root-split stalemate search would report a CHECKMATE as
+            // `sm 1` -- a false proof. Unreachable until a depth-first lane
+            // was added for that goal, and caught immediately by the test that
+            // a mate-in-1 must not be accepted as a stalemate.
             bool mate = false;
             if (shortcut) {
-                if (moves[static_cast<std::size_t>(i)].score >= 50000) {
+                if (move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, probe.goal)) {
                     mate = !has_legal_move(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
                 }
             } else {
-                mate = is_checkmate(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
+                mate = is_goal(nb, probe.goal, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
             }
 
             Proof found;
@@ -293,11 +300,11 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
             bool mate = false;
             if (shortcut) {
-                if (moves[static_cast<std::size_t>(i)].score >= 50000) {
+                if (move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, ws.goal)) {
                     mate = !has_legal_move(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
                 }
             } else {
-                mate = is_checkmate(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
+                mate = is_goal(nb, ws.goal, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
             }
 
             Proof found;

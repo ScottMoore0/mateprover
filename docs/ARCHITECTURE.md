@@ -130,6 +130,7 @@ did. If you are reading it for the first time:
 - [51. Selfmate Preconditioner: +124 Positions Of 200](#51-selfmate-preconditioner-124-positions-of-200)
 - [52. The Restriction Portfolio Transfers To Selfmate](#52-the-restriction-portfolio-transfers-to-selfmate)
 - [53. Root Splitting For Selfmate: Correct, Deterministic, And Inert](#53-root-splitting-for-selfmate-correct-deterministic-and-inert)
+- [54. A False Proof In The Stalemate Shortcut, And A Route Lane](#54-a-false-proof-in-the-stalemate-shortcut-and-a-route-lane)
 
 ## Impact-Ordered Architecture
 
@@ -3788,3 +3789,53 @@ So it ships correct rather than useful: `--threads` no longer silently does
 nothing for selfmate, and it still does nothing measurable. Parallelism for this
 goal, as for the others, would have to happen inside the tree rather than at its
 root.
+
+
+### 54. A False Proof In The Stalemate Shortcut, And A Route Lane
+
+Chasing the positions Chest solves and this engine did not turned up a false
+proof: `8/4R3/8/1K6/8/8/2R5/k7` with `--stalemate` returned `bm e7e1; sm 1` and
+the certificate `{"a":"e7e1","stalemate":true}`. Re1 is CHECKMATE. The engine
+reported a mate as a forced stalemate.
+
+The cause is the ordered-check shortcut, which infers "this move gives check"
+from the move's ordering score rather than from a flag. Under a mate goal that
+inference is safe: the check term is +50000 and every other term sums to at most
+18050, so a score at or above 50000 means check, and an unscored move (0) simply
+fails the test and pays for the full terminal check.
+
+Under a stalemate goal the check term is NEGATIVE, so the safe direction
+inverts. An unscored move scores 0, reads as "not a check", passes the test, and
+is accepted the instant the defender has no reply -- which is exactly what a
+checkmate looks like. No threshold repairs this, because 0 is a legitimate score
+for a quiet move and an illegitimate one for an unscored check. Two attempts at
+a better threshold both failed before that became clear.
+
+The shortcut is now restricted to the mate goal in all three places that use it,
+and the other goals pay for the terminal test. Verified rejected on every route
+and both thread counts, with genuine stalemates still solved.
+
+Two smaller fixes fell out of the same hunt. `run_root_split_depth` tested
+`is_checkmate` whatever the goal, while the certificate string beside it was
+already goal-aware -- latent, since the default route does not reach the root
+split, and exposed the moment a depth-first lane was added. And `is_goal` needed
+the same treatment for Selfmate (50).
+
+**The route lane.** The losing positions are tiny-material endgames -- K+R vs K
+at depth 13 -- where proof numbers from move counts carry no signal because
+every branch looks alike. A plain depth-first search recovers 3 of 8 stalemate
+losses and the only selfmate loss where no DFPN configuration recovers any, so
+the portfolio gains a depth-first lane for the non-directmate goals. Directmate
+keeps its measured lane set unchanged (8e).
+
+**Head to head after these changes**, 60 problems each, 20 s, 256 MB:
+
+| | Chest 3.19 | MateProver | on shared positions |
+|---|---|---|---|
+| stalemate, depth 10-16 | 31/60 | **36/60** | **1.57x median faster** (was 1.6x SLOWER) |
+| selfmate, s#5-s#10 | 34/60 | **48/60** | **3.99x median faster** |
+
+The speed regression on stalemate is gone. Nine stalemate positions and one
+selfmate position are still solved only by Chest, so neither goal dominates it
+outright; the portfolio lane helps in isolation but is memory-starved sharing a
+budget nine ways, which is the next thing to test rather than a conclusion.

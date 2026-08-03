@@ -21,6 +21,10 @@ struct PortfolioEntry {
     int max_defender_moves;
     int threat_depth;
     double weight;      // share of the budget
+    // Lanes differ by ROUTE as well as by restriction. 8e measured a rejected
+    // route to be worth no lane for directmates; the stalemate and selfmate
+    // goals disagree, and section 54 has the measurement.
+    RouteKind route = RouteKind::Dfpn;
 };
 
 // Derived by greedy set cover over a 20-candidate restriction sweep, measured
@@ -148,7 +152,25 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // it deterministic would mean waiting for lower-index entries that may
     // never finish, which is the whole cost this mode exists to avoid.
     auto run_parallel_portfolio = [&](Search& report) -> RouteResult {
-        const auto& entries = restriction_portfolio();
+        // Route diversity for the non-directmate goals.
+        //
+        // Measured on the positions Chest solves and this engine did not: a
+        // plain depth-first lane recovers 3 of 8 stalemate losses and the only
+        // selfmate loss, where every DFPN configuration recovers none. Those
+        // positions are tiny-material endgames -- K+R vs K at depth 13 -- where
+        // proof numbers derived from move counts carry no signal because every
+        // branch looks alike, and a straight depth-first walk with a table
+        // simply gets there.
+        //
+        // Directmate keeps the shipped lanes unchanged: 8e measured a rejected
+        // route to be worth no lane there, and that measurement still stands.
+        static const std::vector<PortfolioEntry> with_route = [] {
+            std::vector<PortfolioEntry> v = restriction_portfolio();
+            PortfolioEntry df{"depth-first", 0, 0, 0, 0, 0.100, RouteKind::DepthFirst};
+            v.push_back(df);
+            return v;
+        }();
+        const auto& entries = config.goal == Goal::Mate ? restriction_portfolio() : with_route;
         const int lanes = static_cast<int>(entries.size());
         const int total_threads = std::max(1, config.threads);
         // Threads follow the same weights as the time slices did. Splitting
@@ -191,6 +213,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
+            t.route = entries[static_cast<std::size_t>(i)].route;
             t.cancel = cancels.back().get();
             t.memory_mb = memory_share(static_cast<std::size_t>(lanes));
             t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
