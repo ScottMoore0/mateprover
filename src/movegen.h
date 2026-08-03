@@ -258,10 +258,24 @@ bool is_stalemate(const Board& b, bool move_reserve = false, std::size_t move_re
     return !in_check(b, b.stm) && !has_legal_move(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
+// "Is the goal reached in the position after an attacker move?"
+//
+// Selfmate answers no, always, and that is not a stub. Its goal is that the
+// ATTACKER is mated, which cannot be true in a position where the defender is
+// to move. Falling through to is_checkmate() here asked whether the DEFENDER is
+// mated -- the opposite of what a selfmate wants, and worth a +1000000 ordering
+// bonus under --score-mates. Dormant, since that flag is off by default, but it
+// would have scored exactly the wrong moves first.
 bool is_goal(const Board& b, Goal goal, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
-    return goal == Goal::Stalemate
-        ? is_stalemate(b, move_reserve, move_reserve_capacity, static_pseudo)
-        : is_checkmate(b, move_reserve, move_reserve_capacity, static_pseudo);
+    switch (goal) {
+        case Goal::Stalemate:
+            return is_stalemate(b, move_reserve, move_reserve_capacity, static_pseudo);
+        case Goal::Selfmate:
+            return false;
+        case Goal::Mate:
+            break;
+    }
+    return is_checkmate(b, move_reserve, move_reserve_capacity, static_pseudo);
 }
 
 // Occupancy planes only: enough to answer attack queries, without the mailbox,

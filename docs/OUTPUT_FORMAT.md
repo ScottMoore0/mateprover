@@ -123,6 +123,24 @@ pairs followed by `total <count>`:
 <original line>; legal_count 0; error input;
 ```
 
+## Goal tokens
+
+The depth token names the goal, and the goals are disjoint — a result for one is
+never a result for another, so no consumer can read one as the other:
+
+| token | goal |
+|---|---|
+| `dm N` | directmate: the attacker mates in N |
+| `sm N` | stalemate: the attacker forces stalemate in N (`--stalemate`) |
+| `sfm N` | selfmate: the attacker forces the DEFENDER to mate him in N (`--selfmate`) |
+
+A selfmate's principal variation is **2N plies**, ending with the defender's
+mating move — one ply longer than a directmate of the same N, which ends with
+the attacker's.
+
+Input accepts each engine's own spelling so a run's output feeds back in, plus
+the problem-chess conventions `#N`, `=N` and `s#N`.
+
 `--profile` writes one `% mateprover_profile {json}` line per position to **stderr**.
 Those counters are diagnostics, not a stable interface, and may change without
 a version bump. Everything on stdout is covered by this document.

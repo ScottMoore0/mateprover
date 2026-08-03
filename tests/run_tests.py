@@ -34,6 +34,7 @@ HERE = Path(__file__).resolve().parent
 
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
+SFM_RE = re.compile(r"\bsfm\s+(\d+)\b")
 BM_RE = re.compile(r"\bbm\s+([^;]+);")
 PV_RE = re.compile(r"\bpv\s+([^;]+);")
 NODES_RE = re.compile(r"\bnodes\s+(\d+)\b")
@@ -803,6 +804,69 @@ def test_corpus_ergonomics(engine: Path, res: Results) -> None:
                "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -\n")
     twice = run(engine, ["-5", "--time-limit", "10", "-"], once)
     res.check("engine output round-trips as input", bool(DM_RE.search(twice)))
+
+
+def test_selfmate_goal(engine: Path, res: Results) -> None:
+    """A selfmate must run the selfmate search, and be checkable.
+
+    This goal shipped a bug that only a corpus caught. The first version reused
+    the depth-first route and redirected its two `prove_attacker` call sites --
+    but that route also reaches the prover through the ROOT SPLIT, so the
+    selfmate goal silently ran the DIRECTMATE search. 260 composed selfmates
+    came back refuted, and the one that came back "solved" was a position that
+    happens to contain a mate in one, reported as `sfm 1` with a directmate
+    certificate.
+
+    So the checks below are not about finding selfmates. They are about the
+    engine not answering a different question and labelling it with this one's
+    token.
+    """
+    print("\n[selfmate] the selfmate goal runs the selfmate search")
+
+    # Generated for this project, then confirmed with python-chess: after the
+    # key, every legal defender reply mates the attacker. None of the three has
+    # a directmate in one, so a directmate search cannot fake a result here.
+    SELFMATE_1 = ["r4q2/8/7R/k7/4b3/2K5/1Q6/8 w - -",
+                  "K1k5/7R/8/8/4r3/1Q6/4b2q/8 w - -",
+                  "8/8/1Q6/Rb6/r7/5K2/7q/5k2 w - -"]
+
+    for fen in SELFMATE_1:
+        out = run(engine, ["--selfmate", "-z", "1", "--time-limit", "10", "-"], f"{fen}\n")
+        res.check(f"selfmate in 1 found: {fen[:22]}", bool(SFM_RE.search(out)), out.strip()[:90])
+        res.check(f"reported as sfm, never dm: {fen[:22]}", " dm " not in out)
+
+    # A directmate is not a selfmate. This is the shipped bug, stated directly.
+    mate_only = "8/4R3/8/1K6/8/8/2R5/k7 w - -"
+    out = run(engine, ["--selfmate", "-z", "1", "--time-limit", "10", "-"], f"{mate_only}\n")
+    res.check("a mate-in-1 is not accepted as a selfmate", not SFM_RE.search(out),
+              out.strip()[:90])
+
+    # Every route must agree: run_route diverts selfmate away from all of them,
+    # and that diversion is what the bug was missing.
+    for route in ("dfpn", "depth-first", "shallow-fast"):
+        out = run(engine, ["--selfmate", "--route", route, "-z", "1",
+                           "--time-limit", "10", "-"], f"{SELFMATE_1[0]}\n")
+        res.check(f"route {route} runs the selfmate search", bool(SFM_RE.search(out)))
+
+    # Threads must not reintroduce it: the root split is where it lived.
+    for threads in ("1", "8"):
+        out = run(engine, ["--selfmate", "--threads", threads, "-z", "1",
+                           "--time-limit", "10", "-"], f"{SELFMATE_1[0]}\n")
+        res.check(f"threads={threads} runs the selfmate search", bool(SFM_RE.search(out)))
+
+    tool = HERE.parent / "tools" / "verify_proof.py"
+    if HAVE_CHESS and tool.exists():
+        raw = "".join(f"{f} sfm 1\n" for f in SELFMATE_1)
+        out = run(engine, ["--selfmate", "--emit-proof", "--time-limit", "10", "-"], raw)
+        # The certificate must carry selfmate leaves, not directmate ones.
+        res.check("certificate uses the selfmated leaf", '"selfmated"' in out)
+        res.check("certificate has no directmate leaf", '"mate":true' not in out)
+        proc = subprocess.run([sys.executable, str(tool), "--quiet", "-"],
+                              input=out.encode(), capture_output=True, timeout=120)
+        res.check("selfmate certificates verify independently", proc.returncode == 0,
+                  (proc.stdout + proc.stderr).decode().strip()[:150])
+    else:
+        res.skip("selfmate certificates verify independently", "python-chess absent")
 
 
 def test_stalemate_goal(engine: Path, res: Results) -> None:
@@ -1711,6 +1775,7 @@ def main() -> int:
     test_pv_and_certificates(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
+    test_selfmate_goal(args.engine, res)
     test_stalemate_goal(args.engine, res)
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)

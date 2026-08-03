@@ -51,6 +51,8 @@ DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 # `sm N` is a forced STALEMATE in N -- a different claim about the position,
 # checked against a different terminal predicate.
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
+# `sfm N` is a forced SELFMATE: the attacker compels the defender to mate him.
+SFM_RE = re.compile(r"\bsfm\s+(\d+)\b")
 PV_RE = re.compile(r"\bpv\s+([^;]+);")
 PROOF_RE = re.compile(r"\bproof\s+(\{.*\})\s*;", re.DOTALL)
 
@@ -143,6 +145,66 @@ def verify_node(board: chess.Board, node: dict, path: list[str],
         board.pop()
 
 
+def verify_selfmate_node(board: chess.Board, node: dict, path: list[str]) -> int:
+    """Verify one selfmate attacker node. `board` has the ATTACKER to move.
+
+    The shape differs from a directmate certificate. A leaf is `{"selfmated":
+    true}` and carries no move, because the goal -- the attacker is mated -- is
+    a statement about the side to move, reached when it is already his turn.
+    Everything else is the same obligation: the attacker's move must be legal,
+    and the defender node must list EXACTLY his legal replies, so a proof cannot
+    omit a defence that lets him escape mating the attacker.
+    """
+    where = " ".join(path) if path else "<root>"
+
+    if node.get("selfmated"):
+        if not board.is_checkmate():
+            raise Failure(f"after {where}: leaf claims the attacker is mated, "
+                          f"but he is not")
+        return 0
+    if node.get("mate") or node.get("stalemate"):
+        # This is the bug that shipped: a selfmate search emitting a directmate
+        # leaf because it had silently run the directmate code path.
+        raise Failure(f"after {where}: directmate/stalemate leaf inside a "
+                      f"selfmate proof")
+
+    move_uci = node.get("a")
+    if not isinstance(move_uci, str):
+        raise Failure(f"after {where}: attacker node has no move")
+    try:
+        move = chess.Move.from_uci(move_uci)
+    except ValueError:
+        raise Failure(f"after {where}: unparseable move {move_uci!r}")
+    if move not in board.legal_moves:
+        raise Failure(f"after {where}: illegal attacker move {move_uci}")
+
+    board.push(move)
+    try:
+        branches = node.get("d")
+        if not branches:
+            raise Failure(f"after {where} {move_uci}: no defender replies listed; "
+                          f"a defender with no legal move has not mated anyone")
+        listed = sorted(b.get("r", "") for b in branches)
+        legal = sorted(m.uci() for m in board.legal_moves)
+        if listed != legal:
+            missing = sorted(set(legal) - set(listed))
+            extra = sorted(set(listed) - set(legal))
+            raise Failure(f"after {where} {move_uci}: defender replies do not match "
+                          f"the legal moves (missing {missing}, extra {extra})")
+        worst = 0
+        for branch in branches:
+            reply = branch["r"]
+            board.push(chess.Move.from_uci(reply))
+            try:
+                worst = max(worst, verify_selfmate_node(board, branch["p"],
+                                                        path + [move_uci, reply]))
+            finally:
+                board.pop()
+        return worst + 1
+    finally:
+        board.pop()
+
+
 def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int,
               goal: str = "mate") -> None:
     replay = board.copy()
@@ -159,7 +221,9 @@ def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int,
             raise Failure("pv does not end in stalemate")
     elif not replay.is_checkmate():
         raise Failure("pv does not end in checkmate")
-    expected = 2 * claimed_depth - 1
+    # A selfmate line ends with the DEFENDER's mating move, so it is 2N plies,
+    # not the 2N-1 of a directmate.
+    expected = 2 * claimed_depth if goal == "selfmate" else 2 * claimed_depth - 1
     if len(pv) != expected:
         raise Failure(f"pv has {len(pv)} plies, expected {expected} for mate in "
                       f"{claimed_depth}")
@@ -196,6 +260,9 @@ def main() -> int:
             depth_match = SM_RE.search(line)
             goal = "stalemate"
         if not depth_match:
+            depth_match = SFM_RE.search(line)
+            goal = "selfmate"
+        if not depth_match:
             skipped += 1          # no mate reported: nothing to verify
             continue
 
@@ -215,7 +282,9 @@ def main() -> int:
             proof_match = PROOF_RE.search(line)
             if proof_match:
                 node = json.loads(proof_match.group(1))
-                proved = verify_node(board.copy(), node, [], goal)
+                proved = (verify_selfmate_node(board.copy(), node, [])
+                          if goal == "selfmate"
+                          else verify_node(board.copy(), node, [], goal))
                 if proved != depth:
                     raise Failure(f"certificate proves mate in {proved}, "
                                   f"reported {depth}")

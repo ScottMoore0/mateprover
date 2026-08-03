@@ -112,3 +112,23 @@ check that happens to sit alongside it.
 This is version 1. The grammar above is the compatibility surface. Additive
 changes (new optional keys) will not change the version; any change to the
 meaning of an existing key, or to the obligations, will.
+
+
+## Goal-specific leaves
+
+A leaf names the goal it reached, and a verifier must reject a leaf that claims
+the wrong one even when the position happens to satisfy the other:
+
+| leaf | means | checked against |
+|---|---|---|
+| `{"a": "<move>", "mate": true}` | after the attacker's move the defender is checkmated | `is_checkmate` |
+| `{"a": "<move>", "stalemate": true}` | after the attacker's move the defender is stalemated | `is_stalemate` |
+| `{"selfmated": true}` | the **attacker**, to move, is checkmated | `is_checkmate` with the attacker to move |
+
+The selfmate leaf carries no move. Its goal is a statement about the side to
+move, so it is reached when it is already the attacker's turn and he has none.
+
+That distinction is load-bearing. A selfmate search that silently ran the
+directmate code path emitted `{"a": "d6f6", "mate": true}` under an `sfm 1`
+token; `tools/verify_proof.py` now rejects a directmate or stalemate leaf found
+inside a selfmate proof, so the same mistake cannot pass verification.
