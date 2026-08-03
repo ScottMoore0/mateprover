@@ -79,6 +79,39 @@ never reproduced. The two development sets were re-minted with seeds on
 2026-08-02 and their reference values re-measured; the numbers they had before
 described sets that no longer exist.
 
+## Importing an external collection
+
+`../tools/import_problems.py` turns an exported problem collection into a
+verified corpus. It exists because a **generated** corpus contains only
+positions the engine can already solve, so its solve rate is 100% by
+construction and reach cannot be measured from it at all. An external
+collection carries a composer's stipulation as ground truth, so the problems the
+engine FAILS are still known to be sound -- and those are the ones that make a
+reach figure mean anything.
+
+Positions are classified, never filtered:
+
+| status | meaning |
+|---|---|
+| `solved` | proved at the stated depth |
+| `unsolved` | ran out of budget — **kept**, this is the evidence of reach |
+| `shorter` | proved at a shallower depth than stipulated |
+| `refuted` | searched to completion; no solution at that depth |
+| `unsupported` | a job type this engine does not implement (`s#`, `h#`) |
+
+`shorter` and `refuted` are kept too. Published collections do contain errors —
+matetrack's own documentation notes its predecessor held "positions with a
+sub-optimal or likely incorrect value" — and a corpus that silently drops
+whatever disagrees with it is a corpus that cannot be wrong.
+
+**Sourcing status.** No stalemate collection has been imported yet.
+`pdb.dieschwalbe.de` requires an account: its search redirects to `login.jsp`.
+YACPDB has ~570k problems and a documented query language, but no reachable API;
+its export is manual, capped at 1,000 results per search, in `.olv` format. Both
+are usable by hand, and using a collection locally is not redistribution — only
+shipping derived sets would be, which is what `fetch_corpus.py` and the recorded
+seeds exist to avoid.
+
 ## The current evaluation sets
 
 | set | positions | depth | measured once |
