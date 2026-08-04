@@ -428,6 +428,50 @@ Proof prove_help(Search& s, const Board& b, int plies) {
     return {};
 }
 
+// Every cooperative solution, not just the first.
+//
+// Chest defines a helpmate as "find ALL sequences of 2N legal moves", and it is
+// right to: helpmates conventionally HAVE several intended solutions, so the set
+// is the answer rather than a soundness footnote the way a directmate's duals
+// are. Enumerating root moves is not enough either -- two solutions often share
+// a first move and differ later, and counting keys would report one.
+//
+// No transposition table. A cached "solved" entry records ONE line, so reusing
+// it would silently drop every other solution through that position; and a
+// cached "not solved" is still usable but not worth the risk of the two paths
+// diverging. Enumeration therefore pays full price, which is why it is capped.
+void collect_help_solutions(Search& s, const Board& b, int plies,
+                            std::vector<Move>& line,
+                            std::vector<std::vector<Move>>& out, std::size_t limit) {
+    if (search_cancelled(s) || out.size() >= limit) {
+        return;
+    }
+    ++s.stats.nodes;
+    if (plies <= 0) {
+        if (goal_terminal(b, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+            out.push_back(line);
+        }
+        return;
+    }
+    bool scored = false;
+    auto moves = generate_ordered_moves(s, b, scored);
+    const bool last_ply_prune = plies == 1 && scored && s.score_checks && !s.score_mates;
+    for (const Move& m : moves) {
+        if (out.size() >= limit) {
+            return;
+        }
+        if (last_ply_prune && !move_can_reach_goal(m.score, s.goal)) {
+            continue;
+        }
+        line.push_back(m);
+        collect_help_solutions(s, make_move(b, m), plies - 1, line, out, limit);
+        line.pop_back();
+        if (s.aborted) {
+            return;
+        }
+    }
+}
+
 Proof prove_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};

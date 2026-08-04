@@ -1073,6 +1073,43 @@ def test_analysis_modes(engine: Path, res: Results) -> None:
     res.check("the refutation table is printed", "refutations" in out)
     res.check("a failing key names its refutation", "Qe5+  Rxe5" in out, out.strip()[-200:])
 
+    # A helpmate's solutions are the answer, not a soundness footnote: they
+    # conventionally come in sets, and two of them often share a first move. All
+    # three counts below were brute forced with python-chess.
+    #   8/6P1/6nP/8/4K1k1/5Nr1/8/8   1 key, 2 solutions (they differ by
+    #                                UNDERPROMOTION: g8=B and g8=N)
+    #   r6R/2pkp3/...                5 keys, 5 solutions
+    for fen, keys, sols in (
+            ("8/6P1/6nP/8/4K1k1/5Nr1/8/8 b - -", 1, 2),
+            ("r6R/2pkp3/1b3R1p/p6r/2p1qpp1/1P2p3/2PQ4/6Kb b - -", 5, 5),
+            ("8/8/8/6R1/5pqB/4p3/2R2b1k/2K5 b - -", 1, 1)):
+        out = run(engine, ["--helpmate", "--all-solutions", "--direct-depth",
+                           "--time-limit", "30", "-"], f"{fen} hm 2\n")
+        res.check(f"helpmate keys={keys} solutions={sols}: {fen[:22]}",
+                  f"; keys {keys};" in out and f"; solutions {sols};" in out,
+                  out.strip()[:120])
+
+    # The cooperative root split must not let thread timing pick the answer.
+    # Workers claim indices from a shared counter and the LOWEST proving index
+    # wins, so the reported line is the same however the work was divided.
+    pvs = set()
+    for threads in ("1", "2", "8", "16"):
+        out = run(engine, ["--helpmate", "--direct-depth", "--threads", threads,
+                           "--time-limit", "30", "-"],
+                  "r6R/2pkp3/1b3R1p/p6r/2p1qpp1/1P2p3/2PQ4/6Kb b - - hm 2\n")
+        m = re.search(r"; pv ([^;]+);", out)
+        pvs.add(m.group(1) if m else "UNSOLVED")
+    res.check("the cooperative split is deterministic across thread counts",
+              len(pvs) == 1, f"{len(pvs)} distinct: {sorted(pvs)}")
+
+    # -Z supplies a depth only when the line carries none; -z overrides one it
+    # does carry. Without -Z an unannotated line silently became mate-in-1.
+    bare = "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -\n"
+    res.check("-Z supplies a depth for an unannotated line",
+              bool(DM_RE.search(run(engine, ["-Z", "2", "--time-limit", "20", "-"], bare))))
+    res.check("without -Z an unannotated line is depth 1",
+              not DM_RE.search(run(engine, ["--time-limit", "20", "-"], bare)))
+
     # -x runs the job on each successor instead of this position.
     out = run(engine, ["--successors", "--time-limit", "10", "-"],
               "7k/8/6K1/8/8/8/8/6Q1 b - - dm 1\n")

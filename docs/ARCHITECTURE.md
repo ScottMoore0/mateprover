@@ -136,6 +136,7 @@ did. If you are reading it for the first time:
 - [57. The Worker That Would Not Stop](#57-the-worker-that-would-not-stop)
 - [58. The Cooperative Goals, And A Benchmark That Flattered Its Own Engine](#58-the-cooperative-goals-and-a-benchmark-that-flattered-its-own-engine)
 - [59. The Composition Features, And An Endgame Fix Refuted By Measurement](#59-the-composition-features-and-an-endgame-fix-refuted-by-measurement)
+- [60. Parallelising The Cooperative Search, And The Mate-In-8 Regression](#60-parallelising-the-cooperative-search-and-the-mate-in-8-regression)
 
 ## Impact-Ordered Architecture
 
@@ -4195,3 +4196,55 @@ it would guide the search while the exact prover still produced the verdict and
 the certificate, so nothing about verifiability changes. It is scoped here and
 deliberately not implemented: a tablebase generator that is wrong is worse than
 none, and validating one is a project rather than an increment.
+
+### 60. Parallelising The Cooperative Search, And The Mate-In-8 Regression
+
+**The cooperative split.** A help node is a pure disjunction, which makes it the
+simplest split in the program -- no defender layer, no conjunction to preserve --
+and it was the last search here to get one. That is why helpmate was the single
+goal Chest still won.
+
+Determinism is kept exactly as the other splits keep it: workers claim root
+indices from a shared counter and the LOWEST proving index wins, whoever finds
+it. Verified rather than assumed -- identical PVs across 1, 2, 8 and 16 threads,
+two runs each, on fifteen composed problems.
+
+Measured against Chest, best of three, matched claims: helpmate goes from 49/60
+with four positions solved only by Chest and a 0.69x median, to 34/40 level on
+coverage with ONE only-Chest position and a 1.02x median. The gap was structural
+and the structure was the fix.
+
+**All solutions, not all keys.** Chest defines a helpmate as "find all sequences
+of 2N legal moves", and helpmates conventionally have several intended solutions.
+Enumerating root moves is not the same thing: two solutions often share a first
+move. `8/6P1/6nP/8/4K1k1/5Nr1/8/8` has ONE key and TWO solutions, differing by
+underpromotion -- g8=B and g8=N. Counting keys reports one and loses the point of
+the problem.
+
+So the cooperative enumerator collects whole sequences, and it cannot use the
+table: a cached "solved" entry records one line, and reusing it would silently
+drop every other solution through that position. Enumeration therefore pays full
+price and is capped, and the output says `capped` when the cap bound the answer
+rather than letting a truncated count read as complete.
+
+**And the headline did not survive.** The directmate figures in RESULTS.md --
+40/40 against Chest's 39/40 at mate-in-8, a 20x median -- were measured with
+`--direct-depth`, and had never been re-run after the memory, thread and
+cancellation fixes. Re-measured at matched claims, best of three:
+
+| | Chest | mateprover | only Chest |
+|---|---|---|---|
+| mate-in-8 | **27/30** | 22/30 | **5** |
+| mate-in-10 | 13/30 | **23/30** | 0 |
+
+Mate-in-8 is a LOSS. Asked to prove the mate is no shorter -- the question Chest
+answers at every recursive level -- this engine solves 22 of 30 and misses five
+Chest finds. The earlier figure was not wrong about what it measured; it was the
+easier question presented as though it were the same one.
+
+Mate-in-10 reverses completely, which locates the effect: the portfolio's
+advantage is real and arrives WITH DEPTH, while at shallow depth Chest's
+iterative deepening at every recursive level beats it. That is a more useful
+statement than the headline it replaces, and it is the fourth time in this
+project that tightening a measurement has shrunk a margin. At mate-in-8 it went
+negative.

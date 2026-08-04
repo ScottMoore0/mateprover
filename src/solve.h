@@ -59,6 +59,14 @@ const std::vector<PortfolioEntry>& restriction_portfolio() {
     return entries;
 }
 
+// How many cooperative solutions to enumerate before stopping.
+//
+// A bound is necessary rather than tidy: enumeration cannot use the table, so a
+// wide position can hold more solutions than anyone wants printed. The output
+// says when the cap bound the answer, so a capped count is never mistaken for a
+// complete one.
+const std::size_t kHelpSolutionCap = 64;
+
 // The smallest table worth giving a lane, in MB.
 //
 // Measured on the eight stalemate positions that Chest solved and this engine
@@ -102,7 +110,11 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     Board b = *parsed;
     int max_depth = requested_depth > 0 ? requested_depth : infer_mate_depth(line);
     if (max_depth <= 0) {
-        max_depth = 1;
+        // -Z supplies a depth for lines that carry none, which is distinct from
+        // -z overriding whatever the line does carry. Falling back to 1 without
+        // it turned an unannotated file into a run of mate-in-1 searches that
+        // found nothing and looked like a hard corpus.
+        max_depth = config.default_depth > 0 ? config.default_depth : 1;
     }
 
     // Legality only. parse_fen4 has already rejected everything unusable -- a
@@ -499,6 +511,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
 
     std::vector<RootSolution> root_solutions;
     std::vector<RootRefutation> root_refutations;
+    std::vector<std::vector<Move>> help_solutions;
     if (config.all_solutions) {
         // One unrestricted search, enumerating rather than short-circuiting.
         static_cast<SearchConfig&>(s) = config;
@@ -513,8 +526,21 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             s.deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                      std::chrono::duration<double>(config.time_limit));
         }
-        root_solutions = run_all_root_solutions(s, b, max_depth,
-                                                config.print_tree ? &root_refutations : nullptr);
+        if (goal_is_help(config.goal)) {
+            // Help goals enumerate whole SEQUENCES, because two solutions often
+            // share a first move: counting root keys would report one where a
+            // composer intends two. See prove.h.
+            std::vector<Move> line;
+            collect_help_solutions(s, b, max_depth * 2, line, help_solutions, kHelpSolutionCap);
+            for (const std::vector<Move>& sol : help_solutions) {
+                if (!sol.empty()) {
+                    root_solutions.push_back(RootSolution{sol.front(), Proof{true, sol, {}}});
+                }
+            }
+        } else {
+            root_solutions = run_all_root_solutions(s, b, max_depth,
+                                                    config.print_tree ? &root_refutations : nullptr);
+        }
         if (!root_solutions.empty()) {
             route_result.proof = root_solutions.front().proof;
             route_result.proved_depth =
@@ -627,11 +653,33 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // one key is a sound problem and more than one is a cook. Stating the
         // count separately from the list means a consumer can test soundness
         // without parsing moves.
-        out << "; keys " << root_solutions.size() << "; sols";
-        for (const RootSolution& r : root_solutions) {
-            out << " " << move_uci(r.move);
+        if (goal_is_help(config.goal)) {
+            // Distinct first moves, and whole solutions. They differ whenever
+            // two solutions share a key, which is common in helpmates, so
+            // reporting only one of the two numbers would mislead either way.
+            std::vector<std::string> distinct;
+            for (const RootSolution& r : root_solutions) {
+                const std::string u = move_uci(r.move);
+                if (std::find(distinct.begin(), distinct.end(), u) == distinct.end()) {
+                    distinct.push_back(u);
+                }
+            }
+            out << "; keys " << distinct.size() << "; solutions " << help_solutions.size();
+            if (help_solutions.size() >= kHelpSolutionCap) {
+                // Never let a truncated enumeration read as a complete one.
+                out << "; capped";
+            }
+            out << "; sols";
+            for (const std::string& u : distinct) {
+                out << " " << u;
+            }
+        } else {
+            out << "; keys " << root_solutions.size() << "; sols";
+            for (const RootSolution& r : root_solutions) {
+                out << " " << move_uci(r.move);
+            }
+            out << (root_solutions.size() == 1 ? "; sound" : "; cooked");
         }
-        out << (root_solutions.size() == 1 ? "; sound" : "; cooked");
     }
     if (accepted && winning_entry != nullptr && std::string(winning_entry) != "unrestricted") {
         // Say which restriction proved it: the mate is real but may not be the

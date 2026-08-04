@@ -170,6 +170,18 @@ struct SearchConfig {
     // algebraic rather than coordinates (-S).
     bool print_tree = false;
     bool short_notation = false;
+    // Extend the printed tree by this many full moves beyond the proof (-l).
+    // The proof stops at mate; an analyst sometimes wants the line continued.
+    int tree_extra_moves = 0;
+    // Dual suppression level, counted in full moves from the leaves (-u), and
+    // complete suppression except at the top level (-U). These control how much
+    // of a deep tree is printed, not what is searched: top-level duals are the
+    // soundness verdict and are never suppressed.
+    int dual_suppression = 0;
+    bool suppress_all_duals = false;
+    // Depth used when the input line carries none (-Z), as distinct from -z
+    // which OVERRIDES whatever the line says.
+    int default_depth = 0;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

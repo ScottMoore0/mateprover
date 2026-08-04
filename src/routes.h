@@ -504,9 +504,46 @@ std::vector<RootSolution> run_all_root_solutions(Search& s, const Board& b, int 
 // a hard position rather than like a bug.
 RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
+
+    // Workers are built once and lazily, as the other routes do: a position
+    // resolved without ever splitting pays nothing for threads it never uses.
+    std::vector<std::unique_ptr<Search>> workers;
+    std::vector<std::unique_ptr<WorkerSlot>> slots;
+    const int thread_count = std::max(1, s.threads);
+    auto ensure_workers = [&]() {
+        if (!workers.empty()) {
+            return;
+        }
+        workers.reserve(static_cast<std::size_t>(thread_count));
+        slots.reserve(static_cast<std::size_t>(thread_count));
+        for (int w = 0; w < thread_count; ++w) {
+            slots.emplace_back(new WorkerSlot());
+            auto ws = std::unique_ptr<Search>(new Search());
+            static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
+            ws->attacker = s.attacker;
+            ws->has_deadline = s.has_deadline;
+            ws->deadline = s.deadline;
+            ws->cancel = &slots.back()->cancel;
+            ws->external_cancel = s.cancel;
+            ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+            workers.push_back(std::move(ws));
+        }
+    };
+
     const int start = s.direct_depth ? max_depth : 1;
     for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
-        Proof p = prove_help(s, b, depth * 2);
+        Proof p;
+        // Depth 1 is two plies and a flat scan; the split would cost more in
+        // thread setup than it saves, exactly as on the other routes.
+        if (thread_count > 1 && depth > 1) {
+            ensure_workers();
+            Proof split;
+            if (run_help_root_split(s, workers, slots, b, depth * 2, split)) {
+                p = std::move(split);
+            }
+        } else {
+            p = prove_help(s, b, depth * 2);
+        }
         if (s.aborted) {
             return result; // abandoned, so its failure is not a verdict
         }

@@ -187,6 +187,43 @@ the weight -- an engine answering "yes" to everything passes a positives-only
 suite, and an inverted terminal predicate produces exactly that. The engine
 agreed on all 354, and every certificate it emitted verified independently.
 
+### All six goals at matched claims: the figures to believe
+
+Everything above this section gives mateprover `--direct-depth`. This table does
+not. Both engines prove the SHORTEST solution, one position at a time, Chest with
+2048 MB against mateprover's 256 MB a lane, **best of three trials per position**
+so that a single unlucky run cannot decide a comparison at one-second scales:
+
+| goal | Chest | mateprover | only Chest | median | >1.5x slower |
+|---|---|---|---|---|---|
+| **mate-in-8** | **27/30** | 22/30 | **5** | 2.79x | 8/22 |
+| mate-in-10 | 13/30 | **23/30** | **0** | 7.79x | 1/13 |
+| stalemate | 18/40 | **31/40** | **0** | 1.22x | 2/18 |
+| selfmate | 19/40 | **22/40** | **3** | 6.09x | 3/16 |
+| helpmate | 34/40 | 34/40 | **1** | 1.02x | 4/33 |
+| helpstalemate | 31/40 | **35/40** | **0** | 1.25x | 1/31 |
+| selfstalemate | 23/35 | 23/35 | **0** | 0.72x | 7/23 |
+
+**Mate-in-8 is a loss, and it contradicts this document's own headline.** The
+table further up reports 40/40 against Chest's 39/40 with a 20x median. That was
+measured with `--direct-depth`, proving a mate WITHIN 8. Asked the question Chest
+actually answers -- prove the mate is no shorter -- mateprover solves 22 of 30
+and misses five Chest finds.
+
+The two results are not in conflict; they are answers to different questions, and
+the earlier one was the easier question presented as though it were the same. The
+shape is consistent across this project: every time a measurement has been
+tightened, the margin has shrunk. Mate-in-8 is where it goes negative.
+
+Depth is what separates the two rows. At mate-in-10 the ordering reverses
+completely -- 23/30 against 13/30, nothing solved only by Chest, a 7.79x median
+-- so the portfolio's advantage is real but arrives with depth, and at shallow
+depth Chest's iterative deepening at every recursive level is simply better than
+what this engine does.
+
+The selfstalemate `0.72x median` is noise, not a finding: those positions resolve
+in 0.00-0.01 s, where the numbers are timer granularity.
+
 ### The composition features
 
 Everything above answers the prover's question. These answer the problemist's.
@@ -345,7 +382,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 360 automated checks, including perft, negative controls, restriction
+- 366 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than

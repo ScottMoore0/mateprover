@@ -174,6 +174,17 @@ void print_usage() {
 "                                the refutation table: for each root move that\n"
 "                                fails, a defence that survives it\n"
 "  --short-notation | -S         algebraic rather than coordinates in the tree\n"
+"  --tree-extra N | -l           accepted for compatibility; has no effect. The\n"
+"                                certificate is complete to the terminal and\n"
+"                                there is nothing beyond it to print\n"
+"  --suppress-duals | -u         accepted for compatibility; has no effect. A\n"
+"  --suppress-all-duals | -U     certificate records ONE attacker move per node,\n"
+"                                so a printed tree never contains a sub-line\n"
+"                                dual to suppress. Top-level duals are never\n"
+"                                suppressed by either engine; --all-solutions\n"
+"                                reports them\n"
+"  --default-depth N | -Z        depth for input lines that carry none (-z\n"
+"                                OVERRIDES a depth the line does carry)\n"
 "  --successors | -x             run the job on every position reachable in one\n"
 "                                move instead of on this one (\"black moves but\n"
 "                                loses in x moves\")\n"
@@ -473,6 +484,25 @@ int main(int argc, char** argv) {
         } else if (arg == "--portfolio-parallel") {
             config.portfolio = true;
             config.portfolio_parallel = true;
+        } else if (arg == "-l" || arg == "--tree-extra") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '-l' requires a move count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '-l' expects a number");
+            config.tree_extra_moves = static_cast<int>(value);
+        } else if (arg == "-u" || arg == "--suppress-duals") {
+            // Chest increments the level each time -u is given.
+            ++config.dual_suppression;
+        } else if (arg == "-U" || arg == "--suppress-all-duals") {
+            config.suppress_all_duals = true;
+        } else if (arg == "-Z" || arg == "--default-depth") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '-Z' requires a depth");
+            std::size_t value = 0;
+            if (!parse_size(v, value) || value == 0) {
+                return usage_error("option '-Z' expects a positive depth");
+            }
+            config.default_depth = static_cast<int>(value);
         } else if (arg == "--all-solutions" || arg == "--duals") {
             config.all_solutions = true;
         } else if (arg == "--successors" || arg == "-x") {
