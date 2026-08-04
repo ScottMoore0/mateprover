@@ -154,6 +154,22 @@ struct SearchConfig {
     // The split scales that lane but steals cores from the lanes that resolve
     // most positions quickly, so this is a bounded share. See section 57.
     int route_lane_threads = 0;
+    // Enumerate EVERY root move that solves, not just the first.
+    //
+    // A second solution at the root is a dual, and a directmate with one is
+    // cooked. This is the composition question rather than the prover's, and it
+    // defeats the first-proof short-circuit at the root deliberately. See
+    // section 59.
+    bool all_solutions = false;
+    // Analyse each successor position instead of this one (Chest's -x): "black
+    // moves, but loses in N".
+    bool successors = false;
+    // Check the position for legality and report, without searching (-c).
+    bool legality_only = false;
+    // Print the solution tree rather than a single line (-L), and in short
+    // algebraic rather than coordinates (-S).
+    bool print_tree = false;
+    bool short_notation = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;

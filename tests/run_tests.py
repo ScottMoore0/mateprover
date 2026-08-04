@@ -1013,6 +1013,111 @@ def test_new_goals(engine: Path, res: Results) -> None:
         res.skip("cooperative certificates verify independently", "python-chess absent")
 
 
+def test_analysis_modes(engine: Path, res: Results) -> None:
+    """Duals, the solution tree, algebraic notation, successors and legality.
+
+    These answer the COMPOSITION question rather than the prover's. A solver
+    stops at the first proof because one proof settles "is there a mate in N";
+    a problemist needs to know whether the key is unique, because a second root
+    solution is a dual and the problem is cooked.
+    """
+    print("\n[analysis] duals, tree, algebraic, successors, legality")
+
+    # A composed problem has exactly one key. Independently confirmed with
+    # python-chess: keys = ['h5a5'].
+    SOUND = "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - -"
+    out = run(engine, ["--all-solutions", "--time-limit", "30", "-"], f"{SOUND} dm 2\n")
+    res.check("a composed mate-in-2 has one key", "; keys 1;" in out, out.strip()[:110])
+    res.check("one key is reported sound", "; sound" in out and "; cooked" not in out)
+
+    # K+Q against a bare king is riddled with duals. python-chess counts 18.
+    COOKED = "7k/8/6K1/8/8/8/8/6Q1 w - -"
+    out = run(engine, ["--all-solutions", "--time-limit", "30", "-"], f"{COOKED} dm 2\n")
+    res.check("a cooked position reports every key", "; keys 18;" in out, out.strip()[:110])
+    res.check("more than one key is reported cooked", "; cooked" in out)
+
+    # Duals must never be counted under a restriction: a restricted lane removes
+    # attacker options, so it can only ever undercount, and undercounting turns
+    # "cooked" into "sound" -- a wrong answer to the one question being asked.
+    # Behavioural, not configurational. `--print-config` reports the user's
+    # portfolio FLAG, not whether the portfolio actually ran, so a check against
+    # it would be measuring the wrong thing -- and the first draft of it read
+    # `'"portfolio":false' in cfg or True`, which cannot fail at all.
+    out_restricted = run(engine, ["--all-solutions", "-K", "2", "--time-limit", "30", "-"],
+                         f"{COOKED} dm 2\n")
+    res.check("a restriction cannot make a cooked position look sound",
+              "; cooked" in out_restricted or "; keys 18;" in out_restricted,
+              out_restricted.strip()[:110])
+
+    # The tree is printed from the certificate, so it cannot disagree with what
+    # was proved. In algebraic the key of the composed problem is Qa5.
+    #
+    # --no-portfolio, because a restricted lane may prove a DIFFERENT key --
+    # equally valid, since the portfolio's whole point is that any lane's mate
+    # is real -- and the tree would then start from that one. The tree is not
+    # non-deterministic; which of several sound proofs gets printed is.
+    out = run(engine, ["--tree", "--short-notation", "--emit-proof", "--no-portfolio",
+                       "--time-limit", "30", "-"], f"{SOUND} dm 2\n")
+    # Normalised: the engine writes \n and Windows stdout turns it into \r\n, so
+    # any check spanning a line break has to say which it means. Every other
+    # check in this suite happens to sit within one line and so never noticed.
+    tree = out.replace("\r\n", "\n")
+    res.check("the solution tree prints in algebraic", "\nQa5\n" in tree, tree.strip()[-90:])
+    res.check("tree replies are indented under the key", "\n  Rd7\n" in tree)
+    res.check("mate is marked with #", "Nf5#" in tree)
+
+    # Refutations name a defence that survives. Confirmed independently: after
+    # Qe5+ Rxe5 there is no mate in 1.
+    out = run(engine, ["--all-solutions", "--tree", "--short-notation", "--emit-proof",
+                       "--no-portfolio", "--time-limit", "30", "-"], f"{SOUND} dm 2\n")
+    res.check("the refutation table is printed", "refutations" in out)
+    res.check("a failing key names its refutation", "Qe5+  Rxe5" in out, out.strip()[-200:])
+
+    # -x runs the job on each successor instead of this position.
+    out = run(engine, ["--successors", "--time-limit", "10", "-"],
+              "7k/8/6K1/8/8/8/8/6Q1 b - - dm 1\n")
+    res.check("successors are enumerated", "; successors 1" in out, out.strip()[:110])
+    res.check("each successor is reported under its move", "h8g8 " in out)
+
+    # -c reports legality without searching.
+    out = run(engine, ["--check-legal", "-"], f"{SOUND} dm 2\n")
+    res.check("legality-only reports legal", "; legal;" in out and "; dm " not in out,
+              out.strip()[:90])
+
+    # SAN against python-chess, move for move. Eyeballing is how an earlier
+    # version passed while marking every quiet move as a capture.
+    if HAVE_CHESS:
+        import chess
+        rng = random.Random(11)
+        board, positions = chess.Board(), []
+        for _ in range(300):
+            if board.is_game_over():
+                board = chess.Board()
+            board.push(rng.choice(list(board.legal_moves)))
+            if rng.random() < 0.3:
+                positions.append(board.fen())
+        positions = positions[:40]
+        inp = "".join(" ".join(f.split()[:4]) + "\n" for f in positions)
+        out = run(engine, ["--list-san", "-"], inp)
+        lines = [l for l in out.splitlines() if l.strip()]
+        compared = mismatched = 0
+        for fen, line in zip(positions, lines):
+            b = chess.Board(fen)
+            got = {}
+            if "; san " in line:
+                for tok in line.split("; san ", 1)[1].rstrip(";").split():
+                    u, _, s = tok.partition("=")
+                    got[u] = s
+            for m in b.legal_moves:
+                compared += 1
+                if got.get(m.uci()) != b.san(m):
+                    mismatched += 1
+        res.check(f"algebraic matches python-chess ({compared} moves)", mismatched == 0,
+                  f"{mismatched} mismatches")
+    else:
+        res.skip("algebraic matches python-chess", "python-chess absent")
+
+
 def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
     """`-M` covers every table alive at once, and dividing it must not reach 0.
 
@@ -1930,6 +2035,7 @@ def main() -> int:
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)
     test_new_goals(args.engine, res)
+    test_analysis_modes(args.engine, res)
     test_stalemate_goal(args.engine, res)
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)

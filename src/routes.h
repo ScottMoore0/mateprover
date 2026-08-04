@@ -377,6 +377,119 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
 // A silently wrong search is worse than a missing feature, so this route does
 // not share machinery it cannot yet be shown to share safely: no root split,
 // no preconditioner. Both are open work rather than impossibilities.
+// Every root move that solves, not merely the first one.
+//
+// This is the composition question, and it is a different question from the one
+// the rest of the engine answers. A prover stops at the first proof, because one
+// proof settles "is there a mate in N". A problemist needs to know whether the
+// intended key move is the ONLY one: a second solution at the root is a DUAL,
+// and a directmate with one is cooked -- unsound as a composition, however
+// genuine the mate. Chest computes top-level duals unconditionally for this
+// reason and documents that even -U cannot suppress them.
+//
+// So this deliberately defeats the short-circuit the whole engine is built on,
+// at the root and only at the root. Below the root the ordinary provers run
+// unchanged and stop at their first proof, which is sound here: a dual in a
+// sub-line does not make the KEY ambiguous, and enumerating them all would cost
+// the entire search's worth of pruning to answer a question nobody asked.
+//
+// The cost is real and unavoidable: N root moves means N searches where the
+// prover needed one, and no early exit. That is the price of the answer, not an
+// inefficiency to be tuned away.
+struct RootSolution {
+    Move move;
+    Proof proof;
+};
+
+// Why each root move that does NOT solve fails.
+//
+// Chest prints this by default and needs -r to suppress it, which is the right
+// emphasis: a solver's answer is the key, but an ANALYST's question is usually
+// "why doesn't my move work?". A refutation names the defence that survives it.
+//
+// The refutation reported is one surviving defence, not all of them, and not
+// necessarily the most testing. One is enough to refute, and finding the others
+// costs a full search per move to answer a question the analyst did not ask.
+struct RootRefutation {
+    Move move;
+    std::string reason;   // "gives no check" style summary, or a defending move
+};
+
+std::vector<RootSolution> run_all_root_solutions(Search& s, const Board& b, int depth,
+                                                 std::vector<RootRefutation>* refutations = nullptr) {
+    std::vector<RootSolution> found;
+    bool scored = false;
+    auto moves = generate_ordered_moves(s, b, scored);
+    restrict_attacker_moves(s, b, moves);
+
+    for (const Move& m : moves) {
+        if (search_cancelled(s)) {
+            break;
+        }
+        const Board nb = make_move(b, m);
+        Proof sub;
+        if (goal_is_help(s.goal)) {
+            // A cooperative root move is followed by 2N-1 further plies.
+            sub = prove_help(s, nb, depth * 2 - 1);
+        } else if (goal_is_self(s.goal)) {
+            // The self- goals test their terminal at an attacker node, so the
+            // root move hands straight to the defender at the SAME depth.
+            sub = prove_selfmate_defender(s, nb, depth);
+        } else if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+            sub = Proof{true, {}, s.emit_proof
+                ? (s.goal == Goal::Stalemate ? std::string("{\"stalemate\":true}")
+                                             : std::string("{\"mate\":true}"))
+                : std::string()};
+        } else if (depth > 1) {
+            sub = prove_defender(s, nb, depth - 1);
+        }
+        if (s.aborted) {
+            // An abandoned search records no verdict, so a partial enumeration
+            // must not be reported as a complete one. See the abort invariant.
+            return {};
+        }
+        if (sub.ok) {
+            std::vector<Move> pv{m};
+            pv.insert(pv.end(), sub.pv.begin(), sub.pv.end());
+            std::string cert;
+            if (s.emit_proof) {
+                cert = goal_is_help(s.goal)
+                    ? "{\"h\":" + json_quote(move_uci(m)) + ",\"n\":" + sub.cert + "}"
+                    : (goal_is_self(s.goal)
+                        ? "{\"a\":" + json_quote(move_uci(m)) + ",\"d\":" + sub.cert + "}"
+                        : (sub.cert.empty() || sub.pv.empty()
+                            ? "{\"a\":" + json_quote(move_uci(m)) + ","
+                              + (s.goal == Goal::Stalemate ? "\"stalemate\"" : "\"mate\"") + ":true}"
+                            : "{\"a\":" + json_quote(move_uci(m)) + ",\"d\":" + sub.cert + "}"));
+            }
+            found.push_back(RootSolution{m, Proof{true, pv, cert}});
+        } else if (refutations != nullptr) {
+            // Name a defence that survives. For the adversarial goals that is a
+            // defender reply the attacker cannot answer; searching each reply to
+            // depth-1 finds the first such. For the cooperative goals there is
+            // no defender to name, so the honest report is that the line simply
+            // does not reach the goal rather than an invented refuter.
+            std::string why = "no solution";
+            if (!goal_is_help(s.goal) && !goal_is_self(s.goal) && depth > 1) {
+                for (const Move& r : legal_moves(nb, s.move_reserve,
+                                                 s.move_reserve_capacity, s.static_pseudo)) {
+                    const Board rb = make_move(nb, r);
+                    Proof after = prove_attacker(s, rb, depth - 1);
+                    if (s.aborted) {
+                        return {};
+                    }
+                    if (!after.ok) {
+                        why = move_uci(r);
+                        break;
+                    }
+                }
+            }
+            refutations->push_back(RootRefutation{m, why});
+        }
+    }
+    return found;
+}
+
 // The cooperative route.
 //
 // No preconditioner, no root split, no restriction lanes -- see prove_help for

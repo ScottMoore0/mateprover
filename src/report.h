@@ -304,6 +304,227 @@ void list_legal_line(const std::string& raw) {
     std::cout << ";\n" << std::flush;
 }
 
+
+// ---------------------------------------------------------------------------
+// Human-readable solution output: short algebraic notation and the proof tree.
+//
+// The certificate is the machine's record and is deliberately terse. A
+// problemist reads a solution TREE -- key, then each defence and its refutation,
+// indented -- and reads it in algebraic, not in coordinates. Both are output
+// concerns rather than search concerns, so both live here and neither can
+// affect a verdict.
+// ---------------------------------------------------------------------------
+
+// Short algebraic for one move, in the position before it is played.
+//
+// Disambiguation is the whole difficulty. Two knights that can both reach the
+// square make "Nf3" ambiguous, and the rule is file first, then rank, then
+// both. The candidates must be filtered to LEGAL moves rather than pseudo-legal
+// ones: a piece pinned against its own king cannot really go there, so including
+// it would disambiguate against a move that does not exist.
+std::string move_san(const Board& b, const Move& m) {
+    const char piece = b.sq[static_cast<std::size_t>(m.from)];
+    const int type = type_of(piece);
+    std::string out;
+
+    if (m.castle) {
+        out = (file_of(m.to) > file_of(m.from)) ? "O-O" : "O-O-O";
+    } else if (type == PT_PAWN) {
+        // An empty square is '.', not 0. Testing against 0 made every move a
+        // capture, so a quiet key printed as "Qxa5".
+        const bool capture = m.ep || type_of(b.sq[static_cast<std::size_t>(m.to)]) != PT_NONE;
+        if (capture) {
+            out.push_back(static_cast<char>('a' + file_of(m.from)));
+            out.push_back('x');
+        }
+        out += sq_name(m.to);
+        if (m.promo) {
+            out.push_back('=');
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(m.promo))));
+        }
+    } else {
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(piece))));
+        bool same_file = false, same_rank = false, ambiguous = false;
+        for (const Move& other : legal_moves(b, false, 64, false)) {
+            if (other.from == m.from || other.to != m.to) {
+                continue;
+            }
+            if (type_of(b.sq[static_cast<std::size_t>(other.from)]) != type) {
+                continue;
+            }
+            ambiguous = true;
+            if (file_of(other.from) == file_of(m.from)) same_file = true;
+            if (rank_of(other.from) == rank_of(m.from)) same_rank = true;
+        }
+        if (ambiguous) {
+            // File alone unless another candidate shares it; then rank; then
+            // both, which is the case two pieces on the same file and rank
+            // cannot produce but three pieces can.
+            if (!same_file) {
+                out.push_back(static_cast<char>('a' + file_of(m.from)));
+            } else if (!same_rank) {
+                out.push_back(static_cast<char>('1' + rank_of(m.from)));
+            } else {
+                out += sq_name(m.from);
+            }
+        }
+        if (type_of(b.sq[static_cast<std::size_t>(m.to)]) != PT_NONE) {
+            out.push_back('x');
+        }
+        out += sq_name(m.to);
+    }
+
+    const Board nb = make_move(b, m);
+    if (in_check(nb, nb.stm)) {
+        out.push_back(has_legal_move(nb, false, 64, false) ? '+' : '#');
+    }
+    return out;
+}
+
+std::string move_text(const Board& b, const Move& m, bool short_notation) {
+    return short_notation ? move_san(b, m) : move_uci(m);
+}
+
+// A minimal reader for the certificate shapes this engine emits.
+//
+// Not a general JSON parser and not trying to be: it understands exactly the
+// objects `emit_proof` writes, and anything else makes it stop. That is the
+// right trade for output -- a printer that guesses at unknown input would
+// present a tree that is not the one the search proved.
+struct CertReader {
+    const std::string& s;
+    std::size_t i = 0;
+    explicit CertReader(const std::string& text) : s(text) {}
+
+    void skip() { while (i < s.size() && (s[i] == ' ' || s[i] == ',')) ++i; }
+    bool eat(char c) { skip(); if (i < s.size() && s[i] == c) { ++i; return true; } return false; }
+    bool peek(char c) { skip(); return i < s.size() && s[i] == c; }
+    std::string str() {
+        skip();
+        if (i >= s.size() || s[i] != '"') return {};
+        ++i;
+        std::string out;
+        while (i < s.size() && s[i] != '"') {
+            if (s[i] == '\\' && i + 1 < s.size()) ++i;
+            out.push_back(s[i++]);
+        }
+        ++i;
+        return out;
+    }
+    // Reads `"key":` and returns the key, or empty at the end of an object.
+    std::string key() {
+        skip();
+        if (i >= s.size() || s[i] != '"') return {};
+        std::string k = str();
+        eat(':');
+        return k;
+    }
+    void skip_value() {
+        skip();
+        if (i >= s.size()) return;
+        if (s[i] == '"') { str(); return; }
+        if (s[i] == '{' || s[i] == '[') {
+            const char open = s[i], close = open == '{' ? '}' : ']';
+            int depth = 0;
+            for (; i < s.size(); ++i) {
+                if (s[i] == open) ++depth;
+                else if (s[i] == close && --depth == 0) { ++i; return; }
+            }
+            return;
+        }
+        while (i < s.size() && s[i] != ',' && s[i] != '}' && s[i] != ']') ++i;
+    }
+};
+
+// `<fen>; san <uci>=<san> ...` -- every legal move in both notations.
+//
+// A diagnostic, and the hook the test suite uses to compare this engine's SAN
+// against python-chess move for move. SAN is full of edge cases -- three kinds
+// of disambiguation, castling, promotion, en passant, the check and mate
+// suffixes -- and an earlier version of move_san passed a three-move eyeball
+// while marking every quiet move as a capture.
+void list_san_line(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        return;
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; san_count 0; error input;\n" << std::flush;
+        return;
+    }
+    Board b = *parsed;
+    auto moves = legal_moves(b);
+    std::vector<std::string> pairs;
+    pairs.reserve(moves.size());
+    for (const Move& move : moves) {
+        pairs.push_back(move_uci(move) + "=" + move_san(b, move));
+    }
+    std::sort(pairs.begin(), pairs.end());
+    std::cout << fen4(b) << "; san_count " << pairs.size() << "; san";
+    for (const std::string& pair : pairs) {
+        std::cout << ' ' << pair;
+    }
+    std::cout << ";\n" << std::flush;
+}
+
+void print_cert_tree(std::ostream& out, CertReader& r, Board b, int indent,
+                     bool short_notation);
+
+// One `{...}` node of a certificate, with `b` the position it describes.
+void print_cert_node(std::ostream& out, CertReader& r, Board b, int indent,
+                     bool short_notation) {
+    if (!r.eat('{')) {
+        return;
+    }
+    const std::string pad(static_cast<std::size_t>(indent) * 2, ' ');
+    for (;;) {
+        if (r.eat('}')) return;
+        const std::string k = r.key();
+        if (k.empty()) { r.eat('}'); return; }
+        if (k == "a" || k == "h") {
+            const std::string uci = r.str();
+            for (const Move& m : legal_moves(b, false, 64, false)) {
+                if (move_uci(m) == uci) {
+                    out << pad << move_text(b, m, short_notation) << "\n";
+                    b = make_move(b, m);
+                    break;
+                }
+            }
+        } else if (k == "d") {
+            print_cert_tree(out, r, b, indent + 1, short_notation);
+        } else if (k == "n" || k == "p") {
+            print_cert_node(out, r, b, indent + 1, short_notation);
+        } else if (k == "r") {
+            const std::string uci = r.str();
+            for (const Move& m : legal_moves(b, false, 64, false)) {
+                if (move_uci(m) == uci) {
+                    out << pad << move_text(b, m, short_notation) << "\n";
+                    b = make_move(b, m);
+                    break;
+                }
+            }
+        } else {
+            // A terminal marker: mate, stalemate, selfmated, helpmated, ...
+            r.skip_value();
+        }
+    }
+}
+
+// A `[...]` array of defender branches.
+void print_cert_tree(std::ostream& out, CertReader& r, Board b, int indent,
+                     bool short_notation) {
+    if (!r.eat('[')) {
+        // A single nested object rather than an array.
+        print_cert_node(out, r, b, indent, short_notation);
+        return;
+    }
+    while (!r.eat(']')) {
+        if (r.i >= r.s.size()) return;
+        print_cert_node(out, r, b, indent, short_notation);
+        r.skip();
+    }
+}
 } // namespace mateprover
 
 #endif // MATEPROVER_REPORT_H_INCLUDED

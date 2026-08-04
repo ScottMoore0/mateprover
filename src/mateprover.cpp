@@ -160,6 +160,26 @@ void print_usage() {
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
 "  --tt-reserve N                pre-reserve N table buckets\n"
 "\n"
+"Analysis:\n"
+"  --all-solutions | --duals     report EVERY root move that solves, not just\n"
+"                                the first. A second solution at the root is a\n"
+"                                dual and the problem is cooked; the line gains\n"
+"                                'keys N', the list, and 'sound' or 'cooked'.\n"
+"                                Forces one unrestricted search: a restriction\n"
+"                                removes attacker options, which is sound for\n"
+"                                proving and would UNDERCOUNT duals\n"
+"  --tree | -L                   print the solution tree, indented, from the\n"
+"                                certificate -- so what is shown is exactly what\n"
+"                                was proved. With --all-solutions it also prints\n"
+"                                the refutation table: for each root move that\n"
+"                                fails, a defence that survives it\n"
+"  --short-notation | -S         algebraic rather than coordinates in the tree\n"
+"  --successors | -x             run the job on every position reachable in one\n"
+"                                move instead of on this one (\"black moves but\n"
+"                                loses in x moves\")\n"
+"  --check-legal | -c            report legality and stop, without searching\n"
+"  --list-san                    every legal move as '<uci>=<san>'\n"
+"\n"
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
 "  --emit-proof                  append a recursive JSON proof certificate\n"
@@ -260,6 +280,7 @@ int main(int argc, char** argv) {
     bool perft_divide = false;
     bool read_stdin = false;
     bool list_legal = false;
+    bool list_san = false;
 
     // Pre-scan: this flag must work regardless of where it appears, otherwise
     // it only takes effect when written before the option it excuses.
@@ -328,6 +349,8 @@ int main(int argc, char** argv) {
             config.debug = true;
         } else if (arg == "--list-legal") {
             list_legal = true;
+        } else if (arg == "--list-san") {
+            list_san = true;
         } else if (arg == "--perft" || arg == "--perft-divide") {
             const char* v = need_value(i);
             if (!v) return usage_error("option " + arg + " requires a depth");
@@ -450,6 +473,16 @@ int main(int argc, char** argv) {
         } else if (arg == "--portfolio-parallel") {
             config.portfolio = true;
             config.portfolio_parallel = true;
+        } else if (arg == "--all-solutions" || arg == "--duals") {
+            config.all_solutions = true;
+        } else if (arg == "--successors" || arg == "-x") {
+            config.successors = true;
+        } else if (arg == "--check-legal" || arg == "-c") {
+            config.legality_only = true;
+        } else if (arg == "--tree" || arg == "-L") {
+            config.print_tree = true;
+        } else if (arg == "--short-notation" || arg == "-S") {
+            config.short_notation = true;
         } else if (arg == "--no-portfolio") {
             config.portfolio = false;
         } else if (arg == "--portfolio-lanes") {
@@ -780,6 +813,8 @@ int main(int argc, char** argv) {
                 if (perft_divide) perft_divide_line(line, perft_depth); else perft_line(line, perft_depth);
             } else if (list_legal) {
                 list_legal_line(line);
+            } else if (list_san) {
+                list_san_line(line);
             } else if (config.parallel_positions > 1) {
                 pending.push_back(line);
                 // Four positions per worker before flushing: the queue can only
@@ -800,6 +835,8 @@ int main(int argc, char** argv) {
             if (perft_divide) perft_divide_line(buffer.str(), perft_depth); else perft_line(buffer.str(), perft_depth);
         } else if (list_legal) {
             list_legal_line(buffer.str());
+        } else if (list_san) {
+            list_san_line(buffer.str());
         } else {
             solve_line(buffer.str(), requested_depth, config);
         }

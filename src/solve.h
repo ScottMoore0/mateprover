@@ -105,6 +105,36 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         max_depth = 1;
     }
 
+    // Legality only. parse_fen4 has already rejected everything unusable -- a
+    // board that reaches here IS legal -- so this reports rather than decides,
+    // and exists so a caller can screen a file without paying for a search.
+    if (config.legality_only) {
+        out << fen4(b) << "; acn 0; acs 0; legal;\n";
+        out.flush();
+        return;
+    }
+
+    // Successor analysis: run the job on every position reachable in one move.
+    //
+    // Chest's -x, and its stated purpose is the phrase "black moves but loses in
+    // x moves" -- the analyst wants to know which of a side's moves lose and how
+    // fast, not whether the diagram itself is a problem. Each child is a whole
+    // independent job with the other colour to move, so this recurses into the
+    // ordinary path with the flag cleared rather than trying to share a search.
+    if (config.successors) {
+        SearchConfig child_config = config;
+        child_config.successors = false;
+        const std::vector<Move> moves = legal_moves(b, false, 64, false);
+        out << "; successors " << moves.size() << "\n";
+        for (const Move& m : moves) {
+            const Board nb = make_move(b, m);
+            out << move_uci(m) << " ";
+            solve_line(fen4(nb), max_depth, child_config, out);
+        }
+        out.flush();
+        return;
+    }
+
     const auto start = std::chrono::steady_clock::now();
     // The sequential portfolio slices wall-clock time, so it needs a time
     // limit. The parallel form gives every lane the whole budget and works with
@@ -119,7 +149,16 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // restricted lane would not be an incomplete search for the same answer, it
     // would be a search for a different problem. Running one lane, unrestricted,
     // is the whole portfolio here. See section 58.
+    // Dual enumeration must never run under a restriction.
+    //
+    // A restricted lane removes attacker options, which is sound for PROVING --
+    // a mate found under one is a real mate -- and catastrophic for COUNTING.
+    // The moves it removed are exactly the ones that might have been second
+    // solutions, so a restricted enumeration undercounts duals and reports a
+    // cooked problem as sound. That is a wrong answer to the only question this
+    // mode exists to answer, so the portfolio is off whenever it is asked.
     const bool use_portfolio = config.portfolio && !goal_is_help(config.goal) &&
+                               !config.all_solutions &&
                                (config.time_limit > 0.0 ||
                                 (config.node_limit > 0 && config.portfolio_parallel));
     const char* winning_entry_name = nullptr;
@@ -458,7 +497,30 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     RouteResult route_result;
     const char* winning_entry = nullptr;
 
-    if (use_portfolio && config.portfolio_parallel) {
+    std::vector<RootSolution> root_solutions;
+    std::vector<RootRefutation> root_refutations;
+    if (config.all_solutions) {
+        // One unrestricted search, enumerating rather than short-circuiting.
+        static_cast<SearchConfig&>(s) = config;
+        s.attacker = b.stm;
+        s.order_min_size = std::max<std::size_t>(2, config.order_min_size);
+        s.root_depth = max_depth;
+        s.portfolio = false;
+        s.memory_mb = memory_share(1);
+        s.tt.capacity = entry_capacity_for_mb(s.memory_mb);
+        if (config.time_limit > 0.0) {
+            s.has_deadline = true;
+            s.deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                     std::chrono::duration<double>(config.time_limit));
+        }
+        root_solutions = run_all_root_solutions(s, b, max_depth,
+                                                config.print_tree ? &root_refutations : nullptr);
+        if (!root_solutions.empty()) {
+            route_result.proof = root_solutions.front().proof;
+            route_result.proved_depth =
+                static_cast<int>((route_result.proof.pv.size() + 1) / 2);
+        }
+    } else if (use_portfolio && config.portfolio_parallel) {
         route_result = run_parallel_portfolio(s);
         winning_entry = winning_entry_name;
     } else if (use_portfolio) {
@@ -528,6 +590,48 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         if (s.emit_proof && !proof.cert.empty()) {
             out << "; proof " << proof.cert;
         }
+    }
+    if (config.print_tree && accepted && !proof.cert.empty()) {
+        // The tree is the problemist's view of the same proof the certificate
+        // records: key, then each defence indented under it. It is printed from
+        // the certificate rather than from a second search, so what is displayed
+        // is exactly what was proved and verified -- there is no way for the
+        // two to disagree.
+        out << "\n";
+        CertReader reader(proof.cert);
+        print_cert_node(out, reader, b, 0, config.short_notation);
+        if (!root_refutations.empty()) {
+            out << "refutations\n";
+            for (const RootRefutation& r : root_refutations) {
+                out << "  " << move_text(b, r.move, config.short_notation) << "  ";
+                if (r.reason == "no solution") {
+                    out << r.reason << "\n";
+                } else {
+                    // Print the refuting reply in the position it is played in.
+                    const Board nb = make_move(b, r.move);
+                    bool named = false;
+                    for (const Move& rm : legal_moves(nb, false, 64, false)) {
+                        if (move_uci(rm) == r.reason) {
+                            out << move_text(nb, rm, config.short_notation) << "\n";
+                            named = true;
+                            break;
+                        }
+                    }
+                    if (!named) out << r.reason << "\n";
+                }
+            }
+        }
+    }
+    if (config.all_solutions && accepted) {
+        // The composition verdict. `keys` lists every root move that solves, so
+        // one key is a sound problem and more than one is a cook. Stating the
+        // count separately from the list means a consumer can test soundness
+        // without parsing moves.
+        out << "; keys " << root_solutions.size() << "; sols";
+        for (const RootSolution& r : root_solutions) {
+            out << " " << move_uci(r.move);
+        }
+        out << (root_solutions.size() == 1 ? "; sound" : "; cooked");
     }
     if (accepted && winning_entry != nullptr && std::string(winning_entry) != "unrestricted") {
         // Say which restriction proved it: the mate is real but may not be the
