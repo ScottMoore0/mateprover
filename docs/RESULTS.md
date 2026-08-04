@@ -129,6 +129,64 @@ are small in absolute terms -- the worst is 1.45 s against 3.94 s -- but the
 selfmate list contains one genuine outlier at 0.40 s against 13.90 s, the
 position that needs the route lane's split to be reached at all.
 
+#### The same comparison at MATCHED CLAIMS, which is the one to believe
+
+Every figure above gives mateprover `--direct-depth`: prove a solution **within**
+N. Chest's documentation is explicit that it does more than that -- *"at all
+recursive levels, CHEST always performs iterative deepening... the depth of the
+result, and of any partial sub-result, is always minimal"*. Chest proves the
+SHORTEST solution. So the tables above compare two different questions, and the
+easier one is mateprover's.
+
+Re-run with `--iterative-depth`, which is mateprover making the same claim Chest
+makes:
+
+| | Chest 3.19 | mateprover | shared positions | only Chest |
+|---|---|---|---|---|
+| stalemate, depth 10-16 | 33/60 | **46/60** | 1.41x total, **1.07x median** | 2 |
+| selfmate, s#5-s#10 | 35/60 | **45/60** | 1.22x total, **1.09x median** | 2 |
+
+The reach advantage survives; the speed advantage very largely does not. On
+selfmate a **6.42x** median becomes **1.09x** once mateprover has to prove
+minimality too, and each goal gains a position that only Chest solves. Roughly
+five sixths of the headline selfmate speed margin was the weaker claim, not a
+faster search.
+
+Which number is "fair" depends on the question. `--direct-depth` is a legitimate
+mode and the right one when any proof of a bound will do. But a reader comparing
+two solvers is entitled to the matched-claims row, so it is stated here next to
+the other rather than left to be discovered.
+
+### The cooperative and inverted goals against Chest 3.19
+
+All six of Chest's job types are now implemented. Composed problems from YACPDB,
+whose stipulation is the composer's ground truth, sequential, Chest given
+2048 MB:
+
+| | Chest 3.19 | mateprover | shared positions | only Chest |
+|---|---|---|---|---|
+| selfstalemate, s=2..4 | 23/35 | 23/35 | 2.01x total, 1.45x median | **0** |
+| helpstalemate, h=2..4 | 45/60 | **47/60** | 1.00x total, 1.25x median | **0** |
+| helpmate, h#2..4 | **53/60** | 49/60 | 0.50x total, 0.69x median | **4** |
+
+**Helpmate is a loss.** Chest solves four h#4 positions this engine does not and
+is faster on 33 of 49 shared positions. Pruning the final ply to candidate
+moves -- only a checking move can mate, only a non-checking one can stalemate --
+cut total time from 40.7 s to 33.6 s and moved coverage not at all. That is the
+useful negative result: the gap is structural, not a constant factor.
+
+The likely reason is visible in the design. Every other goal gets a portfolio and
+a root split; the cooperative search is a single-threaded depth-first walk. A
+help node is a pure disjunction, which makes it the most trivially parallel
+search in the program and currently the only one exploiting nothing.
+
+Correctness was established before any of this was measured, and independently of
+the engine: python-chess brute forces every cooperative sequence for a set of
+small positions, giving 114 positives and **240 negatives**. The negatives carry
+the weight -- an engine answering "yes" to everything passes a positives-only
+suite, and an inverted terminal predicate produces exactly that. The engine
+agreed on all 354, and every certificate it emitted verified independently.
+
 **Mate-in-8 is budget-limited.** Measured on a different 200-position evaluation
 set, and **with the previous default route**, since it predates DFPN's promotion
 (29) -- the shape is the claim here, not the absolute numbers, which are now

@@ -134,6 +134,7 @@ did. If you are reading it for the first time:
 - [55. The Starved Lane: A Flag That Cost A Factor Of Nine, Silently](#55-the-starved-lane-a-flag-that-cost-a-factor-of-nine-silently)
 - [56. The Sixteenth Thread: A 30x Loss Hidden Below A Threshold](#56-the-sixteenth-thread-a-30x-loss-hidden-below-a-threshold)
 - [57. The Worker That Would Not Stop](#57-the-worker-that-would-not-stop)
+- [58. The Cooperative Goals, And A Benchmark That Flattered Its Own Engine](#58-the-cooperative-goals-and-a-benchmark-that-flattered-its-own-engine)
 
 ## Impact-Ordered Architecture
 
@@ -4040,3 +4041,77 @@ are reported rather than the flattering one being chosen: at its shipped default
 of 256 MB a lane, MateProver solves every position Chest solves on both goals;
 at an equal 256 MB total, three positions go the other way. The default is what
 a user runs, and the equal-total figure is what a sceptic should be handed.
+
+### 58. The Cooperative Goals, And A Benchmark That Flattered Its Own Engine
+
+All six of Chest's job types are now implemented. Two findings dominate, and
+neither is about search speed.
+
+**A helpmate is not a mate search with a friendlier defender.** Every other goal
+here is AND/OR: the attacker needs one move that works, the defender must have
+none that escapes. A helpmate has no defender. Both sides want the same terminal,
+so EVERY node is an OR node and the question is purely existential.
+
+That removes three things by argument rather than by omission:
+
+- Proof and disproof numbers measure what an ADVERSARY can force. With no
+  adversary they are not merely unhelpful, they are undefined.
+- The restriction portfolio is sound because removing attacker options cannot
+  invent a forced mate. That argument needs an adversary. Remove a move from a
+  HELPER and the solution may have run straight through it -- so a restricted
+  lane is not an incomplete search for the same answer, it is a search for a
+  different problem. The portfolio is therefore disabled outright for these
+  goals rather than restricted more gently.
+- The root split parallelises a disjunction whose children are conjunctions.
+
+Exact length is the other trap. `h#3` means a mate ON move three, not by move
+three, so the usual table bound -- proved within N implies proved within any
+larger N -- is unsound here. Plies go into the key instead, reducing it to an
+exact match.
+
+**The benchmark was wrong before the engine was.** Two defects, both of which
+reported success:
+
+The YACPDB exporter hardcoded `w` as side to move. That is right for directmate,
+stalemate, selfmate and selfstalemate, where the attacker moves first and is
+White. It is wrong for helpmates, where BLACK moves first by the convention every
+one of these diagrams is published under. The engine was being asked to help-mate
+White, found unrelated cooperative sequences, and reported 80.4% against a
+stipulation none of those solutions answered -- with every certificate verifying,
+because each was a true statement about the wrong question. Corrected: 85.7%.
+
+And `verify_proof.py` did not know the new tokens, so every `hm`/`hsm` line fell
+through to "no solution reported" and was skipped. It printed **"0 certificates
+verified"** beside a full run of solved positions and exited successfully. A
+checker that passes by not looking is worse than no checker.
+
+**The claim mismatch.** Chest's documentation says it *"always performs iterative
+deepening"* at every recursive level, so *"the depth of the result, and of any
+partial sub-result, is always minimal"*. Chest proves the SHORTEST solution.
+Every head-to-head in this project had given MateProver `--direct-depth`, which
+proves a solution WITHIN N and is explicitly not guaranteed minimal.
+
+The two engines were answering different questions, and the easier one was ours.
+Re-run at matched claims:
+
+| | reported (`--direct-depth`) | matched (`--iterative-depth`) |
+|---|---|---|
+| stalemate | 54/60, 1.15x median, only-Chest 1 | 46/60, **1.07x** median, only-Chest 2 |
+| selfmate | 49/60, 6.42x median, only-Chest 0 | 45/60, **1.09x** median, only-Chest 2 |
+
+The reach advantage survives. The speed advantage very largely does not: about
+five sixths of the headline selfmate margin was the weaker claim rather than a
+faster search, and each goal gains a position only Chest solves.
+
+Both figures are now in RESULTS.md, side by side. `--direct-depth` remains a
+legitimate mode and the right one when any proof of a bound will do -- but a
+reader comparing two solvers is owed the matched row, and choosing which to
+publish is not a presentational decision.
+
+**Helpmate is a loss, recorded as one.** Chest solves four h#4 positions this
+engine does not. Pruning the final ply to candidate moves -- only a checking move
+can mate, only a non-checking one can stalemate, gated as 54 requires -- cut
+total time by a fifth and moved coverage not at all. The gap is structural: the
+cooperative search is the only one in the program that is single-threaded and
+unparallelised, while being the only one that is a pure disjunction and therefore
+the easiest to parallelise. That is the next thing, not a better prune.
