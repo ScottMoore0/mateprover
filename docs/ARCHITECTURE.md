@@ -139,6 +139,7 @@ did. If you are reading it for the first time:
 - [60. Parallelising The Cooperative Search, And The Mate-In-8 Regression](#60-parallelising-the-cooperative-search-and-the-mate-in-8-regression)
 - [61. A Restricted Lane Has No Business Deepening Iteratively](#61-a-restricted-lane-has-no-business-deepening-iteratively)
 - [62. Two Corrections, One Of Them To A Result Bought Past The Deadline](#62-two-corrections-one-of-them-to-a-result-bought-past-the-deadline)
+- [63. The Three Helpmate Misses, Characterised Before Being Chased](#63-the-three-helpmate-misses-characterised-before-being-chased)
 
 ## Impact-Ordered Architecture
 
@@ -4341,3 +4342,38 @@ Helpmate is a loss again, by three positions, honestly measured. The split also
 now uses four workers rather than sixteen: the split wants cores and the table
 wants memory, they compete, and at sixteen the tables are too thin to hold the
 positions that need them.
+
+### 63. The Three Helpmate Misses, Characterised Before Being Chased
+
+62 left helpmate three positions behind Chest and proposed a shared worker table
+as the fix, on the strength of ONE of the three having been examined. The other
+two had not been, so the proposal rested on a third of the evidence. Looking at
+all three first, which cost minutes:
+
+| position | pieces | Chest | reached by |
+|---|---|---|---|
+| `1qb4r/1p1kb1pr/Pp1n1p1P/1p3p2/8/8/1np2p1K/8` | 19 | 8.9 s | `-M 4096`, `-M 8192`, 60 s |
+| `2q5/5p2/1p6/bk3p2/rn3P2/2ppp3/P2pp1K1/R7` | 17 | 14.8 s | **nothing** |
+| `8/5p1B/2p1p3/2pp4/r3P2K/8/1pkq4/1nr5` | 14 | 9.3 s | **nothing** |
+
+All three are h#4. Only the first is table-bound. The other two resist every
+configuration tried -- sixty seconds against a twenty second cap, eight gigabytes,
+single-threaded, direct depth, and a shared table -- so no amount of memory or
+time in the range that matters reaches them.
+
+That reprices the shared-table work honestly. It would recover one position and
+leave helpmate at 33 of 40 against Chest's 35: still a loss, for hours of work on
+a concurrent data structure. Worth doing on its merits, not worth doing as a way
+to win helpmate.
+
+Both unreachable positions are dense h#4 diagrams where Chest itself takes nine
+to fifteen seconds, so this is the tail of Chest's range as well as past the end
+of ours.
+
+**A defect found while probing.** `--shared-tt` is accepted on the cooperative
+route and does NOTHING: the help route's `ensure_workers` never sets
+`shared_table`, so every worker uses a private table whatever the flag says. It
+is not a wrong answer, but it is a flag that silently fails to do what it
+promises, which is the same class of fault as 55 and 56 -- an option whose effect
+cannot be seen in any output. Wiring it is the same change as the shared-table
+work above and should be done with it rather than separately.
