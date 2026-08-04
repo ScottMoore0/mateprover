@@ -509,7 +509,15 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
     // resolved without ever splitting pays nothing for threads it never uses.
     std::vector<std::unique_ptr<Search>> workers;
     std::vector<std::unique_ptr<WorkerSlot>> slots;
-    const int thread_count = std::max(1, s.threads);
+    // Fewer workers than threads, deliberately.
+    //
+    // The split's value is parallelism; the table's value is transposition
+    // reuse, and the two compete because workers divide the budget. At sixteen
+    // workers each table is a sixteenth and the one helpmate position Chest
+    // still won goes from solved to unsolved -- it needs the table more than it
+    // needs the cores. Four is the compromise: enough parallelism to matter,
+    // tables still a quarter of a lane-equivalent budget each.
+    const int thread_count = std::min(4, std::max(1, s.threads));
     auto ensure_workers = [&]() {
         if (!workers.empty()) {
             return;
@@ -525,6 +533,17 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->external_cancel = s.cancel;
+            // Workers DIVIDE the budget rather than each taking all of it.
+            //
+            // A cooperative search now holds a lane-equivalent table (59), and
+            // sixteen workers each claiming the whole of it is a ceiling of tens
+            // of gigabytes. The tables grow lazily, so nothing fails outright --
+            // it simply pages, and a run overshot its --time-limit by a factor
+            // of two while the deadline checks sat behind slow memory. The
+            // symptom looked like a cancellation defect and was an allocation
+            // one.
+            ws->memory_mb = std::max<std::size_t>(
+                1, s.memory_mb / static_cast<std::size_t>(std::max(1, thread_count)));
             ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
             workers.push_back(std::move(ws));
         }
@@ -532,6 +551,16 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
 
     const int start = s.direct_depth ? max_depth : 1;
     for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
+        // Never begin a depth whose budget has already gone. The other routes
+        // are bounded by their preconditioner's own checks; this one is not, and
+        // without this a cooperative run could start a fresh iteration on an
+        // expired clock and hand back an answer well past its --time-limit --
+        // which, in a comparison where the other engine is hard-killed at the
+        // cap, is not a small unfairness.
+        if (s.has_deadline && std::chrono::steady_clock::now() >= s.deadline) {
+            s.timed_out = true;
+            break;
+        }
         Proof p;
         // Depth 1 is two plies and a flat scan; the split would cost more in
         // thread setup than it saves, exactly as on the other routes.

@@ -196,11 +196,11 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 
 | goal | Chest | mateprover | only Chest | median | >1.5x slower |
 |---|---|---|---|---|---|
-| **mate-in-8** | **27/30** | 24/30 | **4** | 2.79x | 8/22 |
+| mate-in-8 (all 200) | 171/200 | **178/200** | **10** | 2.79x | 8/22 |
 | mate-in-10 | 13/30 | **30/30** | **0** | 7.79x | 1/13 |
 | stalemate | 18/40 | **31/40** | **0** | 1.22x | 2/18 |
 | selfmate | 24/40 | **32/40** | **3** | 6.09x | 3/16 |
-| helpmate | 34/40 | 34/40 | **1** | 1.02x | 4/33 |
+| helpmate | **35/40** | 32/40 | **3** | 1.02x | 4/33 |
 | helpstalemate | 31/40 | **35/40** | **0** | 1.25x | 1/31 |
 | selfstalemate | 23/35 | 23/35 | **0** | 0.72x | 7/23 |
 
@@ -208,16 +208,16 @@ The mate-in-10, selfmate and mate-in-8 rows are after the restricted-lane fix of
 61; the median and slower columns predate it and are therefore pessimistic for
 mateprover. The coverage columns are the current ones.
 
-**Mate-in-8 is a loss, and it contradicts this document's own headline.** The
-table further up reports 40/40 against Chest's 39/40 with a 20x median. That was
-measured with `--direct-depth`, proving a mate WITHIN 8. Asked the question Chest
-actually answers -- prove the mate is no shorter -- mateprover solves 22 of 30
-and misses five Chest finds.
+**Mate-in-8 is NOT a loss, and the claim that it was came from sampling.** Two
+30-position draws gave 4 and 5 positions solved only by Chest; a 60-position
+draw gave none. Sampling was the wrong tool at this effect size, so the row above
+is the whole 200-position evaluation set: **178/200 against 171/200**, with 10
+positions only Chest solves and 17 only mateprover solves.
 
-The two results are not in conflict; they are answers to different questions, and
-the earlier one was the easier question presented as though it were the same. The
-shape is consistent across this project: every time a measurement has been
-tightened, the margin has shrunk. Mate-in-8 is where it goes negative.
+Neither engine dominates at this depth. mateprover is ahead on net, and the ten
+it misses are a real class -- no configuration tried reaches more than two of
+them. The margin is small enough that it must be quoted from the full set rather
+than a sample, which is the lesson rather than the number.
 
 Depth is what separates the two rows. At mate-in-10 the ordering reverses
 completely -- 23/30 against 13/30, nothing solved only by Chest, a 7.79x median

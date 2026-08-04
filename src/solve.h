@@ -59,6 +59,13 @@ const std::vector<PortfolioEntry>& restriction_portfolio() {
     return entries;
 }
 
+// What a cooperative goal's single table is worth in lanes.
+//
+// The restriction portfolio ships nine lanes, so a directmate's default budget
+// buys nine tables. A help goal has no lanes and bought one. This makes the two
+// comparable rather than leaving a goal starved by its own structure.
+const std::size_t kHelpMemoryLanes = 9;
+
 // How many cooperative solutions to enumerate before stopping.
 //
 // A bound is necessary rather than tidy: enumeration cannot use the table, so a
@@ -220,6 +227,21 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         }
         // One lane at a time on this path, so it shares only with the batch.
         out.memory_mb = memory_share(1);
+        // A cooperative goal runs ONE table where the portfolio runs nine.
+        //
+        // The default budget is per table, so a directmate takes nine lanes'
+        // worth -- about 2.3 GB -- while a helpmate, which has no lanes by
+        // construction (58), took 256 MB in total. Same flag, same nominal
+        // number, a ninth of the memory, purely because of a structural
+        // difference in the goal. The last helpmate position Chest solved and
+        // this engine did not is reached at 2048 MB and not at 256, so this was
+        // costing coverage and not merely consistency.
+        //
+        // An explicit total is left exactly as the user set it: they asked for a
+        // cap, and this is the branch that must not quietly exceed it.
+        if (goal_is_help(config.goal) && !config.memory_is_total && config.memory_mb != 0) {
+            out.memory_mb = config.memory_mb * kHelpMemoryLanes;
+        }
         out.tt.capacity = entry_capacity_for_mb(out.memory_mb);
         if (out.tt_reserve > 0) {
             out.tt.map.reserve(out.tt_reserve);

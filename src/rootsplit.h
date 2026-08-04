@@ -107,6 +107,9 @@ bool run_selfmate_root_split(Search& s, std::vector<std::unique_ptr<Search>>& wo
 
             const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
             Proof replies = prove_selfmate_defender(ws, nb, depth);
+            if (ws.timed_out) {
+                break;              // deadline passed: stop taking work
+            }
             if (ws.aborted) {
                 continue;           // abandoned: no verdict, nothing recorded
             }
@@ -236,6 +239,9 @@ bool run_help_root_split(Search& s, std::vector<std::unique_ptr<Search>>& worker
 
             const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
             Proof rest = prove_help(ws, nb, plies - 1);
+            if (ws.timed_out) {
+                break;              // deadline passed: stop taking work
+            }
             if (ws.aborted || !rest.ok) {
                 continue;           // abandoned or refuted: no verdict recorded
             }

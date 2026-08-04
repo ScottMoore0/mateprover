@@ -138,6 +138,7 @@ did. If you are reading it for the first time:
 - [59. The Composition Features, And An Endgame Fix Refuted By Measurement](#59-the-composition-features-and-an-endgame-fix-refuted-by-measurement)
 - [60. Parallelising The Cooperative Search, And The Mate-In-8 Regression](#60-parallelising-the-cooperative-search-and-the-mate-in-8-regression)
 - [61. A Restricted Lane Has No Business Deepening Iteratively](#61-a-restricted-lane-has-no-business-deepening-iteratively)
+- [62. Two Corrections, One Of Them To A Result Bought Past The Deadline](#62-two-corrections-one-of-them-to-a-result-bought-past-the-deadline)
 
 ## Impact-Ordered Architecture
 
@@ -4293,3 +4294,50 @@ search-quality gap at shallow depth, where Chest's iterative deepening at every
 recursive level is simply better than this engine's portfolio. Depth remains the
 dividing line -- at mate-in-10 the ordering reverses completely -- but the
 mate-in-8 deficit is real and is not an artifact of how it was asked.
+
+### 62. Two Corrections, One Of Them To A Result Bought Past The Deadline
+
+**Mate-in-8 was never a loss.** 60 and 61 reported it as one, from 30-position
+samples giving 4 and 5 only-Chest positions. A 60-position draw then gave ZERO,
+which is not a result so much as a warning that the sample was the instrument.
+Run over the entire 200-position evaluation set at matched claims:
+
+| | solved | only that engine |
+|---|---|---|
+| Chest 3.19 | 171/200 | 17 |
+| mateprover | **178/200** | **10** |
+
+Ahead on net, and neither engine dominating. The ten mateprover misses are a
+real class -- across ten configurations nothing reached more than two of them --
+but the deficit reported twice in this document did not exist. At this effect
+size a 30-position sample cannot tell 4 from 0, and it was used anyway.
+
+**And the helpmate result had been bought past the deadline.** Chasing the last
+helpmate position turned up something worse than the position: the cooperative
+route was systematically exceeding `--time-limit`, by a FACTOR OF TWO at small
+budgets -- 9.4 s on a 5 s limit, 19.9 s on 10 s. Every other goal honoured its
+budget exactly.
+
+In a comparison where the other engine is hard-killed at the cap, that is not a
+small unfairness. It means 60's helpmate figures -- level on coverage, only-Chest
+1 -- were partly obtained by running longer than Chest was allowed to.
+
+The cause was not cancellation, which is where 57 taught me to look. Each of
+sixteen workers inherited the WHOLE table budget rather than a share, so a
+cooperative search declared a ceiling of tens of gigabytes; the tables grow
+lazily so nothing failed, it simply paged, and the deadline polls sat behind slow
+memory. Workers now divide the budget, and a between-depth deadline check
+guarantees no iteration starts on an expired clock.
+
+That fixes the contract and costs coverage, which is the right way round:
+
+| | before (over budget) | after (within budget) | Chest |
+|---|---|---|---|
+| helpmate | 34/40, only-Chest 1 | 32/40, only-Chest 3 | 35/40 |
+| helpstalemate | 35/40, only-Chest 0 | 34/40, only-Chest 0 | 33/40 |
+| runs exceeding the limit | frequent | **0 of 80** | n/a |
+
+Helpmate is a loss again, by three positions, honestly measured. The split also
+now uses four workers rather than sixteen: the split wants cores and the table
+wants memory, they compete, and at sixteen the tables are too thin to hold the
+positions that need them.
