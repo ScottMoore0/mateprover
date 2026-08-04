@@ -187,6 +187,43 @@ the weight -- an engine answering "yes" to everything passes a positives-only
 suite, and an inverted terminal predicate produces exactly that. The engine
 agreed on all 354, and every certificate it emitted verified independently.
 
+### The composition features
+
+Everything above answers the prover's question. These answer the problemist's.
+
+| feature | mateprover | Chest 3.19 |
+|---|---|---|
+| duals at the root, sound/cooked verdict | `--all-solutions` | always on, cannot be suppressed |
+| solution tree | `-L`, printed from the certificate | `-L` |
+| short algebraic | `-S`, verified against python-chess | `-S` |
+| refutation table | with `-L` | default, `-r` suppresses |
+| successor analysis | `-x` | `-x` |
+| legality check only | `-c` | `-c` |
+| machine-checkable certificate | **yes** | no |
+
+Dual counts are checked against python-chess: 1 key on a composed mate-in-2, 18
+on K+Q against a bare king, identical move sets. Algebraic notation is checked
+move for move -- 3551 moves over 150 positions from a random walk, zero
+mismatches.
+
+Dual enumeration forces an unrestricted search, and that is a soundness
+requirement rather than a default. A restriction removes attacker options, which
+is sound for PROVING and unsound for COUNTING: the removed moves are exactly the
+candidates for a second solution, so a restricted enumeration undercounts duals
+and would report a cooked problem as sound.
+
+**The endgame gap, characterised.** The one stalemate position Chest solves and
+this engine did not is solvable after all -- 281 s at depth 13 with 2048 MB. It
+is time-bound and not memory-bound: eight times the table changed nothing at
+60 s, five times the clock solved it. Against Chest's ~20 s that is about a
+factor of fourteen on tiny-material endgames.
+
+The obvious fix was measured and **refuted**: preferring depth-first when
+material is sparse loses positions, because DFPN wins every piece-count bucket
+including the sparse one (41/47 against 38/47 at five pieces or fewer). Section
+59 has the table. The remaining candidate is retrograde analysis, scoped there
+and not implemented.
+
 **Mate-in-8 is budget-limited.** Measured on a different 200-position evaluation
 set, and **with the previous default route**, since it predates DFPN's promotion
 (29) -- the shape is the claim here, not the absolute numbers, which are now

@@ -135,6 +135,7 @@ did. If you are reading it for the first time:
 - [56. The Sixteenth Thread: A 30x Loss Hidden Below A Threshold](#56-the-sixteenth-thread-a-30x-loss-hidden-below-a-threshold)
 - [57. The Worker That Would Not Stop](#57-the-worker-that-would-not-stop)
 - [58. The Cooperative Goals, And A Benchmark That Flattered Its Own Engine](#58-the-cooperative-goals-and-a-benchmark-that-flattered-its-own-engine)
+- [59. The Composition Features, And An Endgame Fix Refuted By Measurement](#59-the-composition-features-and-an-endgame-fix-refuted-by-measurement)
 
 ## Impact-Ordered Architecture
 
@@ -4115,3 +4116,82 @@ total time by a fifth and moved coverage not at all. The gap is structural: the
 cooperative search is the only one in the program that is single-threaded and
 unparallelised, while being the only one that is a pure disjunction and therefore
 the easiest to parallelise. That is the next thing, not a better prune.
+
+### 59. The Composition Features, And An Endgame Fix Refuted By Measurement
+
+**Duals.** Every search in this engine until now answered the prover's question
+-- is there a mate in N -- and stopped at the first proof, because one proof
+settles it. The composition question is different: a second solution at the root
+is a DUAL, and a directmate with one is cooked, unsound as a composition however
+genuine the mate. `--all-solutions` enumerates every root move that solves.
+
+Two design points, both load-bearing.
+
+It defeats the short-circuit AT THE ROOT AND ONLY THERE. A dual in a sub-line
+does not make the key ambiguous, so enumerating those would spend the whole
+search's worth of pruning answering a question nobody asked.
+
+And it forces an UNRESTRICTED search. The restriction portfolio is sound for
+proving because removing attacker options cannot invent a mate. For counting it
+is the opposite of sound: the moves a restriction removed are exactly the ones
+that might have been second solutions, so a restricted enumeration undercounts
+duals and reports a cooked problem as sound. Sound-for-proving and
+sound-for-counting are different properties of the same mechanism, and the
+portfolio has only the first.
+
+Counts checked against python-chess: 1 key on a composed mate-in-2, 18 on K+Q
+against a bare king, identical move sets.
+
+**The tree is printed from the certificate**, not from a second walk of the
+search. What is displayed is therefore exactly what was proved and independently
+verified; there is no way for the display and the proof to disagree, which is a
+property worth more than the few lines it costs.
+
+**Algebraic notation was verified, not eyeballed.** 3551 moves across 150
+positions from a random walk -- which reaches castling, promotion, en passant
+and all three kinds of disambiguation that hand-picked positions miss -- against
+python-chess, zero mismatches. The first version passed a three-move eyeball
+while marking every quiet move as a capture, because an empty square is '.' and
+the test was against 0.
+
+**The endgame weakness: the obvious fix is wrong.** 54 diagnosed the losing
+positions as tiny-material endgames where proof numbers carry no signal because
+every branch looks alike, and a depth-first walk simply gets there. The obvious
+consequence is to prefer depth-first when material is sparse. Measured on the
+stalemate suite, bucketed by piece count:
+
+| pieces | positions | dfpn (default) | depth-first standalone |
+|---|---|---|---|
+| <= 5 | 47 | **41/47** | 38/47 |
+| 6-8 | 8 | **8/8** | 3/8 |
+| > 8 | 5 | **5/5** | 3/5 |
+
+DFPN wins every bucket, including the sparse one the hypothesis was about. A
+material-aware route switch would LOSE positions. What is true is narrower than
+what 54 suggested: depth-first reaches a few specific positions DFPN cannot, and
+the portfolio already runs both and takes whichever finishes -- which is the
+correct design and is already shipped.
+
+**And the class is slow, not unreachable.** The one stalemate position Chest
+solves and this engine did not, characterised properly:
+
+| depth | budget | result |
+|---|---|---|
+| 11 | 2048 MB, 300 s | no stalemate at this depth (exhaustive, 27 s) |
+| 12 | 2048 MB, 300 s | timeout |
+| 13 | 256 MB, 60 s | timeout |
+| 13 | 2048 MB, 60 s | timeout |
+| **13** | **2048 MB, 300 s** | **SOLVED, 281 s** |
+
+Time-bound, not memory-bound: eight times the table changed nothing at 60 s, and
+five times the clock solved it. Against Chest's ~20 s that is roughly a factor of
+fourteen on this class, which is a real gap and a smaller and more precise claim
+than "cannot solve it".
+
+The remaining fix is retrograde analysis -- backward induction over a whole
+material class, which makes depth irrelevant because it never searches forward.
+It fits the existing architecture as a PRECONDITIONER, on the same terms as DFPN:
+it would guide the search while the exact prover still produced the verdict and
+the certificate, so nothing about verifiability changes. It is scoped here and
+deliberately not implemented: a tablebase generator that is wrong is worse than
+none, and validating one is a project rather than an increment.
