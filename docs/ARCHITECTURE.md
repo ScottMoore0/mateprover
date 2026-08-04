@@ -137,6 +137,7 @@ did. If you are reading it for the first time:
 - [58. The Cooperative Goals, And A Benchmark That Flattered Its Own Engine](#58-the-cooperative-goals-and-a-benchmark-that-flattered-its-own-engine)
 - [59. The Composition Features, And An Endgame Fix Refuted By Measurement](#59-the-composition-features-and-an-endgame-fix-refuted-by-measurement)
 - [60. Parallelising The Cooperative Search, And The Mate-In-8 Regression](#60-parallelising-the-cooperative-search-and-the-mate-in-8-regression)
+- [61. A Restricted Lane Has No Business Deepening Iteratively](#61-a-restricted-lane-has-no-business-deepening-iteratively)
 
 ## Impact-Ordered Architecture
 
@@ -4248,3 +4249,47 @@ iterative deepening at every recursive level beats it. That is a more useful
 statement than the headline it replaces, and it is the fourth time in this
 project that tightening a measurement has shrunk a margin. At mate-in-8 it went
 negative.
+
+### 61. A Restricted Lane Has No Business Deepening Iteratively
+
+`--iterative-depth` collapsed where `--direct-depth` did not, and the size of it
+was hard to miss: a selfmate position solved in 0.0 s at a fixed depth timed out
+at 60 s when asked for the shortest solution. `--no-portfolio` was FASTER than
+the portfolio on the same positions, which is the wrong way round and was the
+clue.
+
+Iterative deepening exists to establish MINIMALITY: depth d is searched only
+after d-1 has been shown to hold no solution. A restricted lane cannot establish
+that. Its failure at d-1 means "no solution among the moves I was allowed",
+which is silent about the moves it was not -- and the portfolio already relies
+on exactly this asymmetry when it decides that only the unrestricted lane can
+tell a disproof from a timeout.
+
+So every shallow pass a restricted lane made was work that could not contribute
+to the claim being made, and with nine lanes that multiplied the wasted portion
+by eight. Restricted lanes now search the requested depth directly. What such a
+lane can contribute is a proof, and a proof at the requested depth is the only
+thing it is ever asked for; its result is already reported with `via
+<restriction>`, documented as "real but may not be the shortest", so no claim
+this engine makes changes.
+
+Measured at matched claims, 30 or 40 positions, Chest at 2048 MB:
+
+| | before | after | Chest |
+|---|---|---|---|
+| mate-in-10 | 23/30 | **30/30** | 13/30 |
+| selfmate | 22/40 | **32/40** | 24/40 |
+| mate-in-8 | 22/30 | 24/30 | **27/30** |
+
+Mate-in-10 goes to a clean sweep and selfmate gains ten positions. The three
+selfmate holdouts that prompted this went from 0 of 3 to 2 of 3 solved.
+
+**Mate-in-8 remains a loss, and the earlier diagnosis of it was wrong.** 60
+attributed it to the claim mismatch -- proving minimality rather than a bound.
+That is not what the positions say: `--direct-depth` fails three of the four
+Chest-only positions too, and at aggregate scale direct reaches 26/30 against
+Chest's 27/30. The claim mismatch costs about two positions; the rest is a plain
+search-quality gap at shallow depth, where Chest's iterative deepening at every
+recursive level is simply better than this engine's portfolio. Depth remains the
+dividing line -- at mate-in-10 the ordering reverses completely -- but the
+mate-in-8 deficit is real and is not an artifact of how it was asked.

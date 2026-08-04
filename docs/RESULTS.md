@@ -196,13 +196,17 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 
 | goal | Chest | mateprover | only Chest | median | >1.5x slower |
 |---|---|---|---|---|---|
-| **mate-in-8** | **27/30** | 22/30 | **5** | 2.79x | 8/22 |
-| mate-in-10 | 13/30 | **23/30** | **0** | 7.79x | 1/13 |
+| **mate-in-8** | **27/30** | 24/30 | **4** | 2.79x | 8/22 |
+| mate-in-10 | 13/30 | **30/30** | **0** | 7.79x | 1/13 |
 | stalemate | 18/40 | **31/40** | **0** | 1.22x | 2/18 |
-| selfmate | 19/40 | **22/40** | **3** | 6.09x | 3/16 |
+| selfmate | 24/40 | **32/40** | **3** | 6.09x | 3/16 |
 | helpmate | 34/40 | 34/40 | **1** | 1.02x | 4/33 |
 | helpstalemate | 31/40 | **35/40** | **0** | 1.25x | 1/31 |
 | selfstalemate | 23/35 | 23/35 | **0** | 0.72x | 7/23 |
+
+The mate-in-10, selfmate and mate-in-8 rows are after the restricted-lane fix of
+61; the median and slower columns predate it and are therefore pessimistic for
+mateprover. The coverage columns are the current ones.
 
 **Mate-in-8 is a loss, and it contradicts this document's own headline.** The
 table further up reports 40/40 against Chest's 39/40 with a 20x median. That was

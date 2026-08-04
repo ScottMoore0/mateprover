@@ -417,6 +417,32 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
             t.route = entries[static_cast<std::size_t>(i)].route;
+            // A RESTRICTED lane searches the final depth only, even under
+            // iterative deepening.
+            //
+            // Iterative deepening exists to establish MINIMALITY: depth d is
+            // searched only after d-1 has been shown to hold no solution. A
+            // restricted lane cannot establish that. Its failure at d-1 means
+            // "no solution among the moves I was allowed", which is silent
+            // about the moves it was not -- only the unrestricted lane can
+            // settle non-existence, and the code below already relies on that
+            // when deciding timeout versus disproof.
+            //
+            // So every shallow pass a restricted lane makes is work that cannot
+            // contribute to the claim. With nine lanes that multiplied the
+            // wasted portion by eight, and it is why --iterative-depth collapsed
+            // where --direct-depth did not: a selfmate position solved in 0.0 s
+            // at a fixed depth timed out at 60 s when every lane re-walked the
+            // shallow ones.
+            //
+            // What a restricted lane CAN contribute is a proof, and a proof at
+            // the requested depth is the only one it is asked for. Its result is
+            // already reported with `via <restriction>`, which the output
+            // documents as "real but may not be the shortest", so nothing about
+            // the engine's claims changes. See section 61.
+            if (!lane_is_unrestricted(entries[static_cast<std::size_t>(i)])) {
+                t.direct_depth = true;
+            }
             t.cancel = cancels.back().get();
             t.memory_mb = lane_memory[static_cast<std::size_t>(i)];
             t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
