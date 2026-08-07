@@ -132,11 +132,9 @@ position that needs the route lane's split to be reached at all.
 #### The same comparison at MATCHED CLAIMS, which is the one to believe
 
 Every figure above gives mateprover `--direct-depth`: prove a solution **within**
-N. Chest's documentation is explicit that it does more than that -- *"at all
-recursive levels, CHEST always performs iterative deepening... the depth of the
-result, and of any partial sub-result, is always minimal"*. Chest proves the
-SHORTEST solution. So the tables above compare two different questions, and the
-easier one is mateprover's.
+N. Chest does more than that: it proves the SHORTEST solution, establishing
+minimal depth for interior sub-results as well as for the whole. So the tables
+above compare two different questions, and the easier one is mateprover's.
 
 Re-run with `--iterative-depth`, which is mateprover making the same claim Chest
 makes:

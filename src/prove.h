@@ -172,13 +172,15 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
 // A separate recursion rather than another terminal predicate, because the
 // shape differs. For a directmate the goal is tested after each ATTACKER move;
 // here it is tested at an attacker node before moving, since "the attacker is
-// mated" is a statement about the side to move. Chest documents four degenerate
-// cases and they do not collapse into one another:
+// mated" is a statement about the side to move.
+//
+// Four degenerate cases follow directly from that definition, and none collapses
+// into another. Each is checkable at a board:
 //
 //     attacker is mated      -> solution, possibly shorter than asked
-//     attacker is stalemated -> no solution
-//     defender is mated      -> no solution (he must mate US, not be mated)
-//     defender is stalemated -> no solution
+//     attacker is stalemated -> no solution: he is not mated, merely stuck
+//     defender is mated      -> no solution: he must mate US, not be mated
+//     defender is stalemated -> no solution: he cannot move, so cannot mate
 //
 // Kept out of the directmate path deliberately. That path is validated by 314
 // checks and a corpus of 264 compositions; threading a third goal with a
@@ -279,6 +281,22 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     }
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
+
+    // Instrumentation only: how often does the DEFENDER reduce to king + queen?
+    //
+    // Root material is a weak predictor for any lone-defender refutation, because
+    // the configuration is also reached mid-search once the defender's other
+    // units are captured -- so the interesting number is this one, not a filter
+    // over starting positions. Costs two bitboard reads and no branch on the hot
+    // path's outcome.
+    if (b.by_type[PT_QUEEN] & b.by_color[b.stm]) {
+        std::uint64_t units = b.by_color[b.stm];
+        int count = 0;
+        while (units) { units &= units - 1; ++count; }
+        if (count == 2) {
+            ++s.stats.defender_kq_nodes;
+        }
+    }
 
     std::vector<Move> replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity,
                                             s.static_pseudo);

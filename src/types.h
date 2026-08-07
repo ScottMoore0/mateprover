@@ -216,6 +216,11 @@ struct Stats {
     std::uint64_t refutation_hint_probes = 0;
     std::uint64_t refutation_hint_hits = 0;
     std::uint64_t refutation_hint_stores = 0;
+    // Defender nodes at which the DEFENDER holds exactly king + queen.
+    // Instrumentation for sizing the lone-defender refutation: root
+    // material is a weak proxy because the configuration is also reached
+    // mid-search once the defender's other units are captured.
+    std::uint64_t defender_kq_nodes = 0;
     std::uint64_t proof_hint_probes = 0;
     std::uint64_t proof_hint_hits = 0;
     std::uint64_t proof_hint_stores = 0;
@@ -267,6 +272,7 @@ struct Stats {
         refutation_hint_probes += o.refutation_hint_probes;
         refutation_hint_hits += o.refutation_hint_hits;
         refutation_hint_stores += o.refutation_hint_stores;
+        defender_kq_nodes += o.defender_kq_nodes;
         proof_hint_probes += o.proof_hint_probes;
         proof_hint_hits += o.proof_hint_hits;
         proof_hint_stores += o.proof_hint_stores;
@@ -278,7 +284,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 46 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 47 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

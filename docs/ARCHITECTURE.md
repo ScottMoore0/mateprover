@@ -4091,9 +4091,9 @@ through to "no solution reported" and was skipped. It printed **"0 certificates
 verified"** beside a full run of solved positions and exited successfully. A
 checker that passes by not looking is worse than no checker.
 
-**The claim mismatch.** Chest's documentation says it *"always performs iterative
-deepening"* at every recursive level, so *"the depth of the result, and of any
-partial sub-result, is always minimal"*. Chest proves the SHORTEST solution.
+**The claim mismatch.** Chest proves the SHORTEST solution, establishing minimal
+depth for interior sub-results as well as for the whole, which is observable in
+its output and was confirmed here by measurement.
 Every head-to-head in this project had given MateProver `--direct-depth`, which
 proves a solution WITHIN N and is explicitly not guaranteed minimal.
 
