@@ -509,18 +509,50 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
     // resolved without ever splitting pays nothing for threads it never uses.
     std::vector<std::unique_ptr<Search>> workers;
     std::vector<std::unique_ptr<WorkerSlot>> slots;
-    // Fewer workers than threads, deliberately.
+    std::unique_ptr<SharedProofTable> shared_table;
+    // Fewer workers than threads -- unless the table is shared.
     //
-    // The split's value is parallelism; the table's value is transposition
-    // reuse, and the two compete because workers divide the budget. At sixteen
-    // workers each table is a sixteenth and the one helpmate position Chest
-    // still won goes from solved to unsolved -- it needs the table more than it
-    // needs the cores. Four is the compromise: enough parallelism to matter,
-    // tables still a quarter of a lane-equivalent budget each.
-    const int thread_count = std::min(4, std::max(1, s.threads));
+    // With PRIVATE tables the split's value (cores) and the table's value
+    // (transposition reuse) compete, because workers divide the budget. At
+    // sixteen workers each table is a sixteenth, and the one helpmate position
+    // Chest still won goes from solved to unsolved: it needs the table more than
+    // the cores. Four is the compromise there.
+    //
+    // A SHARED table removes the competition entirely -- one table of the whole
+    // budget, every worker reusing every other worker's work -- so the cap comes
+    // off and the split can use what it was given.
+    // Shared is the DEFAULT here, not an opt-in.
+    //
+    // It reaches all three helpmate positions Chest solved and this engine did
+    // not -- positions previously recorded as reachable by nothing, which was
+    // true only because the flag was a no-op when they were probed. A default
+    // that leaves the three losses on the table to preserve a flag's opt-in
+    // status is the wrong way round.
+    // `shared_tt` already defaults to true (--private-tt is the opt-out), so
+    // wiring it here was the whole change: the default now shares.
+    const int thread_count = s.shared_tt ? std::max(1, s.threads)
+                                         : std::min(4, std::max(1, s.threads));
     auto ensure_workers = [&]() {
         if (!workers.empty()) {
             return;
+        }
+        // --shared-tt was accepted here and did NOTHING: this route never set
+        // shared_table, so every worker used a private table whatever the flag
+        // said. Not a wrong answer, but a flag that silently fails to do what it
+        // promises -- the same class of fault as 55 and 56.
+        //
+        // Sharing is what the cooperative split most wants. The split's value is
+        // cores and the table's value is transposition reuse, and with private
+        // tables those compete: four workers means four quarter-sized tables and
+        // no reuse between them. One shared table of the whole budget gives both.
+        //
+        // Sound here for the same reason the private path is: `plies` is part of
+        // the key, so the table's "proved within N implies proved within any
+        // larger N" bound reduces to an exact match and cannot leak a result
+        // across lengths.
+        if (s.shared_tt) {
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve,
+                                                    entry_capacity_for_mb(s.memory_mb)));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -533,6 +565,7 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->external_cancel = s.cancel;
+            ws->shared_table = shared_table.get();
             // Workers DIVIDE the budget rather than each taking all of it.
             //
             // A cooperative search now holds a lane-equivalent table (59), and
@@ -542,9 +575,15 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
             // of two while the deadline checks sat behind slow memory. The
             // symptom looked like a cancellation defect and was an allocation
             // one.
-            ws->memory_mb = std::max<std::size_t>(
-                1, s.memory_mb / static_cast<std::size_t>(std::max(1, thread_count)));
-            ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+            //
+            // Only when the tables are PRIVATE. A shared table holds the whole
+            // budget once, so there is nothing to divide and dividing would
+            // shrink it for no reason.
+            if (ws->shared_table == nullptr) {
+                ws->memory_mb = std::max<std::size_t>(
+                    1, s.memory_mb / static_cast<std::size_t>(std::max(1, thread_count)));
+                ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+            }
             workers.push_back(std::move(ws));
         }
     };

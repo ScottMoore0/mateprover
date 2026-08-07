@@ -140,6 +140,7 @@ did. If you are reading it for the first time:
 - [61. A Restricted Lane Has No Business Deepening Iteratively](#61-a-restricted-lane-has-no-business-deepening-iteratively)
 - [62. Two Corrections, One Of Them To A Result Bought Past The Deadline](#62-two-corrections-one-of-them-to-a-result-bought-past-the-deadline)
 - [63. The Three Helpmate Misses, Characterised Before Being Chased](#63-the-three-helpmate-misses-characterised-before-being-chased)
+- [64. Wiring The Shared Table, And Four Corpora That Contradicted Their Samples](#64-wiring-the-shared-table-and-four-corpora-that-contradicted-their-samples)
 
 ## Impact-Ordered Architecture
 
@@ -4377,3 +4378,44 @@ is not a wrong answer, but it is a flag that silently fails to do what it
 promises, which is the same class of fault as 55 and 56 -- an option whose effect
 cannot be seen in any output. Wiring it is the same change as the shared-table
 work above and should be done with it rather than separately.
+
+### 64. Wiring The Shared Table, And Four Corpora That Contradicted Their Samples
+
+**`--shared-tt` now does something on the cooperative route.** It was accepted
+and ignored (63). Wiring it is the whole change, since `shared_tt` already
+defaults to true and `--private-tt` is the opt-out -- so the default now shares,
+and the four-worker cap comes off, because the cap existed only to stop private
+tables dividing the budget into uselessly thin slices.
+
+It reached all three helpmate positions recorded at 63 as reachable by nothing.
+That record was wrong in a specific and instructive way: the probe that produced
+it DID try `--shared-tt`, and the flag was a no-op at the time. A dead option
+does not merely fail to help; it silently contaminates every conclusion drawn
+from a sweep that includes it.
+
+**Then four corpora were run whole instead of sampled, and every one disagreed
+with its sample.**
+
+| goal | corpus | Chest | mateprover | only Chest | sample had said |
+|---|---|---|---|---|---|
+| mate-in-8 | 200 | 171 | **178** | 10 | a 4-position LOSS |
+| selfmate | 904 | 475 | **646** | 36 | 3 behind |
+| helpmate | 546 | **511** | 510 | 7 | a 3-position loss |
+| helpstalemate | 431 | 331 | **379** | 1 | 4 ahead |
+
+Every direction of error appears here. Mate-in-8's sample invented a loss.
+Selfmate's understated the misses by a factor of twelve while also understating
+the wins. Helpmate's overstated a loss that is really a one-position dead heat.
+
+The samples were 30 to 40 positions and the effects are 1-4%. That is simply the
+wrong instrument, and it was used repeatedly in this project before the
+arithmetic was taken seriously. **Any comparative figure here drawn from a sample
+should be treated as provisional until the corpus has been run.**
+
+**What the residue looks like.** Selfmate's 36 misses cluster in sparse endgames
+at s#8-s#10 -- `7k/6R1/5Q2/...`, `q7/8/8/7Q/...` -- which is the same
+tiny-material class as the stalemate weakness of 59, arriving from a third
+direction. Helpmate's 7 are all h#4. And the ten mate-in-8 misses survived a
+fourteen-configuration sweep (restrictions C, K, X, R, the shared table, 32
+threads, the shallow-fast route) with a UNION of one: nine of them are reached by
+nothing this engine can currently be told to do.

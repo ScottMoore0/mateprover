@@ -194,15 +194,23 @@ not. Both engines prove the SHORTEST solution, one position at a time, Chest wit
 2048 MB against mateprover's 256 MB a lane, **best of three trials per position**
 so that a single unlucky run cannot decide a comparison at one-second scales:
 
-| goal | Chest | mateprover | only Chest | median | >1.5x slower |
+| goal | corpus | Chest | mateprover | only Chest | only mateprover |
 |---|---|---|---|---|---|
-| mate-in-8 (all 200) | 171/200 | **178/200** | **10** | 2.79x | 8/22 |
-| mate-in-10 | 13/30 | **30/30** | **0** | 7.79x | 1/13 |
-| stalemate | 18/40 | **31/40** | **0** | 1.22x | 2/18 |
-| selfmate | 24/40 | **32/40** | **3** | 6.09x | 3/16 |
-| helpmate | **35/40** | 32/40 | **3** | 1.02x | 4/33 |
-| helpstalemate | 31/40 | **35/40** | **0** | 1.25x | 1/31 |
-| selfstalemate | 23/35 | 23/35 | **0** | 0.72x | 7/23 |
+| mate-in-8 | **all 200** | 171 | **178** | 10 | 17 |
+| mate-in-10 | 30 sample | 13 | **30** | **0** | 17 |
+| stalemate | 40 sample | 18 | **31** | **0** | 13 |
+| selfmate | **all 904** | 475 | **646** | 36 | 207 |
+| helpmate | **all 546** | **511** | 510 | 7 | 6 |
+| helpstalemate | **all 431** | 331 | **379** | 1 | 49 |
+| selfstalemate | all 35 | 23 | 23 | **0** | 0 |
+
+Four of the seven rows are whole corpora rather than samples. That change was not
+cosmetic: on every goal where it has been done, the sample and the corpus
+disagreed. Mate-in-8 looked like a 4-position LOSS on a 30-position draw and is a
+7-position win over 200. Selfmate looked like 3 behind and is 36 behind and 207
+ahead over 904. Helpmate looked like a 3-position loss over 40 and is level over
+546 -- 511 against 510. The remaining sampled rows are provisional for the same
+reason.
 
 The mate-in-10, selfmate and mate-in-8 rows are after the restricted-lane fix of
 61; the median and slower columns predate it and are therefore pessimistic for
