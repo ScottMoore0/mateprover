@@ -254,12 +254,25 @@ def test_time_limit(engine: Path, res: Results) -> None:
                   f"output {out.strip()[:80]!r}")
 
     # A generous budget must not disturb positions that solve quickly.
+    #
+    # Compared on the DEPTH, not on the key move. Setting --time-limit turns the
+    # portfolio on, and the portfolio is explicitly non-deterministic about WHICH
+    # lane wins: the first to prove a mate takes it and the rest are cancelled,
+    # so an equally valid mate found by a restricted lane can be reported
+    # instead. `1R6/8/8/8/7k/4Q3/4K3/8` returns e3g1 unrestricted and b8g8 via
+    # K2, both mate in 2.
+    #
+    # Comparing the move asserted a property the engine disclaims. It passed for
+    # a long time because the unrestricted lane usually wins the race on
+    # positions this small -- and failed the moment the machine was busy, which
+    # is exactly how it would fail in CI rather than on a quiet desk.
     cases = load_epd(HERE / "mates.epd")
     baseline = solve(engine, cases, ["-M", "64", "--single-thread"])
     budgeted = solve(engine, cases, ["-M", "64", "--single-thread", "--time-limit", "120"])
     same = all(
-        (BM_RE.search(a) is None) == (BM_RE.search(b) is None)
-        and (BM_RE.search(a) is None or BM_RE.search(a).group(1) == BM_RE.search(b).group(1))
+        (DM_RE.search(a) is None) == (DM_RE.search(b) is None)
+        and (DM_RE.search(a) is None
+             or int(DM_RE.search(a).group(1)) >= int(DM_RE.search(b).group(1)))
         for a, b in zip(baseline, budgeted)
     )
     res.check("a generous budget changes no answer", same)

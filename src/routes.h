@@ -13,6 +13,15 @@
 
 namespace mateprover {
 
+// Men on the board. The preconditioner's material floor reads this; it is not
+// on any hot path.
+inline int men_on_board(const Board& b) {
+    std::uint64_t occ = b.occ;
+    int n = 0;
+    while (occ) { occ &= occ - 1; ++n; }
+    return n;
+}
+
 RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_depth, int max_depth) {
     RouteResult result;
     start_depth = std::max(1, start_depth);
@@ -340,6 +349,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         // search that has no time left.
         s.aborted = false;
         const bool precondition = depth >= s.dfpn_min_depth &&
+                                  (s.dfpn_min_men == 0 || men_on_board(b) >= s.dfpn_min_men) &&
                                   (!s.dfpn_final_depth_only || depth >= max_depth);
         if (precondition) {
             dfpn_attacker(s, b, depth, DFPN_INF, DFPN_INF);
@@ -672,6 +682,7 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
         // directmate route: it only warms the tables and the ordering hints,
         // and the verdict below is still the exact prover's.
         if (s.route == RouteKind::Dfpn && depth >= s.dfpn_min_depth &&
+            (s.dfpn_min_men == 0 || men_on_board(b) >= s.dfpn_min_men) &&
             (!s.dfpn_final_depth_only || depth >= max_depth)) {
             s.dfpn_tt.clear();
             dfpn_selfmate_attacker(s, b, depth, DFPN_INF, DFPN_INF);

@@ -87,6 +87,43 @@ struct SearchConfig {
     bool dfpn_final_depth_only = true;
     // Absolute floor, retained for experiments. 1 means no floor.
     int dfpn_min_depth = 1;
+    // Material floor for the preconditioner: it runs only when the position has
+    // at least this many men. 0 disables the floor.
+    //
+    // Measured, not guessed. Over the 36 selfmate positions Chest solves and
+    // this engine did not, running the preconditioner but IGNORING its hints
+    // recovered nothing, while not running it at all recovered eight. The
+    // guidance was never the problem -- the search could not afford to buy it.
+    // Every one of the eight has eight men or fewer, and the preconditioner is
+    // what wins at depth on ordinary material, so the fix is a floor rather than
+    // a switch. See section 65.
+    //
+    // NOT the refuted experiment. That one chose a different ROUTE when material
+    // was sparse and lost positions, because DFPN wins every piece-count bucket.
+    // This changes whether the preconditioner RUNS, not which search follows it.
+    // 7 is the only setting measured to gain without costing. The curve, over
+    // the 36 selfmate positions Chest solves and this engine did not, against
+    // mate-in-10 which is what the preconditioner exists for:
+    //
+    //     floor 0 (off)   0/36 selfmate   28/30 mate-in-10
+    //     floor 7         3/36            28/30      <- free
+    //     floor 9         7/36            26/30
+    //     floor 11        8/36            25/30
+    //     floor 13        8/36            23/30
+    //
+    // DEFAULT OFF, and the reason is a regression bar rather than a preference.
+    //
+    // The floor-7 row above was measured on a 30-position mate-in-10 SAMPLE and
+    // read as free. On the full 200-position mate-in-8 corpus it is not: 177
+    // against 178, so it LOSES a directmate position to gain three selfmates.
+    // Net positive by two, and still the wrong trade -- buying sparse selfmates
+    // with directmate is exactly what rejected the higher floors, and the agreed
+    // regression bar is that a change may ADD verdicts and must not CHANGE them.
+    //
+    // The fifth time in this project that a sample has reversed on its corpus.
+    // The flag stays so the curve is available to anyone who wants that end of
+    // it; the default declines the trade.
+    int dfpn_min_men = 0;
     // Weight applied to an AND node's proof estimate when the defender is not
     // in check, biasing DFPN toward forcing lines. 1 disables it. See
     // architecture 46 for why per-ply selectivity is the lever that compounds.

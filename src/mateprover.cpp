@@ -237,6 +237,10 @@ void print_usage() {
 "  --dfpn-check-bias N           weight an AND node's proof estimate when the\n"
 "                                defender is not in check (default 1, off;\n"
 "                                measured harmful -- see architecture 47)\n"
+"  --dfpn-min-men N              skip the preconditioner when the position has\n"
+"                                fewer than N men (0 = no floor). On sparse\n"
+"                                material it costs more than its guidance is\n"
+"                                worth; see --dfpn-min-depth for the other axis\n"
 "  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
 "                                iterative deepening its work cannot carry\n"
 "                                across depths (default 1, no skipping)\n"
@@ -591,6 +595,12 @@ int main(int argc, char** argv) {
             config.goal = Goal::Helpmate;
         } else if (arg == "--helpstalemate") {
             config.goal = Goal::Helpstalemate;
+        } else if (arg == "--dfpn-min-men") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--dfpn-min-men' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--dfpn-min-men' expects a number");
+            config.dfpn_min_men = static_cast<int>(value); // 0 disables the floor
         } else if (arg == "--dfpn-check-bias") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-check-bias' requires a weight");
