@@ -141,6 +141,7 @@ did. If you are reading it for the first time:
 - [62. Two Corrections, One Of Them To A Result Bought Past The Deadline](#62-two-corrections-one-of-them-to-a-result-bought-past-the-deadline)
 - [63. The Three Helpmate Misses, Characterised Before Being Chased](#63-the-three-helpmate-misses-characterised-before-being-chased)
 - [64. Wiring The Shared Table, And Four Corpora That Contradicted Their Samples](#64-wiring-the-shared-table-and-four-corpora-that-contradicted-their-samples)
+- [65. Retrograde Generation: A Round-Trip That Could Not See The Real Defect](#65-retrograde-generation-a-round-trip-that-could-not-see-the-real-defect)
 
 ## Impact-Ordered Architecture
 
@@ -4419,3 +4420,96 @@ direction. Helpmate's 7 are all h#4. And the ten mate-in-8 misses survived a
 fourteen-configuration sweep (restrictions C, K, X, R, the shared table, 32
 threads, the shallow-fast route) with a UNION of one: nine of them are reached by
 nothing this engine can currently be told to do.
+
+### 65. Retrograde Generation: A Round-Trip That Could Not See The Real Defect
+
+`retro.h` answers one question: what are the predecessors of this position?
+Every position P and legal move m with `make_move(P, m) == b`. It is the
+groundwork for a bidirectional cooperative search (the backward frontier has
+nothing to stand on without it), and it is measured before anything is built on
+it.
+
+**The design is generate-a-superset-then-verify.** Reverse move generation is
+the fiddly half of retrograde analysis -- uncaptures, unpromotions, un-castling,
+un-en-passant, restored castling rights, and the fact that a sliding piece's
+origin depends on an occupancy that does not exist yet. Getting all of that
+right by construction is where retrograde code goes wrong, and it goes wrong
+silently. So candidates are proposed cheaply and confirmed afterwards.
+
+**The first version confirmed the wrong thing.** It played the candidate move
+forward with `make_move` and compared the result against `b`. That reads like
+verification and is not: `make_move` does not check that the move is legal, or
+even that the piece moves the way its type moves. It rewrites two squares. So
+for a knight on `to` and ANY empty square `from`, the replay reproduces `b`
+exactly, and every empty square on the board became a "predecessor". The
+generator was emitting positions a knight had reached by sliding down a file.
+
+The round-trip harness measured 96.19% and said nothing about this, because a
+round-trip is a completeness test:
+
+> for each position P and each legal move m,
+> the predecessors of `make_move(P, m)` must include P.
+
+Every spurious predecessor is invisible to that question. Completeness and
+soundness are separate measurements and the harness that finds one is
+structurally blind to the other -- the same shape as the dead `--shared-tt`
+flag at 64 and the verifier that skipped `hm`/`hsm` at 57: a gate reporting a
+number for a property it was not testing.
+
+Verification now requires the retracted move to appear in the candidate's own
+**legal** move list before it is replayed. That is the whole soundness
+argument, and it is one line.
+
+**What the round-trip was right about.** 96.19% was a real gap, and it broke
+down as 67 castling-rights misses and 35 undiagnosed. Both are now closed:
+
+| Miss class | Why it was missed | Fix |
+| --- | --- | --- |
+| castling rights forfeited | the predecessor needs rights `b` no longer carries | enumerate plausible restorations of exactly the bits this move would clear |
+| castling itself | two pieces move; the single-piece loop cannot express it | a separate four-entry retraction table |
+| en-passant capture | the restored pawn does not go back on `to` | a separate retraction, with `pred.ep` pinned to the capture square |
+| double push, ep square absent | see below | compare positions on the LIVE ep square |
+| unused ep square in the predecessor | only `ep = -1` was ever proposed | emit each live ep square the waiting side could have left |
+
+The fourth of those is worth stating plainly, because it is a disagreement about
+what a position IS. `make_move` records an ep square after every double push,
+whether or not a capture exists; the FEN convention in wide use -- and the one
+the corpora are written in -- records it only when the capture is legal.
+Comparing the raw field makes the two disagree, and the disagreement lands
+exactly on the predecessor "the opponent just pushed two squares", which is most
+of the pawn endgame. An ep square no pawn can use is not observable: no
+continuation tells the two positions apart. So positions are compared, and
+predecessors emitted, on the live ep square only.
+
+**Material bounds, because they are free.** An uncapture hands a man back and an
+unpromotion hands a pawn back; neither may take a side past sixteen men or eight
+pawns. That is the one thing about a predecessor that can be settled without
+knowing how the game got here, and it removed 90% of the unreachable output. It
+is applied only where a unit is ADDED, so a caller-supplied FEN that is already
+over strength is retracted rather than rejected -- this is a move generator, not
+a validator. The same rule governs restored castling rights (checked for
+plausibility only when restored, never against rights the input already carries)
+and the back-rank pawn guard, which was present for the pawn an uncapture
+restores and absent for the pawn the retraction itself moves.
+
+**Where it stands.** On a mixed corpus of a random walk and 40 composed
+helpmates -- 2,676 (parent, move) pairs, 16,146 emitted predecessors:
+
+| Property | Before | After |
+| --- | --- | --- |
+| complete: every predecessor generated | 96.19% | **100%** |
+| sound: every emitted predecessor really is one | not measured | **100%** |
+| of which reachable from the initial array | -- | 99.3% |
+
+The contract is exactly one ply, in both directions. It does not decide whether
+a predecessor is reachable from the initial array: a position can respect the
+material bounds and still be retro-impossible -- three pieces giving check at
+once, or two checkers on one line through the king, cannot be produced by any
+single move, and nothing here rejects them. That is 0.7% of output.
+
+Chasing it would mean a second attack generator duplicating `board.h` for a
+0.7% return, and it costs a backward search time rather than correctness: a
+bidirectional search meets when a backward node EQUALS a forward node, forward
+nodes are reachable by construction, and an unreachable backward node therefore
+never matches. Documented, bounded by a test, and left. A caller that needs
+retro-legality in its own right must add it.

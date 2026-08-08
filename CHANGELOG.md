@@ -8,6 +8,30 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
+## Unreleased
+
+**Retrograde move generation** (`--list-unmoves`). Given a position, lists every
+position from which one legal move reaches it. This is groundwork for a
+bidirectional cooperative search, and is shipped separately from it because the
+generator has to be measured before anything rests on it.
+
+The guarantee is exactly one ply and it holds in both directions: every emitted
+predecessor is a legal position with a legal move to the target, and every such
+predecessor is emitted. Both are gated by tests against an independent adjudicator
+(`python-chess`) rather than by the engine agreeing with itself. It does not
+decide whether a predecessor is reachable from the initial array — 0.7% of output
+is legal one ply back and impossible overall — which `docs/ARCHITECTURE.md` §65
+states as the contract rather than leaving to be discovered.
+
+The first version of this passed a 96% completeness round-trip while emitting
+predecessors that a knight had reached by sliding down a file: it replayed the
+retracted move without first checking the move was legal, and a completeness
+test is structurally blind to a spurious predecessor. Both properties are now
+measured. Castling, castling-rights forfeiture, en-passant capture, and
+en-passant squares that no pawn can use are handled; the last of these is a
+disagreement about what a position is, and is resolved in favour of the FEN
+convention the corpora use.
+
 ## 1.0.0 — 2026-08-02
 
 Published as **MateProver**. The project was developed under the working name
@@ -44,7 +68,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 366 automated checks cover perft against
+sharing no code with the engine. 373 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

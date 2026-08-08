@@ -1989,6 +1989,123 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
               str(config.get("parallel_positions")))
 
 
+def test_retrograde_unmoves(engine: Path, res: Results) -> None:
+    """Retrograde generation must be exact in BOTH directions, and only one of
+    the two directions is visible from inside the engine.
+
+    The generator confirms each predecessor by playing the move forward, which
+    reads like self-verification and is not. It says nothing about predecessors
+    that were never proposed -- and a missing predecessor is, in a backward
+    search, a solution silently not found rather than a slow answer.
+
+    Worse, the forward replay does not by itself establish soundness either.
+    Replaying a move without first finding it among the candidate's LEGAL moves
+    proves nothing: make_move will carry a knight down a file, and the result
+    still compares equal, so every empty square becomes a "predecessor". That
+    defect passed a completeness round-trip at 96% because a round-trip cannot
+    see it. Both directions are therefore measured here, against python-chess.
+
+    Residual soundness is not 100%: a position can be a legal one-ply
+    predecessor and still be unreachable from the initial array (three checkers,
+    or two checkers on one line through the king). That is the documented
+    contract, so the bound below is on the error rate, not on zero.
+    """
+    print("\n[retro] predecessors: sound and complete")
+
+    # Shapes chosen because each is a separate code path that the ordinary
+    # piece-to-empty-square loop cannot express, and each was absent at first.
+    named = [
+        ("un-castling", "r3k2r/8/8/8/8/8/8/R4RK1 b kq -", "r3k2r/8/8/8/8/8/8/R3K2R w KQkq -"),
+        ("un-en-passant", "8/8/3P4/8/8/7k/8/7K b - -", "8/8/8/2Pp4/8/7k/8/7K w - d6"),
+        ("unpromotion", "5Q2/8/8/8/8/7k/8/7K b - -", "8/5P2/8/8/8/7k/8/7K w - -"),
+        ("restored rights", "r3k2r/8/8/8/8/8/8/1R2K2R b Kkq -", "r3k2r/8/8/8/8/8/8/R3K2R w KQkq -"),
+    ]
+    out = run(engine, ["--list-unmoves", "-"], "".join(c + chr(10) for _, c, _ in named))
+    table = {}
+    for line in out.splitlines():
+        if "; unmoves " not in line:
+            continue
+        table[line.split(";", 1)[0].strip()] = set(re.findall(r"\[([^\]]+)\]", line))
+    for name, child, want in named:
+        res.check(f"{name} is retracted", want in table.get(child, set()),
+                  f"{want} not among {len(table.get(child, ()))} predecessors of {child}")
+
+    if not HAVE_CHESS:
+        res.skip("retrograde soundness and completeness", "python-chess not installed")
+        return
+
+    rng = random.Random(31)
+    positions = []
+    board = chess.Board()
+    for _ in range(240):
+        if board.is_game_over():
+            board = chess.Board()
+        board.push(rng.choice(list(board.legal_moves)))
+        if rng.random() < 0.35:
+            positions.append(board.copy())
+    positions = positions[:40]
+
+    def fen4(b):
+        return " ".join(b.fen().split()[:4])
+
+    # Completeness: every (parent, move) pair must show up as a predecessor of
+    # the child it produced.
+    pairs = []
+    for p in positions:
+        parent = fen4(p)
+        for move in list(p.legal_moves)[:16]:
+            p.push(move)
+            pairs.append((fen4(p), parent))
+            p.pop()
+    children = sorted({c for c, _ in pairs})
+    out = run(engine, ["--list-unmoves", "-"], "".join(c + chr(10) for c in children))
+    preds = {}
+    for line in out.splitlines():
+        if "; unmoves " not in line:
+            continue
+        preds[line.split(";", 1)[0].strip()] = set(re.findall(r"\[([^\]]+)\]", line))
+    missing = [(c, p) for c, p in pairs if p not in preds.get(c, set())]
+    res.check("every predecessor is generated", not missing,
+              f"{len(missing)} of {len(pairs)} missing, e.g. {missing[:2]}")
+
+    # Soundness: every emitted predecessor must have a legal move to the child.
+    total = 0
+    unsound = []
+    unreachable = 0
+    for child, plist in preds.items():
+        cb = chess.Board(child + " 0 1")
+        for pred in plist:
+            total += 1
+            try:
+                pb = chess.Board(pred + " 0 1")
+            except ValueError:
+                unsound.append((pred, child, "unparseable"))
+                continue
+            if pb.was_into_check():
+                unsound.append((pred, child, "side not to move is in check"))
+                continue
+            if not pb.is_valid():
+                unreachable += 1          # legal one ply back, impossible overall
+            hit = False
+            for move in pb.legal_moves:
+                pb.push(move)
+                same = fen4(pb) == child
+                pb.pop()
+                if same:
+                    hit = True
+                    break
+            if not hit:
+                unsound.append((pred, child, "no legal move reaches the child"))
+    res.check("every generated predecessor really is one", not unsound,
+              f"{len(unsound)} of {total} unsound, e.g. {unsound[:2]}")
+    # 0.7% when this was written. The bound is loose enough not to be a
+    # tripwire and tight enough to catch the material and back-rank filters
+    # being dropped, which cost 16% between them.
+    res.check("retro-impossible predecessors stay a small residue",
+              total > 0 and unreachable <= total // 20,
+              f"{unreachable} of {total}")
+
+
 def test_comparisons_actually_differ(engine: Path, res: Results) -> None:
     """Anything presented as a comparison must compare two different things.
 
@@ -2090,6 +2207,7 @@ def main() -> int:
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
+    test_retrograde_unmoves(args.engine, res)
     test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
 
