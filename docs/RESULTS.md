@@ -194,13 +194,34 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 
 | goal | corpus | Chest | mateprover | only Chest | only mateprover |
 |---|---|---|---|---|---|
-| mate-in-8 | **all 200** | 171 | **178** | 10 | 17 |
-| mate-in-10 | 30 sample | 13 | **30** | **0** | 17 |
-| stalemate | 40 sample | 18 | **31** | **0** | 13 |
+| mate-in-8 | **all 200** | 146 | **168** | 9 | 31 |
+| mate-in-10 | **all 60** | 20 | **53** | 2 | 35 |
+| stalemate | **all 792** | 725 | **759** | 1 | 35 |
+| helpmate | **all 546** | **491** | 480 | 16 | 5 |
+| helpstalemate | **all 431** | 308 | **344** | **0** | 36 |
 | selfmate | **all 904** | 475 | **646** | 36 | 207 |
-| helpmate | **all 546** | **511** | 510 | 7 | 6 |
-| helpstalemate | **all 431** | 331 | **379** | 1 | 49 |
-| selfstalemate | all 35 | 23 | 23 | **0** | 0 |
+| selfstalemate | *no corpus in the tree* | 23 | 23 | 0 | 0 |
+
+Single trial, **10 s a position**, mateprover on its shipped 256 MB against Chest
+on 2048 MB, both proving the SHORTEST solution, scored on presence rather than on
+matching the stipulated depth. Six of the seven rows are whole corpora. Stalemate
+is now the externally-sourced union of `stalemate_pdb` and `stalemate_yacpdb`,
+792 distinct after removing 47 duplicates and the one position already tagged
+illegal -- it replaces a 40-position **development** set. The selfmate row is
+carried over from an earlier best-of-three run and is the only one not re-measured
+under this protocol.
+
+Speed, on the positions **both** engines solved -- a ratio that includes a timeout
+is comparing a number against a cap:
+
+| goal | paired | total | median per position |
+|---|---|---|---|
+| mate-in-8 | 137 | 2.75x | **10.9x** |
+| mate-in-10 | 18 | 5.24x | **94.5x** |
+| stalemate | 724 | 2.42x | **22.3x** |
+| helpmate | 475 | 1.13x | 3.3x |
+| helpstalemate | 308 | 5.68x | **12.1x** |
+
 
 Four of the seven rows are whole corpora rather than samples. That change was not
 cosmetic: on every goal where it has been done, the sample and the corpus

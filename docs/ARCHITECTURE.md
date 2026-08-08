@@ -145,6 +145,7 @@ did. If you are reading it for the first time:
 - [66. GAP-11: The Bidirectional Search That Cannot Exist, And The Starvation It Was Hiding](#66-gap-11-the-bidirectional-search-that-cannot-exist-and-the-starvation-it-was-hiding)
 - [67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself](#67-auditing-the-corpora-fifteen-wrong-entries-and-a-denominator-that-cannot-be-trusted-to-itself)
 - [68. The Preconditioner Gate: A Real Effect, Measured, And Rejected](#68-the-preconditioner-gate-a-real-effect-measured-and-rejected)
+- [69. Six Corpora, Measured Together: Where Chest Still Wins, And Where It Is Wrong](#69-six-corpora-measured-together-where-chest-still-wins-and-where-it-is-wrong)
 
 ## Impact-Ordered Architecture
 
@@ -4783,3 +4784,105 @@ configuration, which is what this was testing. GAP-1's verdict lattice and the
 K+P theorem -- the larger of the two two-unit defender classes at 11 of 36 --
 remain the work, and they are weeks rather than hours. That is a worse answer
 than the one hoped for, and it is now measured rather than assumed.
+
+### 69. Six Corpora, Measured Together: Where Chest Still Wins, And Where It Is Wrong
+
+Five loose ends closed in one pass, because coverage and speed come from the same
+runs and two passes would let the two tables drift apart. Everything below is a
+single trial at 10 s a position, mateprover on its shipped 256 MB against Chest on
+2048 MB, both proving the shortest solution, scored on presence.
+
+| goal | corpus | Chest | mateprover | only Chest | median speedup |
+| --- | --- | --- | --- | --- | --- |
+| mate-in-8 | all 200 | 146 | **168** | 9 | 10.9x |
+| mate-in-10 | all 60 | 20 | **53** | 2 | 94.5x |
+| stalemate | all 792 | 725 | **759** | 1 | 22.3x |
+| helpmate | all 546 | **491** | 480 | **16** | 3.3x |
+| helpstalemate | all 431 | 308 | **344** | **0** | 12.1x |
+
+**Helpmate is a real loss and the two-ply split did not close it.** I expected it
+to. 66 made hard cooperative positions 3.2x faster and helpmate was one position
+behind, so the arithmetic looked settled before it was run. It was not: 480 to
+491, with sixteen positions Chest reaches and this engine does not. The median
+speedup on shared positions is 3.3x, the lowest of any goal, and on total time the
+two are near parity at 1.13x. Chest is simply good at helpmates, and a faster
+engine that is still behind on coverage is behind on coverage.
+
+The prediction was wrong in the same way the samples of 62 were wrong -- reasoning
+forward from a ratio instead of running the corpus. The fix made the row faster
+without making it a win.
+
+**Helpstalemate is now a clean sweep**: 344 to 308 with **nothing** that only Chest
+solves, from a row that was one position behind.
+
+**Stalemate moves off a development set.** The row was 40 positions from
+`stalemate_dev40` -- a set used during development, which is the one kind of set a
+headline number should never rest on. It is now the externally-sourced union of
+`stalemate_pdb` and `stalemate_yacpdb`: 792 distinct after removing 47 duplicates
+and the position already tagged illegal. 759 to 725, one position to Chest.
+
+#### Chest returns fourteen wrong negatives
+
+On stalemate, Chest reported "No solution" for 27 positions. Thirteen are corpus
+errors already in `KNOWN_BAD.jsonl`. **The other fourteen are positions mateprover
+solves** -- two provers flatly contradicting each other, which cannot be left
+alone.
+
+It is not a protocol artifact. Both engines agree the depth is 8; Chest still
+refuses at 8. It is not a flag: `-r`, no `-r`, and `-S` all refuse, while a control
+stalemate solves under the same flags. The positions are sparse queen endings such
+as `2Q5/8/1k6/5b2/8/8/8/7K w - -`.
+
+The disagreement resolves constructively. mateprover emits a certificate for that
+position and `tools/verify_proof.py` -- a separate program, sharing no code with
+the engine -- confirms it: **stalemate in 8**, every defender reply enumerated, the
+terminal a real stalemate. A verified constructive proof beats an unexplained
+negative, and this is the case certificates exist for. It is worth noting what
+this costs Chest: those fourteen are counted as Chest failures above, and without
+the certificate there would be no principled way to decide which engine to
+believe.
+
+#### The mate-in-8 misses are a budget, not a wall
+
+The record said the ten mate-in-8 misses "survived a fourteen-configuration sweep
+with a union of one" and were reached by nothing. That sweep varied
+CONFIGURATION at a fixed budget. Nobody had varied the budget.
+
+Nine positions Chest solves at 10 s and mateprover does not:
+
+| budget | solved |
+| --- | --- |
+| 60 s | 7 of 9 |
+| 300 s | 8 of 9 |
+| 900 s | 8 of 9 |
+
+**Eight of nine are constant-factor losses, not reach gaps.** GAP-5 -- a search
+ordering deficiency rather than an algorithmic wall -- is the right shape for this
+class after all, and the "reached by nothing" framing was an artifact of holding
+the clock fixed while varying everything else.
+
+One position resists ninety times its original budget:
+`N1R2N2/1p6/6B1/2P5/8/P7/2P1p1K1/k7 w - -`. That one is a reach gap, and it is
+now a population of one rather than of ten.
+
+This does NOT say mateprover beats Chest at 60 s; Chest was not given 60 s. It
+says the positions are reachable, which is the question GAP-5 turns on.
+
+#### Twenty-two more corpus entries under suspicion
+
+Chest refused 14 helpmate and 9 helpstalemate positions definitively. On both
+corpora the contradiction count is **zero** -- there is no position Chest refuses
+and mateprover solves. Twenty-two are new and are recorded in `KNOWN_BAD.jsonl`,
+explicitly at a weaker evidence level than the original fifteen: there, mateprover
+refuted and Chest agreed; here only Chest refuted, because mateprover ran out of
+clock rather than exhausting the search. One prover's refusal is a lead, not a
+finding, and the file says so.
+
+#### Selfstalemate cannot be measured at all
+
+The `selfstalemate` row claims "all 35". **There is no selfstalemate corpus in the
+repository.** No file carries the goal, nothing in `tools/` mints one, and
+`benchmarks/MANIFEST.json` covers only the matetrack sets. The row rests on a set
+that cannot be rebuilt, which by this project's own standard at 55 makes it not
+evidence. It is the last unreproducible number in `RESULTS.md` and it should be
+either regenerated and committed or withdrawn.
