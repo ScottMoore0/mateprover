@@ -444,6 +444,41 @@ struct CertReader {
 // of disambiguation, castling, promotion, en passant, the check and mate
 // suffixes -- and an earlier version of move_san passed a three-move eyeball
 // while marking every quiet move as a capture.
+// `<fen4>; unmoves N; pred <fen4> ...` -- every predecessor of the position.
+//
+// The hook the round-trip test drives. Retrograde generation is verified by a
+// property rather than by inspection: for every predecessor P this prints, some
+// legal move from P must reproduce the input, and the generator establishes that
+// itself by construction. What the external test adds is the other direction --
+// that no predecessor is MISSING -- which it checks by playing every legal move
+// from a large sample of positions and confirming the resulting position lists
+// the position it came from.
+void list_unmoves_line(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        return;
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; unmoves 0; error input;\n" << std::flush;
+        return;
+    }
+    std::vector<Board> preds;
+    generate_unmoves(*parsed, preds);
+    std::vector<std::string> fens;
+    fens.reserve(preds.size());
+    for (const Board& p : preds) {
+        fens.push_back(fen4(p));
+    }
+    std::sort(fens.begin(), fens.end());
+    fens.erase(std::unique(fens.begin(), fens.end()), fens.end());
+    std::cout << fen4(*parsed) << "; unmoves " << fens.size() << "; pred";
+    for (const std::string& f : fens) {
+        std::cout << " [" << f << "]";
+    }
+    std::cout << ";\n" << std::flush;
+}
+
 void list_san_line(const std::string& raw) {
     std::string line = trim(raw);
     if (line.empty()) {

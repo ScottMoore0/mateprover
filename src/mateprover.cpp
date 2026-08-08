@@ -50,6 +50,7 @@
 #include "rootsplit.h"
 #include "dfpn.h"
 #include "routes.h"
+#include "retro.h"
 #include "report.h"
 #include "solve.h"
 
@@ -190,6 +191,10 @@ void print_usage() {
 "                                loses in x moves\")\n"
 "  --check-legal | -c            report legality and stop, without searching\n"
 "  --list-san                    every legal move as '<uci>=<san>'\n"
+"  --list-unmoves                every PREDECESSOR of the position, as FENs.\n"
+"                                Retrograde generation, for bidirectional\n"
+"                                search. Incomplete where castling rights were\n"
+"                                forfeited by the retracted move\n"
 "\n"
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
@@ -296,6 +301,7 @@ int main(int argc, char** argv) {
     bool read_stdin = false;
     bool list_legal = false;
     bool list_san = false;
+    bool list_unmoves = false;
 
     // Pre-scan: this flag must work regardless of where it appears, otherwise
     // it only takes effect when written before the option it excuses.
@@ -366,6 +372,8 @@ int main(int argc, char** argv) {
             list_legal = true;
         } else if (arg == "--list-san") {
             list_san = true;
+        } else if (arg == "--list-unmoves") {
+            list_unmoves = true;
         } else if (arg == "--perft" || arg == "--perft-divide") {
             const char* v = need_value(i);
             if (!v) return usage_error("option " + arg + " requires a depth");
@@ -855,6 +863,8 @@ int main(int argc, char** argv) {
                 list_legal_line(line);
             } else if (list_san) {
                 list_san_line(line);
+            } else if (list_unmoves) {
+                list_unmoves_line(line);
             } else if (config.parallel_positions > 1) {
                 pending.push_back(line);
                 // Four positions per worker before flushing: the queue can only
@@ -877,6 +887,8 @@ int main(int argc, char** argv) {
             list_legal_line(buffer.str());
         } else if (list_san) {
             list_san_line(buffer.str());
+        } else if (list_unmoves) {
+            list_unmoves_line(buffer.str());
         } else {
             solve_line(buffer.str(), requested_depth, config);
         }
