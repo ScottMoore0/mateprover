@@ -10,6 +10,29 @@ without one.
 
 ## Unreleased
 
+**The cooperative split now runs two plies deep.** Splitting on the root move
+alone made as many parallel tasks as there were root moves — around thirty — and
+cooperative subtrees are wildly uneven, so one task held most of the work and the
+other threads idled. Sixteen threads were SLOWER than four. Pairing each root move
+with each reply gives hundreds of tasks instead of tens: 20.1 s to 6.2 s on a hard
+h#4 at the default thread count, which is 6.0x against a single thread and matches
+the scaling the same search already achieved on workloads with no early exit.
+
+It also brings the answer closer to the sequential one, since lexicographic
+(first, second) order is the order a sequential depth-first search visits those
+subtrees in.
+
+**Meet-in-the-middle for the cooperative goals is rejected**, on measurement
+rather than on taste. A backward frontier has to start from an explicit goal set,
+and checkmate is a predicate rather than a state, so the mate positions must be
+enumerated first: 1.3x10^10 placements at six men against a forward search of
+2.3x10^7 states, and roughly 10^13 at the corpus median for h#4. Where the goal
+set is cheap to enumerate the forward search is already instant, and where the
+forward search needs help the goal set cannot be enumerated. `docs/ARCHITECTURE.md`
+§66 has the numbers. The retrograde generator added below keeps its value on its
+own terms; it has no bidirectional search to carry.
+
+
 **Retrograde move generation** (`--list-unmoves`). Given a position, lists every
 position from which one legal move reaches it. This is groundwork for a
 bidirectional cooperative search, and is shipped separately from it because the
@@ -68,7 +91,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 373 automated checks cover perft against
+sharing no code with the engine. 387 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

@@ -142,6 +142,7 @@ did. If you are reading it for the first time:
 - [63. The Three Helpmate Misses, Characterised Before Being Chased](#63-the-three-helpmate-misses-characterised-before-being-chased)
 - [64. Wiring The Shared Table, And Four Corpora That Contradicted Their Samples](#64-wiring-the-shared-table-and-four-corpora-that-contradicted-their-samples)
 - [65. Retrograde Generation: A Round-Trip That Could Not See The Real Defect](#65-retrograde-generation-a-round-trip-that-could-not-see-the-real-defect)
+- [66. GAP-11: The Bidirectional Search That Cannot Exist, And The Starvation It Was Hiding](#66-gap-11-the-bidirectional-search-that-cannot-exist-and-the-starvation-it-was-hiding)
 
 ## Impact-Ordered Architecture
 
@@ -4513,3 +4514,131 @@ bidirectional search meets when a backward node EQUALS a forward node, forward
 nodes are reachable by construction, and an unreachable backward node therefore
 never matches. Documented, bounded by a test, and left. A caller that needs
 retro-legality in its own right must add it.
+
+### 66. GAP-11: The Bidirectional Search That Cannot Exist, And The Starvation It Was Hiding
+
+GAP-11 was specified as meet-in-the-middle for the cooperative goals: enumerate
+forward half the plies from the root, enumerate backward half the plies from the
+set of mating positions, intersect. Roughly b⁸ becomes 2·b⁴ — a change of
+complexity class rather than of constant, and the only such item in either
+document.
+
+It does not survive contact with a measurement. What follows is the measurement,
+because "we tried it and it was slow" is not a finding.
+
+**A backward frontier needs an explicit goal set, and checkmate is a predicate.**
+That is the whole difficulty, and it is not a detail of chess. Bidirectional
+search requires states to expand backward FROM. A helpmate's goal is not a state,
+it is a property, so the goal set has to be enumerated before the backward half
+can begin. Enumerating it means walking the placements of that material:
+
+| Material | Placements to walk | Mate positions among them |
+| --- | --- | --- |
+| K+Q v K+R (4 men) | 15,249,024 | ~10,100 |
+| K+N+N v K+R+R (6 men) | 13,495,386,240 | ~270,000 |
+| 8 men (the h#4 corpus median) | ~10¹³ | — |
+| 25 men (the largest h#4 in the corpus) | ~10³⁰ | — |
+
+Mate counts are sampled (300,000 uniform placements each, filtered to legal
+positions with Black to move); placement counts are exact.
+
+Now put that beside the forward search it would replace. The six-man h#4
+`8/7r/5Nk1/6N1/4r3/8/2K5/8` costs **23,288,236 distinct (position, plies) states**
+— the profile records exactly that many stores against 83,214,104 table hits and
+zero evictions, so the search already visits each state once and is at frontier
+cost, with no slack for a better forward algorithm to recover.
+
+So at six men, merely FINDING the seeds of the backward frontier costs 1.3×10¹⁰
+placement tests against a forward search of 2.3×10⁷ states: the enumeration alone
+is some 600× the work it was meant to save. At four men the walk is cheap, but
+there the forward search is already instant. Above about seven men the walk is
+not merely expensive, it is beyond any machine. **The crossover is on the wrong
+side everywhere**: where the goal set is cheap to enumerate the forward search
+does not need help, and where the forward search needs help the goal set cannot
+be enumerated.
+
+The obvious repair fails too. Constrain the goal set to what the root can
+actually reach — in h#N each side makes exactly N moves, so at most N units per
+side have left their diagram squares. That constraint is real, but the set it
+defines is precisely the forward frontier at ply 2N, so computing it costs the
+forward search it was supposed to replace.
+
+**The signature measurement gave a false green light, and it is worth saying why.**
+The suggested cheap probe was to count distinct material signatures at the
+meeting ply and proceed if the set was small. It was small — median 14. But the
+binding constraint is not how MANY signatures need backward frontiers, it is what
+ONE of them costs, and that probe cannot see it. A discriminator has to be able
+to return the answer you do not want.
+
+GAP-11 is therefore **rejected**, and it collapses into GAP-4b: a backward
+frontier from an enumerable goal set with fixed material is a retrograde
+tablebase, which is already demoted on its own evidence. The retrograde generator
+of 65 keeps its value — it was always independently useful and independently
+tested — but it has no bidirectional search to carry.
+
+#### What was actually wrong
+
+Rejecting the mechanism does not release the target, which was the cooperative
+misses and "a large reduction in time on cooperative positions generally". So the
+same profile was read for what it did say.
+
+The cooperative split scaled like this, and the middle column is the tell:
+
+| Threads | h#4 solve | Exhaustive h#3 sweep |
+| --- | --- | --- |
+| 1 | 32.7 s | 1.56 s |
+| 4 | 13.9 s | 0.53 s |
+| 8 | 12.8 s | 0.34 s |
+| 16 | **20.1 s** | 0.27 s |
+
+The right-hand column is the same engine on the same position with the early exit
+removed, so every thread must work to the end: it scales 5.9× at sixteen threads.
+The threads were not contending. On the real solve they were **starved** — and at
+sixteen the search was slower than at four.
+
+The cause is granularity. The split ran one ply deep, so there were as many tasks
+as root moves, around thirty, and cooperative subtrees are wildly uneven. One task
+routinely holds most of the work; everything else finishes early and idles. Adding
+threads past that point cannot help, and hurts, because more of them start
+speculative work that a lower-indexed task then invalidates.
+
+**The split now runs two plies deep**: one task per (root move, reply) pair,
+hundreds rather than tens, and the imbalance averages out.
+
+| Threads | Before | After |
+| --- | --- | --- |
+| 4 | 13.9 s | 13.2 s |
+| 16 | 20.1 s | **6.2 s** |
+| 32 | — | 5.6 s |
+
+At the default sixteen threads that is 3.2× on the position, and 6.0× against one
+thread — which is the 5.9× the exhaustive column said was available all along.
+
+It also moves the answer TOWARD the sequential one. Lexicographic (first, second)
+order is the order a sequential depth-first search visits these subtrees in, so
+lowest-index-wins now selects the subtree sequential search would reach first.
+Which line comes back from within a subtree still depends on what the shared table
+already holds, and that was never promised.
+
+#### What it bought, stated plainly
+
+On the full 546-position helpmate corpus at an unchanged 10 s cap: **500 → 501
+solved**, with total wall time 744 s → 615 s. Since the timeouts account for a
+fixed 450 s, the time spent on positions that were actually solved fell from about
+284 s to about 165 s — 1.7× on aggregate solve time, and 3.2× where it was
+measured directly.
+
+One converted position is a thin return for a 3.2× speedup, and the reason is in
+the miss list rather than in the fix: the remaining misses are dominated by 14-to-25
+man positions that are one or two orders of magnitude beyond a 10 s cap, not a
+factor of three. A speedup converts what sits near the boundary, and little sits
+near this one.
+
+**And the corpus is not a clean denominator.** `r3k3/8/8/2K5/1P6/8/8/8 b - -` is
+recorded as h#4 and appears in the miss list, but the engine REFUSES it in 0.037 s
+rather than timing out. An exhaustive python-chess search, independent of this
+engine, agrees: there is no h#4 there, and the shortest cooperative mate is h#5.
+The corpus entry is wrong. A definitive refusal against a corpus that expects a
+solution is either a corpus error or a soundness bug, and the two look identical
+in a solve-rate table — so a refusal must never be counted as a timeout, which is
+what a bare percentage does.

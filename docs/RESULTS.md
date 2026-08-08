@@ -214,6 +214,22 @@ The mate-in-10, selfmate and mate-in-8 rows are after the restricted-lane fix of
 61; the median and slower columns predate it and are therefore pessimistic for
 mateprover. The coverage columns are the current ones.
 
+The two cooperative rows also predate the two-ply split of 66, which is worth 3.2x
+at the default sixteen threads on a hard h#4 and 1.7x on aggregate solve time
+across the 546. It is not folded into the table above, because that table is a
+paired best-of-three protocol and half a result is worse than none: the row will
+move when the pairing is re-run, not before.
+
+**Neither engine can reach 546/546, and the corpus is why.**
+`r3k3/8/8/2K5/1P6/8/8/8 b - -` is recorded as h#4. It is not: an exhaustive
+python-chess search, independent of this engine, puts the shortest cooperative
+mate at h#5, and mateprover REFUSES the h#4 in 0.037 s rather than timing out. A
+definitive refusal and a timeout are different events that a solve-rate percentage
+renders identically, so any cooperative rate quoted here is a rate against a
+corpus with at least one known-wrong entry. The helpstalemate corpus additionally
+carries 4 positions of 431 with more than one king a side -- fairy problems that
+orthodox chess cannot answer at all.
+
 **Mate-in-8 is NOT a loss, and the claim that it was came from sampling.** Two
 30-position draws gave 4 and 5 positions solved only by Chest; a 60-position
 draw gave none. Sampling was the wrong tool at this effect size, so the row above
@@ -392,7 +408,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 373 automated checks, including perft, negative controls, restriction
+- 387 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than

@@ -182,11 +182,29 @@ bool run_selfmate_root_split(Search& s, std::vector<std::unique_ptr<Search>>& wo
 // conjunction to keep intact -- and it is the last search here to get one, which
 // is why helpmate was the one goal Chest still won.
 //
-// Determinism is kept the same way the other splits keep it: workers claim root
+// Determinism is kept the same way the other splits keep it: workers claim task
 // indices from a shared counter, and the LOWEST index that proves wins, whoever
 // found it. So the reported line does not depend on thread timing even though
 // the work does. Higher indices are cancelled once a lower one succeeds, since
 // their answers can no longer be preferred.
+//
+// THE SPLIT IS TWO PLIES DEEP, not one, and that is the whole of its
+// parallelism. Splitting on the root move alone makes as many tasks as there are
+// root moves -- around thirty -- and cooperative subtrees are wildly uneven, so
+// one task routinely holds most of the work and every other thread finishes
+// early and idles. Measured on a six-man h#4: 32.7 s on one thread, 20.1 s on
+// sixteen, a speedup of 1.6 while the same engine on an exhaustive cooperative
+// workload scaled 5.9. The threads were not contending, they were starved.
+//
+// Pairing each root move with each reply gives roughly n^2 tasks -- hundreds
+// rather than tens -- and the imbalance averages out.
+//
+// It also brings the answer CLOSER to the sequential one rather than further
+// away. Lexicographic (first, second) order is exactly the order a sequential
+// depth-first search visits these subtrees in, so the lowest-index-wins rule now
+// picks the same subtree sequential search would reach first. As before, which
+// line comes back from inside a subtree depends on what the shared table already
+// holds, and that is not promised.
 bool run_help_root_split(Search& s, std::vector<std::unique_ptr<Search>>& workers,
                          std::vector<std::unique_ptr<WorkerSlot>>& slots,
                          const Board& b, int plies, Proof& out) {
@@ -202,7 +220,43 @@ bool run_help_root_split(Search& s, std::vector<std::unique_ptr<Search>>& worker
     // No restriction. Both sides are helping, so removing a mover's options
     // removes solutions rather than pruning an adversary (58).
 
-    const int n = static_cast<int>(moves.size());
+    // One task per (root move, reply) pair, in lexicographic order. Below four
+    // plies there is no second ply worth splitting on and the task is the root
+    // move itself.
+    struct HelpTask {
+        Move first;
+        Move second;
+        bool paired = false;
+        Board board;
+    };
+    std::vector<HelpTask> tasks;
+    const int rest_plies = plies >= 4 ? plies - 2 : plies - 1;
+    if (plies >= 4) {
+        for (const Move& first : moves) {
+            const Board nb = make_move(b, first);
+            auto replies = legal_moves(nb, s.move_reserve, s.move_reserve_capacity,
+                                       s.static_pseudo);
+            // A position with no reply cannot reach a goal that still needs
+            // moves made, so it contributes no task rather than an empty one.
+            if (should_order(s, replies.size())) {
+                order_moves(nb, replies, s.score_mates, s.score_checks, s.goal,
+                            s.fast_check_score, s.move_reserve, s.move_reserve_capacity,
+                            s.static_pseudo, s.inplace_order, s.bucket_order);
+            }
+            for (const Move& second : replies) {
+                tasks.push_back({first, second, true, make_move(nb, second)});
+            }
+        }
+    } else {
+        for (const Move& first : moves) {
+            tasks.push_back({first, Move{}, false, make_move(b, first)});
+        }
+    }
+    if (tasks.empty()) {
+        return false;
+    }
+
+    const int n = static_cast<int>(tasks.size());
     const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
     if (worker_count <= 0) {
         return false;
@@ -237,8 +291,8 @@ bool run_help_root_split(Search& s, std::vector<std::unique_ptr<Search>>& worker
                 continue;
             }
 
-            const Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
-            Proof rest = prove_help(ws, nb, plies - 1);
+            const HelpTask& task = tasks[static_cast<std::size_t>(i)];
+            Proof rest = prove_help(ws, task.board, rest_plies);
             if (ws.timed_out) {
                 break;              // deadline passed: stop taking work
             }
@@ -247,11 +301,19 @@ bool run_help_root_split(Search& s, std::vector<std::unique_ptr<Search>>& worker
             }
             Proof found;
             found.ok = true;
-            found.pv.push_back(moves[static_cast<std::size_t>(i)]);
+            found.pv.push_back(task.first);
+            if (task.paired) {
+                found.pv.push_back(task.second);
+            }
             found.pv.insert(found.pv.end(), rest.pv.begin(), rest.pv.end());
             if (ws.emit_proof) {
-                found.cert = "{\"h\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)]))
-                           + ",\"n\":" + rest.cert + "}";
+                found.cert = rest.cert;
+                if (task.paired) {
+                    found.cert = "{\"h\":" + json_quote(move_uci(task.second))
+                               + ",\"n\":" + found.cert + "}";
+                }
+                found.cert = "{\"h\":" + json_quote(move_uci(task.first))
+                           + ",\"n\":" + found.cert + "}";
             }
 
             std::lock_guard<std::mutex> lock(result_mutex);

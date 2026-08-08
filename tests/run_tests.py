@@ -1989,6 +1989,60 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
               str(config.get("parallel_positions")))
 
 
+def test_cooperative_split_is_thread_invariant(engine: Path, res: Results) -> None:
+    """The cooperative split answers the same question at every thread count.
+
+    The split runs two plies deep so that there are hundreds of tasks rather
+    than tens -- with one task per root move, one cooperative subtree routinely
+    held most of the work and the other fifteen threads idled. Widening it
+    touches the two things a split can silently break: which line comes back,
+    and whether a position with no solution is still refused.
+
+    The negatives carry the weight, as they did when these goals were first
+    implemented. A split that loses a task answers "no" to something solvable
+    and looks merely slow; a split that mis-reconstructs a line answers "yes" to
+    something unsolvable, and only a negative sees it.
+    """
+    print("\n[coop] the two-ply cooperative split is thread-invariant")
+
+    # Solvable at the stated depth, and NOT solvable one short of it. The second
+    # half is the negative: exact-length is the whole contract of a help goal.
+    cases = [
+        ("--helpmate", "hm", HM_RE, "8/7r/5Nk1/6N1/4r3/8/2K5/8 b - -", 4),
+        ("--helpmate", "hm", HM_RE, "8/8/8/q7/2K5/k7/8/7R b - -", 1),
+        ("--helpstalemate", "hsm", HSM_RE, "8/8/8/8/8/8/6k1/K2Q1N2 b - - ", 1),
+    ]
+    for flag, tok, pattern, fen, depth in cases:
+        answers = []
+        for threads in ("1", "4", "16"):
+            out = run(engine, [flag, "-z", str(depth), "--direct-depth",
+                               "--threads", threads, "--time-limit", "120", "-"],
+                      f"{fen}\n")
+            found = pattern.search(out)
+            answers.append(found.group(1) if found else "none")
+            pv = PV_RE.search(out)
+            # The line must be legal and the right length whoever found it.
+            res.check(f"{tok}#{depth} at {threads} threads returns {2*depth} plies"
+                      f": {fen[:22]}",
+                      pv is not None and len(pv.group(1).split()) == 2 * depth,
+                      (pv.group(1) if pv else out.strip())[:90])
+        res.check(f"{tok}#{depth} is the same at 1, 4 and 16 threads: {fen[:22]}",
+                  answers == [str(depth)] * 3, str(answers))
+
+    # Negatives. An exact-length help goal one ply short of its solution has no
+    # solution at all, and every thread count must say so.
+    for flag, tok, pattern, fen, depth in cases:
+        if depth < 2:
+            continue
+        for threads in ("1", "16"):
+            out = run(engine, [flag, "-z", str(depth - 1), "--direct-depth",
+                               "--threads", threads, "--time-limit", "120", "-"],
+                      f"{fen}\n")
+            res.check(f"{tok}#{depth-1} refused at {threads} threads: {fen[:22]}",
+                      not pattern.search(out) and "timeout" not in out,
+                      out.strip()[:90])
+
+
 def test_retrograde_unmoves(engine: Path, res: Results) -> None:
     """Retrograde generation must be exact in BOTH directions, and only one of
     the two directions is visible from inside the engine.
@@ -2207,6 +2261,7 @@ def main() -> int:
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
+    test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)
     test_output_format_conformance(args.engine, res)
     test_docs_reference_shipped_files(args.engine, res)
