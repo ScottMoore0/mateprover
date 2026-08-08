@@ -220,6 +220,14 @@ across the 546. It is not folded into the table above, because that table is a
 paired best-of-three protocol and half a result is worse than none: the row will
 move when the pairing is re-run, not before.
 
+**The DFPN preconditioner stays on for sparse selfmates.** `--dfpn-min-men N`
+skips it below N men, and on the 377 selfmates of nine men or fewer -- the whole
+population the gate can affect, since it is checked at the root -- a gate of 9
+solves 185 against the default's 232: 12 gained, 59 lost, net -47 at 20 s a
+position. The twelve are real, so the effect a single observation pointed at
+exists; material count simply cannot tell those twelve from the 220 that want the
+preconditioner kept. See `docs/ARCHITECTURE.md` §68.
+
 **Neither engine can reach 546/546, and the corpus is why.**
 `r3k3/8/8/2K5/1P6/8/8/8 b - -` is recorded as h#4. It is not: an exhaustive
 python-chess search, independent of this engine, puts the shortest cooperative

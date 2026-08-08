@@ -144,6 +144,7 @@ did. If you are reading it for the first time:
 - [65. Retrograde Generation: A Round-Trip That Could Not See The Real Defect](#65-retrograde-generation-a-round-trip-that-could-not-see-the-real-defect)
 - [66. GAP-11: The Bidirectional Search That Cannot Exist, And The Starvation It Was Hiding](#66-gap-11-the-bidirectional-search-that-cannot-exist-and-the-starvation-it-was-hiding)
 - [67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself](#67-auditing-the-corpora-fifteen-wrong-entries-and-a-denominator-that-cannot-be-trusted-to-itself)
+- [68. The Preconditioner Gate: A Real Effect, Measured, And Rejected](#68-the-preconditioner-gate-a-real-effect-measured-and-rejected)
 
 ## Impact-Ordered Architecture
 
@@ -4723,3 +4724,62 @@ the honest-looking conclusion would have been "the gate changes nothing".
 `unsolved`; it now solves in 2.7 s. The labels record what was true at import
 against the engine of that day, and they are not re-derived. They are a
 provenance record, not a live index.
+
+### 68. The Preconditioner Gate: A Real Effect, Measured, And Rejected
+
+The clean-room analysis carried one observation offered explicitly as a single
+data point rather than a finding: an s#8 position that fails at the 20 s baseline
+solves in 14 s with the DFPN preconditioner disabled. It was consistent with 54 --
+proof numbers derived from move counts carry no signal in sparse positions,
+because every branch looks alike -- and if the preconditioner were not merely
+unhelpful but actively costly on that class, some share of the 36 selfmate misses
+would be recoverable by a configuration change measured in hours rather than by
+static theorems measured in weeks.
+
+`--dfpn-min-men N` is that lever: skip the preconditioner when the position has
+fewer than N men. This is its measurement.
+
+**The experiment is confined by construction.** The gate is checked at the ROOT
+of each depth iteration, so any position with N men or more is bit-identical to
+the ungated engine. The sparse tail IS the experiment. Of the 904 selfmates, 377
+have nine men or fewer, and the 36 misses sit at six and seven.
+
+377 positions, 20 s a position -- the same baseline the original observation used
+-- ungated against a gate of 9:
+
+| | solved | gained | lost |
+| --- | --- | --- | --- |
+| `--dfpn-min-men 0` (default) | **232** / 377 | — | — |
+| `--dfpn-min-men 9` | 185 / 377 | 12 | 59 |
+
+**The effect is real and the lever is still wrong.** Twelve positions are
+recovered by switching the preconditioner off, so the phenomenon the single data
+point pointed at exists and is not noise. Fifty-nine are lost. Net **-47**, and
+the default stays at 0.
+
+What the number says is that material count cannot tell the two populations
+apart. A men-based gate is a blunt instrument applied to a distinction that is
+not about men: it switches off the preconditioner for the twelve positions that
+want it off, and for 220 others that want it on. Anything that recovers those
+twelve has to discriminate on something else -- and the discriminator has to be
+cheaper than the search it is trying to save, which is the same bar 59 set for
+route selection by material sparsity and failed.
+
+**This is the sixth time a sample and a corpus have disagreed here**, and the
+first where the sample was directionally right and quantitatively fatal. A
+30-position draw invented a mate-in-8 loss; a 40-position draw overstated a
+helpmate loss that was a dead heat; selfmate's sample understated its misses
+twelvefold. Here one position was correctly diagnosed and the population
+behaved the opposite way. The lesson is not "distrust single observations" --
+this one was true, and it was labelled a single data point by the person who
+made it. It is that the step from "this position improves" to "make it the
+default" is a measurement, never an inference.
+
+The flag stays, documented and off. It is the right tool for a position already
+known to want it, and the wrong tool for a corpus.
+
+**What this leaves for selfmate.** The 36 misses are not recoverable by
+configuration, which is what this was testing. GAP-1's verdict lattice and the
+K+P theorem -- the larger of the two two-unit defender classes at 11 of 36 --
+remain the work, and they are weeks rather than hours. That is a worse answer
+than the one hoped for, and it is now measured rather than assumed.
