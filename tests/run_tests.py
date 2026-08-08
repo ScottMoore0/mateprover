@@ -1989,6 +1989,60 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
               str(config.get("parallel_positions")))
 
 
+def test_corpus_integrity(engine: Path, res: Results) -> None:
+    """The denominator gets the same scrutiny as the numerator.
+
+    Every reach figure in this project is a fraction and all the work goes into
+    the numerator. These guard the other half: that no corpus silently acquires
+    an unparseable position, that evaluation sets stay uncontaminated by the
+    sets used during development, and that KNOWN_BAD.jsonl -- the adjudicated
+    defect list -- still refers to rows that exist.
+
+    That last one matters because a defect list that has rotted is worse than
+    none: it reads as "these were checked" while pointing at nothing.
+    """
+    print("\n[corpus] corpora are structurally sound and the defect list is live")
+
+    bench = HERE.parent / "benchmarks"
+    corpora = [p for p in sorted(bench.glob("*.jsonl")) if p.name != "KNOWN_BAD.jsonl"]
+    res.check("benchmark corpora are present", len(corpora) >= 10, f"{len(corpora)} found")
+
+    rows = {}
+    unparseable = []
+    for path in corpora:
+        rows[path.name] = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        for row in rows[path.name]:
+            parts = row["fen4"].split()
+            if len(parts) != 4 or parts[1] not in ("w", "b"):
+                unparseable.append((path.name, row["fen4"]))
+    res.check("every corpus row is a four-field FEN with a side to move",
+              not unparseable, str(unparseable[:3]))
+
+    # Contamination invalidates a reach figure rather than merely inflating a
+    # denominator, so it is asserted rather than assumed. Two 24-position sets
+    # were once enough to overstate mate-in-8 reach by seven points.
+    def fens(name):
+        return {r["fen4"] for r in rows.get(name, [])}
+    for a, b in [("matetrack_d8_train60.jsonl", "matetrack_d8_eval200_r2.jsonl"),
+                 ("matetrack_d10_train24.jsonl", "matetrack_d10_eval60_r2.jsonl"),
+                 ("stalemate_dev40.jsonl", "stalemate_pdb.jsonl")]:
+        if a in rows and b in rows:
+            shared = fens(a) & fens(b)
+            res.check(f"no contamination: {a.split('.')[0]} vs {b.split('.')[0]}",
+                      not shared, f"{len(shared)} shared")
+
+    known_bad = bench / "KNOWN_BAD.jsonl"
+    res.check("the adjudicated defect list ships", known_bad.exists())
+    if known_bad.exists():
+        bad = [json.loads(l) for l in known_bad.read_text(encoding="utf-8").splitlines() if l.strip()]
+        missing = [b for b in bad if b["fen4"] not in fens(b["corpus"])]
+        res.check("every listed defect still points at a real corpus row",
+                  not missing, f"{len(missing)} stale, e.g. {missing[:1]}")
+        res.check("every listed defect names its adjudicator",
+                  all(b.get("adjudicator") and b.get("adjudicator_verdict") for b in bad),
+                  "a defect with no adjudicator is an assertion, not a finding")
+
+
 def test_cooperative_split_is_thread_invariant(engine: Path, res: Results) -> None:
     """The cooperative split answers the same question at every thread count.
 
@@ -2261,6 +2315,7 @@ def main() -> int:
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
+    test_corpus_integrity(args.engine, res)
     test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)
     test_output_format_conformance(args.engine, res)

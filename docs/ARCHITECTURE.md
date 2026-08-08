@@ -143,6 +143,7 @@ did. If you are reading it for the first time:
 - [64. Wiring The Shared Table, And Four Corpora That Contradicted Their Samples](#64-wiring-the-shared-table-and-four-corpora-that-contradicted-their-samples)
 - [65. Retrograde Generation: A Round-Trip That Could Not See The Real Defect](#65-retrograde-generation-a-round-trip-that-could-not-see-the-real-defect)
 - [66. GAP-11: The Bidirectional Search That Cannot Exist, And The Starvation It Was Hiding](#66-gap-11-the-bidirectional-search-that-cannot-exist-and-the-starvation-it-was-hiding)
+- [67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself](#67-auditing-the-corpora-fifteen-wrong-entries-and-a-denominator-that-cannot-be-trusted-to-itself)
 
 ## Impact-Ordered Architecture
 
@@ -4642,3 +4643,83 @@ The corpus entry is wrong. A definitive refusal against a corpus that expects a
 solution is either a corpus error or a soundness bug, and the two look identical
 in a solve-rate table — so a refusal must never be counted as a timeout, which is
 what a bare percentage does.
+
+### 67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself
+
+Every reach figure in this project is a fraction, and the work has all gone into
+the numerator. This is the denominator.
+
+**Structural sweep, all 3,584 rows across fourteen files.** No unparseable FEN
+anywhere. One position in `stalemate_pdb` is illegal (the side not to move is in
+check) and is already carried as `"status": "illegal"`, so it is tagged rather
+than silent. Four of 431 helpstalemate rows have more than one king a side --
+fairy problems that orthodox chess cannot answer, and therefore four guaranteed
+misses in any rate quoted against 431. `selfmate_deep` has 904 rows and **903
+distinct positions**: one is duplicated, and a duplicate is counted twice by
+every rate computed from it.
+
+**Train and evaluation sets are clean.** Zero shared positions across every
+train/eval and dev/corpus pair checked. That is the claim the reach figures rest
+on and it holds.
+
+**The stalemate corpora overlap each other heavily.** `stalemate_reach` is 60
+positions and **all 60 are also in `stalemate_pdb`**; 46 of `stalemate_yacpdb`'s
+260 are too. The four files hold 1,019 rows and 913 distinct positions, so a
+"run every stalemate corpus" figure double-counts 106. They are also outside
+`benchmarks/MANIFEST.json`, which covers only the matetrack sets -- the provenance
+discipline of 55 was never extended to the goals added later.
+
+#### The status labels cannot filter a comparison against Chest
+
+Each imported row carries `solved`, `unsolved`, `shorter`, `refuted` or
+`illegal`. It is tempting to quote rates against `solved` only. That is
+circular: `import_problems.py` assigns those labels **from this engine's own
+verdicts**. Excluding what MateProver refuted, from a table comparing MateProver
+against Chest, would let the engine mark its own paper.
+
+What the labels are good for is the opposite. `refuted` is a falsifiable claim --
+"searched to completion, no solution exists at the stated depth" -- and a claim
+like that must be adjudicated by something that shares no code with the engine
+making it.
+
+**All 15 `refuted` entries were put to Chest 3.19.** Chest agrees with every one:
+
+| goal | count | Chest's verdict |
+| --- | --- | --- |
+| stalemate, s=2..5 | 13 | no solution, 13 of 13 |
+| selfmate, s#3 and s#6 | 2 | no solution, 2 of 2 |
+
+Two things follow, and they are separate. The first is that **15 published
+problems in these corpora are stipulated wrong**, and no engine will ever solve
+them. The second is that MateProver refused all 15 by exhausting the search
+rather than by running out of clock, and an independent prover confirms each
+refusal -- which is a soundness result, obtained for the price of a script.
+
+A sixteenth was found the same way at 66: the helpmate corpus records
+`r3k3/8/8/2K5/1P6/8/8/8 b - -` as h#4 when the shortest is h#5, adjudicated
+there by exhaustive python-chess rather than by Chest.
+
+#### Two things this changes about how rates are computed
+
+**A refusal is not a timeout.** They are different events and a percentage
+renders them identically. Any position an engine refuses definitively, against a
+corpus that expects a solution, is either a corpus error or a soundness bug, and
+those must never be allowed to look alike in a table. Sixteen of them here were
+corpus errors; the point is that nobody knew until they were adjudicated.
+
+**Scoring must be presence, not equality.** 51 rows are `shorter` -- the true
+solution is shallower than the stipulation. A harness that requires the reported
+depth to equal the stipulated depth scores BOTH engines as failing on all 51,
+because both correctly prove the shorter one. This was live in the first version
+of the gate sweep below and was caught before it ran to completion.
+
+A third defect was caught in the same pass and is worth recording because it
+would have produced a confident zero: selfmate results carry the token `sfm`,
+and the first sweep script matched `sm`, which is the STALEMATE token. `\bsm`
+cannot match inside `sfm`, so every configuration would have scored 0/525 and
+the honest-looking conclusion would have been "the gate changes nothing".
+
+**Corpus labels also go stale.** The first row of `selfmate_deep` is marked
+`unsolved`; it now solves in 2.7 s. The labels record what was true at import
+against the engine of that day, and they are not re-derived. They are a
+provenance record, not a live index.
