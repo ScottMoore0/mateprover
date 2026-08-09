@@ -148,6 +148,7 @@ did. If you are reading it for the first time:
 - [69. Six Corpora, Measured Together: Where Chest Still Wins, And Where It Is Wrong](#69-six-corpora-measured-together-where-chest-still-wins-and-where-it-is-wrong)
 - [70. The Harness Handicapped The Engine With Its Own Tuning Knob](#70-the-harness-handicapped-the-engine-with-its-own-tuning-knob)
 - [71. GAP-2 Implemented, Sound, And Worth Nothing Yet](#71-gap-2-implemented-sound-and-worth-nothing-yet)
+- [72. Closing The Cheap Half: One Win, One Loss Found, And Five Budgets](#72-closing-the-cheap-half-one-win-one-loss-found-and-five-budgets)
 
 ## Impact-Ordered Architecture
 
@@ -5037,3 +5038,71 @@ cannot check repeatedly, so there is no perpetual to find, and the "decline
 forever" mechanism is unavailable. A lone pawn can also promote and mate, so
 there is no trivial impossibility either. That theorem is genuinely different,
 genuinely open, and is not attempted here.
+
+### 72. Closing The Cheap Half: One Win, One Loss Found, And Five Budgets
+
+Five items that were all measurement or small code, run together.
+
+**The verdict reached the wire.** GAP-1 computed "no solution at any depth" and no
+caller could see it. Three negatives now read differently: no marker means none
+within the depth searched, `; refuted` means none at any depth, `; timeout` means
+no claim at all. A field added, so it sits inside the format's stability promise,
+and the soundness rule travels with it — only an unrestricted search may assert
+it, because a restricted lane's failure is silent about the moves it was not
+allowed.
+
+Wiring it found a defect that would have shipped quietly. The parallel portfolio
+writes `results[i]` only for ACCEPTABLE results, and a refutation is never one, so
+reading the verdict back out of `results` gave false every time. The token worked
+perfectly under `--no-portfolio` and never appeared under the default — a bug that
+passes a hand test and fails in production.
+
+**Selfstalemate is a win, and the tie was a corpus artefact.** The row was 23-23
+with nothing either engine missed, because 12 of 35 problems were bad stipulations
+both provers refuse: there was nothing left to out-solve. Extending the corpus to
+76 problems (52 sound, 13 refuted, 11 unsolved) gives **52 to 49**, one position to
+Chest and four to mateprover. The tie was never a statement about the engines.
+
+**Five residues, five budgets.** The uncharacterised only-Chest positions —
+mate-in-10's two, stalemate's one, helpmate's two — all solve at a larger budget:
+four inside 60 s and the fifth at 147 s. None is a reach gap.
+
+**Mate-in-8 with the clock levelled.** The nine only-Chest positions, both engines
+at 60 s rather than 10:
+
+| | solved |
+| --- | --- |
+| mateprover | 7 / 9 |
+| Chest | 9 / 9 |
+
+Seven of the nine were the 10 s cap. Two survive: `N1R2N2/1p6/6B1/2P5/8/P7/2P1p1K1/k7`,
+which already resisted 900 s and all seven configurations, and
+`r3k2r/p2p4/p1pP2p1/5pN1/5p2/1Q3p2/PP4b1/KB6`, which solves at 300 s. So one is a
+reach gap and one is a factor of five.
+
+#### Helpmate is a per-core loss, and that is new
+
+The single-thread comparison had been run under the `-M 256` handicap of 70, so it
+was not evidence. Run clean:
+
+| helpmate, 546 positions, 10 s | solved | only Chest |
+| --- | --- | --- |
+| Chest (single-threaded) | 491 | — |
+| mateprover, 16 threads | **501** | 2 |
+| mateprover, 1 thread | **464** | **30** |
+
+**mateprover wins helpmate only by spending sixteen cores.** Per core it is behind
+by 27 positions against a single-threaded 1999 program. Every other goal is the
+opposite way round — mate-in-8 is 169 single-threaded against 168 at sixteen
+threads, stalemate 759 against 759 — so this is specific to the cooperative
+search, and it is consistent with the 3.3x median speedup being the lowest of any
+goal.
+
+That reframes 66. The two-ply split was worth 3.2x and was reported as fixing a
+starvation problem, which it did. It did not make the cooperative search good; it
+made a weak search parallel enough to win on a 32-core machine. The honest reading
+is that helpmate remains this engine's weakest goal and the win is bought with
+hardware.
+
+Chest's own manual calls helpmate "notoriously hard to compute for CHEST". On a
+per-core basis that is still too modest.

@@ -200,7 +200,7 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | helpmate | **all 546** | 491 | **501** | 2 | 12 |
 | helpstalemate | **all 431** | 308 | **362** | **0** | 54 |
 | selfmate | **all 903** | 318 | **389** | 15 | 86 |
-| selfstalemate | **all 35** | 23 | 23 | **0** | 0 |
+| selfstalemate | **all 76** | 49 | **52** | 1 | 4 |
 
 Every row is now measured at **engine defaults on both sides**. An earlier
 version of this table passed `-M 256` to mateprover in the belief that it was the
@@ -232,6 +232,7 @@ is comparing a number against a cap:
 | stalemate | 724 | 2.44x | **7.2x** |
 | helpmate | 489 | 1.83x | 3.4x |
 | helpstalemate | 308 | 6.41x | **16.3x** |
+| selfstalemate | 48 | 2.34x | **12.8x** |
 
 The median and the total say different things and both are true. The median is
 the typical position, usually easy, where mateprover is near-instant; the total
