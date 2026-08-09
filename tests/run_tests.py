@@ -2137,6 +2137,28 @@ def test_help_reachability_bound(engine: Path, res: Results) -> None:
         res.check(f"h#{depth}: the bound keeps the solvable positions solvable",
                   solved >= len(group) - 3, f"{solved}/{len(group)}")
 
+    # The counterexample that exposed the queen-only promotion hole. Its
+    # solution ends g7xf8=N, and a knight on f8 attacks e6 where a queen does
+    # not, so a bound that models promotion as "becomes a queen" prunes the
+    # mate away. Kept as a named regression because the hole is invisible on
+    # every position whose mate is delivered by a queen.
+    under = run(engine, ["--helpmate", "-z", "4", "--time-limit", "60", "-"],
+                "6bq/1p1np2r/1p2k1pP/2bp2rp/4pK2/8/8/8 b - -" + chr(10))
+    res.check("a mate by UNDERPROMOTION survives the bound",
+              bool(HM_RE.search(under)), under.strip()[:90])
+
+    # The differential the gate is built on, in miniature: same solved set with
+    # the bound on and off. A bound that can only lose solutions silently has to
+    # be testable this way, which is why the off switch is a shipped flag.
+    sample = [r for r in rows if r["mate"] == 4][:24]
+    stdin = "".join(r["fen4"] + chr(10) for r in sample)
+    def hit(extra):
+        text = run(engine, ["--helpmate", "-z", "4", "--time-limit", "20", *extra, "-"], stdin)
+        return {r["fen4"] for r, line in zip(sample, text.splitlines()) if HM_RE.search(line)}
+    with_bound, without = hit([]), hit(["--no-help-bound"])
+    res.check(f"the bound loses nothing on {len(sample)} paired h#4 positions",
+              not (without - with_bound), f"lost {sorted(without - with_bound)[:2]}")
+
     # The argument needs a CHECK at the end, so it must not touch helpstalemate.
     hsm = run(engine, ["--helpstalemate", "-z", "1", "--direct-depth",
                        "--time-limit", "20", "-"],

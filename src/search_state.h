@@ -49,6 +49,11 @@ struct SearchConfig {
     // this false no node can ever become `Refuted` and the search is
     // byte-identical to the version without it. See docs/GAP1_DERIVATION.md §7.
     bool any_depth_refutations = false;
+    // The helpmate reachability/coverage bound. On by default. The switch exists
+    // so the admissibility gate can be RUN, not because anyone should turn it
+    // off: a bound that can only lose solutions silently has to be differentially
+    // testable, and 74 shipped an unsound one because it was not.
+    bool help_bound = true;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

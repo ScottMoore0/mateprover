@@ -135,21 +135,35 @@ const std::array<std::array<std::uint64_t, 9>, 64>& king_disc_table() {
     return table;
 }
 
-// What a piece standing on `sq` can ATTACK after at most d of its own moves, on
-// an EMPTY board. Indexed [colour * 6 + type][square][d], for d up to 3.
+// What a piece standing on `sq` can reach, on an EMPTY board, after at most d of
+// its own moves: `attack` is what it then ATTACKS, `reach` is where it can
+// STAND. Indexed [colour * 6 + type][square][d], d up to 5.
 //
-// A superset of the truth on a real board, which is the only property that
-// matters: blockers can shorten a slider's reach and obstruct a path, but they
-// can never create an attack line or a route that did not exist on emptiness.
-// So a position this table says is out of reach really is out of reach.
+// Both are supersets of the truth on a real board, which is the only property
+// that matters: blockers shorten a slider's reach and obstruct a route, they
+// never create an attack line or a path that emptiness did not already offer.
 //
-// Pawns are modelled with their forward moves (an empty board offers nothing to
-// capture) and promote to a queen on the last rank, so they stay a superset too.
-// d is capped at 5; a caller with more moves than that must not use the table,
-// because out[..][5] is the FIVE-move set and would be an underestimate.
-const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12>& attack_within_table() {
-    static const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> table = [] {
-        std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> out{};
+// Built together, deliberately. The two differ only in what they record from the
+// same walk, and the pawn modelling below is subtle enough that two copies of it
+// would eventually disagree -- which is precisely how the unsound version of 74
+// arose.
+//
+// PAWNS INCLUDE THEIR DIAGONALS. An empty board offers nothing to capture, but
+// this models what a pawn may do on a REAL board, where it captures sideways and
+// changes file. Omitting the diagonals makes the pawn sets an UNDERestimate,
+// which is the one direction that makes any bound built on them unsound. It
+// promotes to a queen on the last rank for the same reason.
+//
+// d is capped at 5; a caller with more moves must not use the table, because
+// entry [5] is the FIVE-move set and would be an underestimate.
+struct EmptyBoardReach {
+    std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> attack{};
+    std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> reach{};
+};
+
+const EmptyBoardReach& empty_board_reach() {
+    static const EmptyBoardReach tables = [] {
+        EmptyBoardReach out;
         auto attacks_from = [](int pt, int c, int s) -> std::uint64_t {
             std::uint64_t mask = 0;
             const int f = file_of(s), r = rank_of(s);
@@ -178,11 +192,18 @@ const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12>& attack_withi
             for (int pt = 0; pt < 6; ++pt) {
                 for (int sq = 0; sq < 64; ++sq) {
                     std::vector<std::pair<int, int>> cur{{sq, pt}};
-                    std::uint64_t acc = 0;
+                    std::uint64_t acc_attack = 0;
+                    std::uint64_t acc_reach = 1ull << sq;
+                    const std::size_t slot = static_cast<std::size_t>(c * 6 + pt);
                     for (int d = 0; d <= 5; ++d) {
-                        for (const auto& st : cur) acc |= attacks_from(st.second, c, st.first);
-                        out[static_cast<std::size_t>(c * 6 + pt)][static_cast<std::size_t>(sq)]
-                           [static_cast<std::size_t>(d)] = acc;
+                        for (const auto& st : cur) {
+                            acc_attack |= attacks_from(st.second, c, st.first);
+                            acc_reach |= 1ull << st.first;
+                        }
+                        out.attack[slot][static_cast<std::size_t>(sq)]
+                                  [static_cast<std::size_t>(d)] = acc_attack;
+                        out.reach[slot][static_cast<std::size_t>(sq)]
+                                 [static_cast<std::size_t>(d)] = acc_reach;
                         if (d == 5) break;
                         std::vector<std::pair<int, int>> next;
                         for (const auto& st : cur) {
@@ -192,28 +213,37 @@ const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12>& attack_withi
                                 const int back = (c == WHITE) ? 7 : 0;
                                 const int f = file_of(st.first), r = rank_of(st.first);
                                 const int steps = (r == start) ? 2 : 1;
+                                // On the last rank a pawn becomes a queen OR A
+                                // KNIGHT, and both must be modelled. A knight's
+                                // attacks are not a subset of a queen's -- a
+                                // knight on f8 attacks e6 and a queen does not --
+                                // so queen-only promotion UNDERSTATES what a pawn
+                                // can attack, which is the unsound direction.
+                                // Rook and bishop need no state of their own:
+                                // their attacks are subsets of the queen's.
+                                //
+                                // Found by a helpmate whose solution ends
+                                // g7xf8=N. Same class as the missing diagonals:
+                                // a modelling shortcut that is true of the common
+                                // case and false in general.
+                                auto arrive = [&](int nf, int nr) {
+                                    const int to = square_of(nf, nr);
+                                    if (nr == back) {
+                                        next.emplace_back(to, PT_QUEEN);
+                                        next.emplace_back(to, PT_KNIGHT);
+                                    } else {
+                                        next.emplace_back(to, PT_PAWN);
+                                    }
+                                };
                                 for (int step = 1; step <= steps; ++step) {
                                     const int nr = r + dr * step;
                                     if (!on_board(f, nr)) break;
-                                    next.emplace_back(square_of(f, nr),
-                                                      nr == back ? PT_QUEEN : PT_PAWN);
+                                    arrive(f, nr);
                                 }
-                                // The diagonals too, and this is not optional.
-                                //
-                                // An empty board offers nothing to capture, but
-                                // this table must be a superset of what happens
-                                // on a REAL board, and there a pawn captures
-                                // sideways and changes file. Modelling only the
-                                // forward moves made the table an UNDERestimate
-                                // for pawns, which is the one direction that
-                                // makes the bound unsound: it pruned a helpmate
-                                // whose mate was delivered by a pawn that had
-                                // captured its way off its file.
                                 for (int df = -1; df <= 1; df += 2) {
                                     const int nf = f + df, nr = r + dr;
                                     if (!on_board(nf, nr)) continue;
-                                    next.emplace_back(square_of(nf, nr),
-                                                      nr == back ? PT_QUEEN : PT_PAWN);
+                                    arrive(nf, nr);
                                 }
                                 continue;
                             }
@@ -233,7 +263,7 @@ const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12>& attack_withi
         }
         return out;
     }();
-    return table;
+    return tables;
 }
 
 std::string sq_name(int sq) {

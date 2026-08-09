@@ -213,6 +213,12 @@ void print_usage() {
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
 "                                default: --no-refutation-hints (measured harmful)\n"
+"  --help-bound | --no-help-bound\n"
+"                                default: --help-bound. Prunes helpmate subtrees\n"
+"                                where no mate can be reached in the moves left.\n"
+"                                The off switch exists so the bound can be\n"
+"                                differentially tested; see docs/\n"
+"                                HELPMATE_COVERAGE_DERIVATION.md\n"
 "  --any-depth-refutations | --no-any-depth-refutations\n"
 "                                default: OFF. Static theorems that prove no\n"
 "                                solution exists at ANY depth, so iterative\n"
@@ -415,6 +421,10 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--help-bound") {
+            config.help_bound = true;
+        } else if (arg == "--no-help-bound") {
+            config.help_bound = false;
         } else if (arg == "--any-depth-refutations") {
             config.any_depth_refutations = true;
         } else if (arg == "--no-any-depth-refutations") {

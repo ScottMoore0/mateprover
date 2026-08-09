@@ -151,6 +151,7 @@ did. If you are reading it for the first time:
 - [72. Closing The Cheap Half: One Win, One Loss Found, And Five Budgets](#72-closing-the-cheap-half-one-win-one-loss-found-and-five-budgets)
 - [73. The Cooperative Search: One Idea Rejected, One Kept](#73-the-cooperative-search-one-idea-rejected-one-kept)
 - [74. Tightening The Reachability Bound Found It Was Unsound](#74-tightening-the-reachability-bound-found-it-was-unsound)
+- [75. The Flight-Square Bound, And A Mate Delivered By Underpromotion](#75-the-flight-square-bound-and-a-mate-delivered-by-underpromotion)
 
 ## Impact-Ordered Architecture
 
@@ -5252,3 +5253,81 @@ before any of this. The gap is two thirds closed and the remaining third still
 wants the harder theorem — counting the moves needed to COVER the king's flight
 squares, not merely to check it, which needs a coverage argument where one move
 can cover several squares at once.
+
+### 75. The Flight-Square Bound, And A Mate Delivered By Underpromotion
+
+74 left the cooperative search fifteen positions behind Chest per core and named
+the next step: count the moves needed to COVER the mated king's flight squares,
+not merely to check it. `docs/HELPMATE_COVERAGE_DERIVATION.md` has the derivation;
+this is what it cost and what it bought.
+
+**Counting is the wrong question.** The obvious version — count unhandled flight
+squares, require that many moves — is not a lower bound at all. One move can
+handle several flights at once: a queen arriving beside the king covers three or
+four, and a discovered line covers more with the covering piece not moving. There
+is no useful constant either, since a queen attacks up to 27 squares.
+
+**Containment is the right question.** Instead of "how many moves would covering
+cost?", ask "is covering possible at all?" — which an empty-board relaxation
+answers soundly and the combinatorial difficulty disappears. Build
+
+    H = (squares the mating side can attack within its remaining moves)
+      ∪ (squares either side can occupy within theirs)
+      ∪ (squares occupied now)
+
+and require, for at least one square the king can reach and a non-king mating
+unit can attack, that all of its flights lie in H. If no such square exists, no
+mate does either. The proof needs nothing about how many moves the covering costs,
+or which unit covers what, or whether one move covers several.
+
+Measured on the six-man h#4: **40.8 s with no bound, 13.7 s with this one** — three
+times, against the check-only bound's 22 s.
+
+#### It failed its own gate, and the reason was underpromotion
+
+74 established the gate: an on/off switch read once into a static, the whole 546,
+compare solved SETS, **zero lost** to pass. First run: **one lost**.
+
+`6bq/1p1np2r/1p2k1pP/2bp2rp/4pK2/8/8/8 b - -`, solved in 0.24 s with the bound off
+and refused in 0.28 s with it on — not a timing boundary, a wrong answer.
+
+Debug output narrowed it to the CHECK half rather than the new flight half:
+the candidate set was empty. The position has White with a king and one pawn on
+h6, and the solution ends **g7xf8=N**. A knight on f8 attacks e6, where the black
+king stands. **A queen on f8 does not.** The table modelled promotion as "becomes
+a queen", so it concluded the pawn could never attack the king's square, and
+pruned the mate away.
+
+Rook and bishop need no modelling of their own — their attacks are subsets of the
+queen's. The knight is the exception, and it is the whole exception.
+
+This is the third instance of one pattern, and the pattern is worth naming: **a
+modelling shortcut that is true of the common case and false in general**, in the
+direction that UNDERSTATES what a piece can do, which is the only direction that
+makes an admissible bound unsound.
+
+| | shortcut | reality |
+| --- | --- | --- |
+| 74 | pawns move forward, an empty board offers nothing to capture | a real board does, and the pawn changes file |
+| 75 | a promoting pawn becomes a queen | it may become a knight, whose attacks are not a subset |
+
+Both were invisible on every position whose mate is ordinary. Both are now named
+regression tests rather than comments.
+
+**After the fix**, the gate passes:
+
+| helpmate, 546, 10 s | solved |
+| --- | --- |
+| bound off | 502 |
+| bound on | **513** |
+| **lost** | **0** |
+| gained | 11 |
+
+| | 73 | 74 | now |
+| --- | --- | --- | --- |
+| 1 thread | 473 | 476 | **482** |
+| 16 threads | 506 | 508 | **513** |
+
+Single-threaded, 482 against Chest's 491. **Nine positions**, from twenty-seven
+before any of this work. The bound is no longer obviously the limiting factor,
+and what remains is not another relaxation of the same argument.
