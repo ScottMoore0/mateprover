@@ -507,6 +507,64 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         return {};
     }
 
+    // An admissible lower bound: is the mate simply out of reach from here?
+    //
+    // A helpmate ends with one side checkmated, so at the final position some
+    // unit of the MATING side attacks the mated king's square. Two relaxations
+    // make that checkable in a few bitboard ANDs, and both only ever widen the
+    // possibilities, so the bound can rule a subtree out but never rule one in:
+    //
+    //   the mated king ends within `their_moves` king-steps of where it stands,
+    //   measured on an empty board;
+    //   a mating unit attacks that square after at most `our_moves` of its own
+    //   moves, again on an empty board, promotion included.
+    //
+    // If no unit of the mating side can attack ANY square the king could reach,
+    // no mate exists down this line at any continuation, and the whole subtree
+    // is dead. This prunes before the move list is built, so it saves the
+    // generation as well as the recursion.
+    //
+    // Only for helpmate: a helpstalemate needs no check, so the argument has
+    // nothing to stand on. Only when the mating side has three moves or fewer,
+    // because the table stops at three and using it beyond that would
+    // UNDERSTATE reach -- the one way this could become unsound.
+    if (s.goal == Goal::Helpmate) {
+        const Color mated = (plies % 2 == 0) ? b.stm : other(b.stm);
+        const Color mating = other(mated);
+        const int our_moves = (mating == b.stm) ? (plies + 1) / 2 : plies / 2;
+        const int their_moves = plies - our_moves;
+        if (our_moves >= 1 && our_moves <= 3) {
+            const int king_sq = b.king_sq[mated];
+            if (king_sq >= 0) {
+                const std::uint64_t reachable =
+                    king_disc_table()[static_cast<std::size_t>(king_sq)]
+                                     [static_cast<std::size_t>(their_moves > 8 ? 8 : their_moves)];
+                const auto& within = attack_within_table();
+                std::uint64_t men = b.by_color[mating];
+                bool possible = false;
+                while (men) {
+                    const int from = lsb_index(men);
+                    men &= men - 1;
+                    int pt = PT_NONE;
+                    for (int t = 0; t < 6; ++t) {
+                        if (b.by_type[static_cast<std::size_t>(t)] & (1ull << from)) { pt = t; break; }
+                    }
+                    if (pt == PT_NONE) continue;
+                    if (within[static_cast<std::size_t>(mating * 6 + pt)]
+                             [static_cast<std::size_t>(from)]
+                             [static_cast<std::size_t>(our_moves)] & reachable) {
+                        possible = true;
+                        break;
+                    }
+                }
+                if (!possible) {
+                    ++s.stats.help_unreachable_prunes;
+                    return {};
+                }
+            }
+        }
+    }
+
     // `plies` is in the key, so this is an exact-length entry. See above.
     TTKey key = tt_key(b, plies, 'H', s.attacker, s.goal);
     Proof cached;

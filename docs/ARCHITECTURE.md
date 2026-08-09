@@ -149,6 +149,7 @@ did. If you are reading it for the first time:
 - [70. The Harness Handicapped The Engine With Its Own Tuning Knob](#70-the-harness-handicapped-the-engine-with-its-own-tuning-knob)
 - [71. GAP-2 Implemented, Sound, And Worth Nothing Yet](#71-gap-2-implemented-sound-and-worth-nothing-yet)
 - [72. Closing The Cheap Half: One Win, One Loss Found, And Five Budgets](#72-closing-the-cheap-half-one-win-one-loss-found-and-five-budgets)
+- [73. The Cooperative Search: One Idea Rejected, One Kept](#73-the-cooperative-search-one-idea-rejected-one-kept)
 
 ## Impact-Ordered Architecture
 
@@ -5106,3 +5107,68 @@ hardware.
 
 Chest's own manual calls helpmate "notoriously hard to compute for CHEST". On a
 per-core basis that is still too modest.
+
+### 73. The Cooperative Search: One Idea Rejected, One Kept
+
+72 established that helpmate is this engine's weakest goal and that the win was
+bought with hardware — 501 at sixteen threads against Chest's single-threaded
+491, but only **464 on one thread**. That is an algorithm problem, and threads
+were never going to fix it.
+
+**Attempt 1, rejected: order the last ply only.** 66 measured the ordering pass at
+70% of the cooperative search's time. Ordering costs a make_move and an in_check
+per candidate, and what it buys is finding a solution sooner — which a search
+that spends most of its life proving branches empty should barely value. The last
+ply is different, because the prune there reads the check bit scoring computes.
+So: score at ply 1, plain legal moves everywhere else.
+
+On the six-man h#4 it was worth 1.83x — 38.9 s to 21.2 s, and 53.6M nodes to
+29.2M. On the corpus it **lost 8 positions**, 464 to 456.
+
+Ordering was earning its cost. Coverage under a time cap is decided by how fast
+the FIRST solution is found, not by throughput on the exhaustive remainder, and a
+better move order buys exactly that. A 1.8x speedup that arrives at the answer in
+a worse sequence is a loss. Rejected, and it is the seventh time here that a
+single position and a corpus have disagreed.
+
+**Attempt 2, kept: an admissible reachability bound.** The lesson from the first
+attempt is that reordering a dead subtree is worth nothing and not searching it is
+worth everything. So prune instead.
+
+A helpmate ends in checkmate, so at the final position some unit of the mating
+side attacks the mated king's square. Two relaxations make that checkable in a few
+bitboard ANDs:
+
+- the mated king ends within `their_moves` king-steps of where it stands, on an
+  empty board;
+- a mating unit attacks that square after at most `our_moves` of its own moves,
+  on an empty board, promotion included.
+
+Both relaxations only widen what is allowed, so the bound can rule a subtree out
+but never rule one in — blockers can shorten a slider's reach and obstruct a
+route, never create one. If no unit of the mating side can attack ANY square the
+king could reach, no mate exists down that line and the subtree is dead. The test
+runs before the move list is built, so it saves generation as well as recursion.
+
+Scope, and both halves matter: **helpmate only**, since a helpstalemate needs no
+check and the argument has nothing to stand on; and **only when the mating side
+has three moves or fewer**, because the table stops at three and using it beyond
+that would UNDERSTATE reach, which is the one way this becomes unsound.
+
+| helpmate, 546, 10 s | before | after |
+| --- | --- | --- |
+| 1 thread | 464 | **473** |
+| 16 threads | 501 | **506** |
+| helpstalemate, 16 threads | 362 | **363** |
+
+The prune fires 14.3 million times on a single six-man h#4 and takes it from
+38.9 s to 29.0 s. All 412 checks pass, including the 240 cooperative negatives —
+which are the ones that matter, because a bound that is too tight loses solutions
+silently and would show up nowhere else.
+
+**The gap is narrowed, not closed.** Single-threaded, 473 against Chest's 491:
+eighteen positions, down from twenty-seven. The bound only applies in the last
+three mating moves; extending the table deeper would widen its reach, and a
+tighter bound — counting the moves needed to cover the king's flight squares
+rather than merely to check it — is the obvious next step and a much harder
+theorem to keep admissible.

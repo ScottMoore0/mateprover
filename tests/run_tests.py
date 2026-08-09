@@ -2104,6 +2104,47 @@ def test_any_depth_refutations(engine: Path, res: Results) -> None:
               not DM_RE.search(out), out.strip()[:90])
 
 
+def test_help_reachability_bound(engine: Path, res: Results) -> None:
+    """The helpmate reachability bound prunes dead subtrees; it must prune only
+    dead ones.
+
+    It is an admissible lower bound -- the mated king can only end within
+    `their_moves` king-steps, and a mating unit must attack that square within
+    `our_moves` of its own, both measured on an empty board so both relaxations
+    can only widen what is allowed. Being unconditional, it cannot be tested by
+    toggling a flag, so it is tested by consequence: every helpmate with a known
+    solution must still be solved.
+
+    A bound that is too tight loses solutions silently and shows up nowhere
+    else, which is why this runs positives rather than timings.
+    """
+    print("\n[coop] the helpmate reachability bound loses no solution")
+    rows = [json.loads(l) for l in
+            (HERE.parent / "benchmarks" / "helpmate_yacpdb.jsonl").read_text().splitlines()
+            if l.strip()]
+    by_depth = {}
+    for row in rows:
+        by_depth.setdefault(row["mate"], []).append(row)
+    for depth in sorted(by_depth):
+        group = by_depth[depth][:30]
+        out = run(engine, ["--helpmate", "-z", str(depth), "--time-limit", "20", "-"],
+                  "".join(r["fen4"] + chr(10) for r in group))
+        lines = [l for l in out.splitlines() if l.strip()]
+        solved = sum(1 for l in lines if HM_RE.search(l))
+        # These are published problems with stipulated solutions; a handful are
+        # simply slow, so the bar is "almost all" rather than "all". The bound
+        # failing would take out far more than the tail.
+        res.check(f"h#{depth}: the bound keeps the solvable positions solvable",
+                  solved >= len(group) - 3, f"{solved}/{len(group)}")
+
+    # The argument needs a CHECK at the end, so it must not touch helpstalemate.
+    hsm = run(engine, ["--helpstalemate", "-z", "1", "--direct-depth",
+                       "--time-limit", "20", "-"],
+              "8/8/8/8/8/8/6k1/K2Q1N2 b - -" + chr(10))
+    res.check("the bound does not reach helpstalemate", bool(HSM_RE.search(hsm)),
+              hsm.strip()[:90])
+
+
 def test_corpus_integrity(engine: Path, res: Results) -> None:
     """The denominator gets the same scrutiny as the numerator.
 
@@ -2431,6 +2472,7 @@ def main() -> int:
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
     test_any_depth_refutations(args.engine, res)
+    test_help_reachability_bound(args.engine, res)
     test_corpus_integrity(args.engine, res)
     test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)

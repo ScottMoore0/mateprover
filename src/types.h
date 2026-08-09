@@ -229,6 +229,7 @@ struct Stats {
     // mid-search once the defender's other units are captured.
     std::uint64_t defender_kq_nodes = 0;
     std::uint64_t perpetual_refutations = 0;
+    std::uint64_t help_unreachable_prunes = 0;
     std::uint64_t proof_hint_probes = 0;
     std::uint64_t proof_hint_hits = 0;
     std::uint64_t proof_hint_stores = 0;
@@ -282,6 +283,7 @@ struct Stats {
         refutation_hint_stores += o.refutation_hint_stores;
         defender_kq_nodes += o.defender_kq_nodes;
         perpetual_refutations += o.perpetual_refutations;
+        help_unreachable_prunes += o.help_unreachable_prunes;
         proof_hint_probes += o.proof_hint_probes;
         proof_hint_hits += o.proof_hint_hits;
         proof_hint_stores += o.proof_hint_stores;
@@ -293,7 +295,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 48 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 49 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

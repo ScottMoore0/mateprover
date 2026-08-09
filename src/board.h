@@ -114,6 +114,111 @@ const std::array<std::array<SquareList, 64>, 8>& ray_table() {
     return table;
 }
 
+// Squares within Chebyshev distance d -- everywhere a king can stand after at
+// most d moves on an empty board.
+const std::array<std::array<std::uint64_t, 9>, 64>& king_disc_table() {
+    static const std::array<std::array<std::uint64_t, 9>, 64> table = [] {
+        std::array<std::array<std::uint64_t, 9>, 64> out{};
+        for (int sq = 0; sq < 64; ++sq) {
+            for (int d = 0; d <= 8; ++d) {
+                std::uint64_t mask = 0;
+                for (int t = 0; t < 64; ++t) {
+                    const int df = std::abs(file_of(t) - file_of(sq));
+                    const int dr = std::abs(rank_of(t) - rank_of(sq));
+                    if (df > dr ? df <= d : dr <= d) mask |= 1ull << t;
+                }
+                out[sq][d] = mask;
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
+// What a piece standing on `sq` can ATTACK after at most d of its own moves, on
+// an EMPTY board. Indexed [colour * 6 + type][square][d], for d up to 3.
+//
+// A superset of the truth on a real board, which is the only property that
+// matters: blockers can shorten a slider's reach and obstruct a path, but they
+// can never create an attack line or a route that did not exist on emptiness.
+// So a position this table says is out of reach really is out of reach.
+//
+// Pawns are modelled with their forward moves (an empty board offers nothing to
+// capture) and promote to a queen on the last rank, so they stay a superset too.
+// d is capped at 3; a caller with more moves than that must not use the table,
+// because out[..][3] is the THREE-move set and would be an underestimate.
+const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12>& attack_within_table() {
+    static const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12> table = [] {
+        std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12> out{};
+        auto attacks_from = [](int pt, int c, int s) -> std::uint64_t {
+            std::uint64_t mask = 0;
+            const int f = file_of(s), r = rank_of(s);
+            if (pt == PT_PAWN) {
+                const int dr = (c == WHITE) ? 1 : -1;
+                for (int df = -1; df <= 1; df += 2) {
+                    if (on_board(f + df, r + dr)) mask |= 1ull << square_of(f + df, r + dr);
+                }
+                return mask;
+            }
+            if (pt == PT_KNIGHT || pt == PT_KING) {
+                const SquareList& l = (pt == PT_KNIGHT) ? knight_table()[s] : king_table()[s];
+                for (int i = 0; i < l.count; ++i) mask |= 1ull << l.sq[i];
+                return mask;
+            }
+            const int first = (pt == PT_BISHOP) ? 4 : 0;
+            const int last = (pt == PT_ROOK) ? 4 : 8;
+            const auto& rays = ray_table();
+            for (int dir = first; dir < last; ++dir) {
+                const SquareList& ray = rays[dir][s];
+                for (int i = 0; i < ray.count; ++i) mask |= 1ull << ray.sq[i];
+            }
+            return mask;
+        };
+        for (int c = 0; c < 2; ++c) {
+            for (int pt = 0; pt < 6; ++pt) {
+                for (int sq = 0; sq < 64; ++sq) {
+                    std::vector<std::pair<int, int>> cur{{sq, pt}};
+                    std::uint64_t acc = 0;
+                    for (int d = 0; d <= 3; ++d) {
+                        for (const auto& st : cur) acc |= attacks_from(st.second, c, st.first);
+                        out[static_cast<std::size_t>(c * 6 + pt)][static_cast<std::size_t>(sq)]
+                           [static_cast<std::size_t>(d)] = acc;
+                        if (d == 3) break;
+                        std::vector<std::pair<int, int>> next;
+                        for (const auto& st : cur) {
+                            if (st.second == PT_PAWN) {
+                                const int dr = (c == WHITE) ? 1 : -1;
+                                const int start = (c == WHITE) ? 1 : 6;
+                                const int back = (c == WHITE) ? 7 : 0;
+                                const int f = file_of(st.first), r = rank_of(st.first);
+                                const int steps = (r == start) ? 2 : 1;
+                                for (int step = 1; step <= steps; ++step) {
+                                    const int nr = r + dr * step;
+                                    if (!on_board(f, nr)) break;
+                                    next.emplace_back(square_of(f, nr),
+                                                      nr == back ? PT_QUEEN : PT_PAWN);
+                                }
+                                continue;
+                            }
+                            std::uint64_t m = attacks_from(st.second, c, st.first);
+                            while (m) {
+                                const int to = lsb_index(m);
+                                m &= m - 1;
+                                next.emplace_back(to, st.second);
+                            }
+                        }
+                        std::sort(next.begin(), next.end());
+                        next.erase(std::unique(next.begin(), next.end()), next.end());
+                        cur = std::move(next);
+                    }
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
+}
+
 std::string sq_name(int sq) {
     std::string out;
     out.push_back(static_cast<char>('a' + file_of(sq)));

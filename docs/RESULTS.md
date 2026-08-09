@@ -197,8 +197,8 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | mate-in-8 | **all 200** | 146 | **167** | 9 | 30 |
 | mate-in-10 | **all 60** | 20 | **52** | 2 | 34 |
 | stalemate | **all 792** | 725 | **761** | 1 | 37 |
-| helpmate | **all 546** | 491 | **501** | 2 | 12 |
-| helpstalemate | **all 431** | 308 | **362** | **0** | 54 |
+| helpmate | **all 546** | 491 | **506** | 2 | 17 |
+| helpstalemate | **all 431** | 308 | **363** | **0** | 55 |
 | selfmate | **all 903** | 318 | **389** | 15 | 86 |
 | selfstalemate | **all 76** | 49 | **52** | 1 | 4 |
 
@@ -455,7 +455,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 408 automated checks, including perft, negative controls, restriction
+- 412 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than

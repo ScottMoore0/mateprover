@@ -227,6 +227,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"refutation_hint_stores\":" << st.refutation_hint_stores
               << ",\"defender_kq_nodes\":" << st.defender_kq_nodes
               << ",\"perpetual_refutations\":" << st.perpetual_refutations
+              << ",\"help_unreachable_prunes\":" << st.help_unreachable_prunes
               << ",\"proof_hint_probes\":" << st.proof_hint_probes
               << ",\"proof_hint_hits\":" << st.proof_hint_hits
               << ",\"proof_hint_stores\":" << st.proof_hint_stores
