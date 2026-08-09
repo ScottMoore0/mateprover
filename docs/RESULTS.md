@@ -197,12 +197,20 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | mate-in-8 | **all 200** | 146 | **168** | 9 | 31 |
 | mate-in-10 | **all 60** | 20 | **53** | 2 | 35 |
 | stalemate | **all 792** | 725 | **759** | 1 | 35 |
-| helpmate | **all 546** | **491** | 480 | 16 | 5 |
+| helpmate | **all 546** | 491 | **501** | 2 | 12 |
 | helpstalemate | **all 431** | 308 | **344** | **0** | 36 |
 | selfmate | **all 904** | 475 | **646** | 36 | 207 |
-| selfstalemate | *no corpus in the tree* | 23 | 23 | 0 | 0 |
+| selfstalemate | **all 35** | 23 | 23 | **0** | 0 |
 
-Single trial, **10 s a position**, mateprover on its shipped 256 MB against Chest
+**Every row here except helpmate was run with `-M 256`, which is NOT the shipped
+default.** An explicit `-M` is the budget for every table alive at once; unset it
+is 256 MB per table, and a cooperative search runs nine lanes. That handicap was
+worth 12.8x on a measured position and it only ever disadvantaged mateprover, so
+the rows it won it still wins and the "only Chest" columns are upper bounds. The
+helpmate row is re-run at engine defaults and flipped from 480-491 to 501-491.
+The rest should be re-run; see `docs/ARCHITECTURE.md` §70.
+
+Single trial, **10 s a position**, mateprover against Chest
 on 2048 MB, both proving the SHORTEST solution, scored on presence rather than on
 matching the stipulated depth. Six of the seven rows are whole corpora. Stalemate
 is now the externally-sourced union of `stalemate_pdb` and `stalemate_yacpdb`,

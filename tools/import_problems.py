@@ -49,8 +49,16 @@ from concurrent.futures import ThreadPoolExecutor
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
 SFM_RE = re.compile(r"\bsfm\s+(\d+)\b")
-# Stipulation as written by problem databases: #3, =2, s#4, h#2 ...
-STIP_RE = re.compile(r"(?:^|\s)(h#|s#|#|=)\s*(\d+)", re.IGNORECASE)
+SSM_RE = re.compile(r"\bssm\s+(\d+)\b")
+HM_RE = re.compile(r"\bhm\s+(\d+)\b")
+HSM_RE = re.compile(r"\bhsm\s+(\d+)\b")
+# Stipulation as written by problem databases: #3, =2, s#4, s=3, h#2, h=2 ...
+#
+# The two-character forms must come FIRST in the alternation. Python's `|` takes
+# the leftmost match that succeeds, so putting `=` before `s=` makes every
+# selfstalemate import as a plain stalemate -- silently, and with a stipulation
+# the engine would then fail to prove.
+STIP_RE = re.compile(r"(?:^|\s)(h#|h=|s#|s=|#|=)\s*(\d+)", re.IGNORECASE)
 ALT_RE = re.compile(r"\b(dm|sm)\s+(\d+)\b")
 
 
@@ -74,23 +82,23 @@ def parse_line(line: str):
     if not got:
         return None
     kind = got.group(1).lower()
-    if kind == "h#":
-        return fen4, kind, int(got.group(2))       # helpmate: not implemented
-    if kind == "s#":
-        return fen4, "selfmate", int(got.group(2))
-    return fen4, ("stalemate" if kind == "=" else "mate"), int(got.group(2))
+    goal = {"h#": "helpmate", "h=": "helpstalemate", "s#": "selfmate",
+            "s=": "selfstalemate", "=": "stalemate", "#": "mate"}[kind]
+    return fen4, goal, int(got.group(2))
 
 
 def solve(engine, fen4, goal, depth, seconds, emit_proof=False):
     args = [str(engine), "--direct-depth", "--time-limit", str(seconds)]
-    if goal == "stalemate":
-        args.append("--stalemate")
-    elif goal == "selfmate":
-        args.append("--selfmate")
+    flag = {"stalemate": "--stalemate", "selfmate": "--selfmate",
+            "selfstalemate": "--selfstalemate", "helpmate": "--helpmate",
+            "helpstalemate": "--helpstalemate"}.get(goal)
+    if flag:
+        args.append(flag)
     if emit_proof:
         args.append("--emit-proof")
     args.append("-")
-    token = {"stalemate": "sm", "selfmate": "sfm"}.get(goal, "dm")
+    token = {"stalemate": "sm", "selfmate": "sfm", "selfstalemate": "ssm",
+             "helpmate": "hm", "helpstalemate": "hsm"}.get(goal, "dm")
     out = subprocess.run(args, input=f"{fen4} {token} {depth}\n".encode(),
                          capture_output=True, timeout=seconds * 8).stdout.decode()
     # An unparseable position makes the engine echo the WHOLE input line back,
@@ -99,7 +107,8 @@ def solve(engine, fen4, goal, depth, seconds, emit_proof=False):
     # solved. Check for the error marker before looking for a result.
     if "error input" in out:
         return False, False, out, True
-    rx = {"stalemate": SM_RE, "selfmate": SFM_RE}.get(goal, DM_RE)
+    rx = {"stalemate": SM_RE, "selfmate": SFM_RE, "selfstalemate": SSM_RE,
+          "helpmate": HM_RE, "helpstalemate": HSM_RE}.get(goal, DM_RE)
     return ("timeout" in out), bool(rx.search(out)), out, False
 
 
@@ -134,9 +143,6 @@ def main() -> int:
 
     def classify(item):
         fen4, goal, depth = item
-        if goal == "h#":
-            return {"fen4": fen4, "goal": goal, "mate": depth,
-                    "status": "unsupported"}, None
         timed_out, found, out, illegal = solve(args.engine, fen4, goal, depth,
                                                args.time_limit, args.verify)
         if illegal:

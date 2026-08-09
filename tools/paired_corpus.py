@@ -79,7 +79,14 @@ def mateprover_chunk(engine, goal, rows, seconds, memory_mb):
         by_depth[row["mate"]].append(row)
     for depth, group in by_depth.items():
         proc = subprocess.run(
-            [engine, "--goal", name, "-z", str(depth), "-M", str(memory_mb),
+            # No -M. An explicit -M is the budget for every table alive at
+            # once; passing the per-lane figure of 256 starves the engine of the
+            # default it ships with, and on a cooperative search that was worth
+            # 12.8x on a measured position (2.9 s became 37 s). Handicapping the
+            # engine under test with its own tuning knob is exactly the defect
+            # this project already fixed once, in the CLI, and I reintroduced it
+            # in the harness.
+            [engine, "--goal", name, "-z", str(depth),
              "--time-limit", str(seconds), "-"],
             input="".join(r["fen4"] + "\n" for r in group).encode(),
             capture_output=True, timeout=seconds * len(group) + 900)

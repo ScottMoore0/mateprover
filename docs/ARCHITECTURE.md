@@ -146,6 +146,7 @@ did. If you are reading it for the first time:
 - [67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself](#67-auditing-the-corpora-fifteen-wrong-entries-and-a-denominator-that-cannot-be-trusted-to-itself)
 - [68. The Preconditioner Gate: A Real Effect, Measured, And Rejected](#68-the-preconditioner-gate-a-real-effect-measured-and-rejected)
 - [69. Six Corpora, Measured Together: Where Chest Still Wins, And Where It Is Wrong](#69-six-corpora-measured-together-where-chest-still-wins-and-where-it-is-wrong)
+- [70. The Harness Handicapped The Engine With Its Own Tuning Knob](#70-the-harness-handicapped-the-engine-with-its-own-tuning-knob)
 
 ## Impact-Ordered Architecture
 
@@ -4886,3 +4887,89 @@ repository.** No file carries the goal, nothing in `tools/` mints one, and
 that cannot be rebuilt, which by this project's own standard at 55 makes it not
 evidence. It is the last unreproducible number in `RESULTS.md` and it should be
 either regenerated and committed or withdrawn.
+
+### 70. The Harness Handicapped The Engine With Its Own Tuning Knob
+
+The helpmate row of 69 was wrong, and the fault was mine rather than the engine's.
+
+`tools/paired_corpus.py` passed `-M 256` to mateprover, on the belief that 256 MB
+is the shipped default. `--print-config` does report `memory_mb 256`, which is
+what made the belief comfortable. But **an explicit `-M` and an unset `-M` do not
+mean the same thing**, and this project documented the difference itself: an
+explicit `-M` is the budget for every table alive at once, split across portfolio
+lanes; left unset it is 256 MB *per table*. A cooperative search runs nine
+memory lanes, so `-M 256` hands it a ninth of what it ships with.
+
+Measured on one of the positions from the miss list,
+`8/8/8/8/3b4/k7/5r2/1r1b2NK b - -`:
+
+| invocation | time |
+| --- | --- |
+| default (no `-M`) | 2.9 s |
+| `-M 256` | 37.4 s |
+
+**12.8x, from a flag intended to describe the default.** The whole helpmate row
+was run that way.
+
+| helpmate, 546 positions, 10 s | mateprover | chest | only chest |
+| --- | --- | --- | --- |
+| with `-M 256` (69) | 480 | **491** | 16 |
+| engine defaults | **501** | 491 | **2** |
+
+The row flips from the only loss in the table to a win, and the sixteen positions
+"only Chest reaches" become two.
+
+This is the `-M` defect of the CLI work, reintroduced by me in the harness that
+measures it. The original was the engine charging `-M` per table so a stated 256
+cost 1994 MB at four workers; the fix made `-M` a total. The failure mode
+inverted -- now a user who states the number they believe is the default silently
+starves the engine -- and a benchmark harness is exactly the place where that
+inversion does the most damage, because it produces a confident table.
+
+**The other rows in 69 were measured the same way and are therefore conservative.**
+The handicap only ever disadvantaged mateprover, so every row it won it still
+wins; the numbers understate the margin and the "only Chest" columns are upper
+bounds. Helpmate was the only row whose CONCLUSION the handicap could reverse,
+and it did.
+
+Two smaller measurement asymmetries were checked at the same time and are worth
+recording because both turned out not to matter much:
+
+- **Chest's per-position time includes process startup and table allocation**,
+  where mateprover's is its internal `acs`. Measured floor: **13 ms**, flat from
+  64 MB to 2048 MB. Real, small, and it inflates ratios only on positions Chest
+  answers in tens of milliseconds.
+- **Thread count.** mateprover ran at its default 16 threads against a
+  single-threaded Chest. Re-measuring single-threaded: mate-in-8 **169** against
+  168, stalemate **759** against 759 -- the directmate and stalemate advantage is
+  not core count at all. Helpmate is the exception: 451 single-threaded against
+  480, so there the cores matter and the honest single-thread comparison is a
+  loss.
+
+#### Item by item
+
+**Helpmate's sixteen are not a reach gap.** Every one solves within 60 s -- most
+in 2 to 4 s -- and all are h#4, spanning 6 to 17 men, so there is no structural
+class among them. With the memory handicap removed, fourteen of the sixteen come
+back inside the original 10 s.
+
+**Selfstalemate has a corpus again.** 35 problems exported from YACPDB, imported,
+committed as `benchmarks/selfstalemate_yacpdb.jsonl`. mateprover proves 23 and
+refutes 12; all 23 certificates verify. Paired against Chest: **23 to 23, nothing
+either engine misses**, and Chest refuses the same 12 independently. Two provers
+agreeing that twelve stipulations have no solution is the strongest evidence class
+in `KNOWN_BAD.jsonl`. The historical "23/35" was right, and the twelve it never
+explained were bad stipulations rather than hard positions.
+
+Getting there needed two fixes. `tools/import_problems.py` knew only `#`, `=`,
+`s#` and `h#`, so `s=` and `h=` -- selfstalemate and helpstalemate -- could not be
+imported at all. And the first patch reported **35 of 35 refuted**: a heredoc had
+written `\b` as a literal backspace byte, so three regexes required an invisible
+control character and never matched. A confident zero, from a pattern that prints
+indistinguishably from the correct one.
+
+**The mate-in-8 reach position is real.** `N1R2N2/1p6/6B1/2P5/8/P7/2P1p1K1/k7 w - -`
+resists all seven configurations tried at 120 s each: default, no preconditioner,
+depth-first route, shallow-fast route, single thread, 2048 MB, no portfolio.
+Chest solves it in under 10 s. A population of one, and the only position in the
+project with that status.
