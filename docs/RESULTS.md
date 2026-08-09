@@ -194,21 +194,23 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 
 | goal | corpus | Chest | mateprover | only Chest | only mateprover |
 |---|---|---|---|---|---|
-| mate-in-8 | **all 200** | 146 | **168** | 9 | 31 |
-| mate-in-10 | **all 60** | 20 | **53** | 2 | 35 |
-| stalemate | **all 792** | 725 | **759** | 1 | 35 |
+| mate-in-8 | **all 200** | 146 | **167** | 9 | 30 |
+| mate-in-10 | **all 60** | 20 | **52** | 2 | 34 |
+| stalemate | **all 792** | 725 | **761** | 1 | 37 |
 | helpmate | **all 546** | 491 | **501** | 2 | 12 |
-| helpstalemate | **all 431** | 308 | **344** | **0** | 36 |
+| helpstalemate | **all 431** | 308 | **362** | **0** | 54 |
 | selfmate | **all 903** | 318 | **389** | 15 | 86 |
 | selfstalemate | **all 35** | 23 | 23 | **0** | 0 |
 
-**Every row here except helpmate was run with `-M 256`, which is NOT the shipped
-default.** An explicit `-M` is the budget for every table alive at once; unset it
-is 256 MB per table, and a cooperative search runs nine lanes. That handicap was
-worth 12.8x on a measured position and it only ever disadvantaged mateprover, so
-the rows it won it still wins and the "only Chest" columns are upper bounds. The
-helpmate row is re-run at engine defaults and flipped from 480-491 to 501-491.
-The rest should be re-run; see `docs/ARCHITECTURE.md` §70.
+Every row is now measured at **engine defaults on both sides**. An earlier
+version of this table passed `-M 256` to mateprover in the belief that it was the
+shipped default; it is not (an explicit `-M` is the budget for every table at
+once, unset it is 256 MB *per table*, and a cooperative search runs nine lanes).
+That handicap cost 12.8x on a measured position and manufactured a helpmate loss.
+See `docs/ARCHITECTURE.md` §70. Removing it moved the cooperative goals a lot
+(helpmate 480 to 501, helpstalemate 344 to 362) and the adversarial goals barely
+at all (mate-in-8 168 to 167, stalemate 759 to 761 — both inside run-to-run
+noise at a 10 s cap).
 
 Single trial, **10 s a position**, mateprover against Chest
 on 2048 MB, both proving the SHORTEST solution, scored on presence rather than on
@@ -225,11 +227,17 @@ is comparing a number against a cap:
 | goal | paired | total | median per position |
 |---|---|---|---|
 | selfmate | 303 | 1.90x | **5.4x** |
-| mate-in-8 | 137 | 2.75x | **10.9x** |
-| mate-in-10 | 18 | 5.24x | **94.5x** |
-| stalemate | 724 | 2.42x | **22.3x** |
-| helpmate | 475 | 1.13x | 3.3x |
-| helpstalemate | 308 | 5.68x | **12.1x** |
+| mate-in-8 | 137 | 2.50x | **8.7x** |
+| mate-in-10 | 18 | 6.09x | **136.3x** |
+| stalemate | 724 | 2.44x | **7.2x** |
+| helpmate | 489 | 1.83x | 3.4x |
+| helpstalemate | 308 | 6.41x | **16.3x** |
+
+The median and the total say different things and both are true. The median is
+the typical position, usually easy, where mateprover is near-instant; the total
+is dominated by the hardest positions both engines solve, and it is the honest
+aggregate. mate-in-10's median rests on only 18 shared positions, because Chest
+solves 20 of 60 — quote it with that in mind.
 
 
 Four of the seven rows are whole corpora rather than samples. That change was not
