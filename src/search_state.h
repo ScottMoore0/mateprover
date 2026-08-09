@@ -291,6 +291,11 @@ struct Search : SearchConfig {
     bool has_deadline = false;
     std::chrono::steady_clock::time_point deadline{};
     bool timed_out = false;
+    // GAP-1's verdict, carried out to the result line. Set ONLY from a lane that
+    // searched unrestricted: a restricted lane's failure is silent about the
+    // moves it was not allowed, so it can no more assert "no solution at any
+    // depth" than it can assert "no solution".
+    bool refuted_any_depth = false;
     std::uint32_t deadline_countdown = 0;
 
     // When non-null, exact proof entries live in a table shared with the other

@@ -145,6 +145,22 @@ the problem-chess conventions `#N`, `=N` and `s#N`.
 Those counters are diagnostics, not a stable interface, and may change without
 a version bump. Everything on stdout is covered by this document.
 
+## Negative verdicts
+
+Three different negatives, and a consumer must not read one as another:
+
+| line ends | meaning |
+|---|---|
+| no goal token, no marker | no solution **within the depth searched**. Says nothing about deeper. |
+| `; refuted` | no solution at **any** depth. No larger budget and no deeper search will change it. |
+| `; timeout` | the budget ran out. **No claim at all** was established. |
+
+`refuted` appears only when the any-depth theorems are enabled
+(`--any-depth-refutations`, off by default) and only when an **unrestricted**
+search established it. A restricted lane's failure is silent about the moves it
+was not allowed, so it can no more assert "no solution at any depth" than it can
+assert "no solution". See `docs/GAP1_DERIVATION.md`.
+
 ## Stability
 
 Fields may be **added** to a result line without a version bump; a consumer must

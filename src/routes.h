@@ -734,7 +734,9 @@ RouteResult run_route(Search& s, const Board& b, int max_depth) {
     //
     // Inert when the gate is off: the predicate returns false immediately.
     if (position_is_refuted_axiomatically(s, b)) {
-        return {};
+        RouteResult refuted;
+        refuted.proof.refuted = true;
+        return refuted;
     }
     // A selfmate always takes the exact route, whatever --route asked for.
     //

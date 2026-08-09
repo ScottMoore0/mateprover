@@ -2054,6 +2054,16 @@ def test_any_depth_refutations(engine: Path, res: Results) -> None:
     res.check("the gate off gives the same verdicts as the gate on, here",
               verdicts(base) == verdicts(proved), "verdicts differ")
 
+    # The three negatives must be distinguishable on the wire. A consumer that
+    # reads "ran out of budget" as "no solution" draws a false conclusion from a
+    # correct engine.
+    res.check("a refuted position is marked `refuted`", "refuted" in on, on.strip()[:90])
+    shallow = run(engine, ["-z", "3", "--time-limit", "20", "-"], bare)
+    res.check("a depth-bounded disproof is NOT marked refuted",
+              "refuted" not in shallow and "timeout" not in shallow, shallow.strip()[:90])
+    res.check("the gate off never emits the token",
+              "refuted" not in off, off.strip()[:90])
+
     # GAP-2, the perpetual-check refutation for a lone-queen defender. It feeds
     # the same Refuted verdict, so the same standard applies: it must never cost
     # a selfmate that has a solution. Run paired, because a difference in the

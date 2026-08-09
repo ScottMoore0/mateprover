@@ -416,6 +416,9 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         std::vector<std::unique_ptr<std::atomic<bool>>> cancels;
         std::vector<RouteResult> results(static_cast<std::size_t>(lanes));
         std::vector<char> proved(static_cast<std::size_t>(lanes), 0);
+        // A lane's any-depth verdict, recorded separately because `results` is
+        // only written for ACCEPTABLE results and a refutation is never one.
+        std::vector<char> lane_refuted(static_cast<std::size_t>(lanes), 0);
         searches.reserve(static_cast<std::size_t>(lanes));
         cancels.reserve(static_cast<std::size_t>(lanes));
 
@@ -478,6 +481,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         auto lane = [&](int i) {
             Search& t = *searches[static_cast<std::size_t>(i)];
             const RouteResult r = run_route(t, b, max_depth);
+            lane_refuted[static_cast<std::size_t>(i)] = r.proof.refuted ? 1 : 0;
             if (route_result_is_acceptable(r, max_depth)) {
                 std::lock_guard<std::mutex> lock(done_mutex);
                 results[static_cast<std::size_t>(i)] = r;
@@ -542,6 +546,15 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                 }
             }
             report.timed_out = !complete;
+            // Same rule for the any-depth verdict: only the unrestricted lane
+            // may assert it, for exactly the reason it alone may assert "no
+            // mate exists".
+            for (int i = 0; i < lanes; ++i) {
+                if (std::string(entries[static_cast<std::size_t>(i)].name) == "unrestricted") {
+                    report.refuted_any_depth = lane_refuted[static_cast<std::size_t>(i)] != 0;
+                    break;
+                }
+            }
             return {};
         }
         winning_entry_name = entries[static_cast<std::size_t>(pick)].name;
@@ -621,8 +634,10 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             s.stats += attempt_search.stats;
             if (std::string(entry.name) == "unrestricted") {
                 // Only the complete lane can settle "no mate exists"; see the
-                // parallel path for why the restricted lanes cannot.
+                // parallel path for why the restricted lanes cannot. The
+                // any-depth verdict travels on the same ticket.
                 unrestricted_complete = !attempt_search.timed_out;
+                s.refuted_any_depth = r.proof.refuted;
             }
         }
         if (!route_result_is_acceptable(route_result, max_depth)) {
@@ -630,6 +645,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         }
     } else {
         route_result = attempt(nullptr, config.time_limit, s);
+        s.refuted_any_depth = route_result.proof.refuted;
     }
     const Proof& proof = route_result.proof;
     const bool accepted = route_result_is_acceptable(route_result, max_depth);
@@ -733,6 +749,13 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // Say which restriction proved it: the mate is real but may not be the
         // shortest, and the caller is entitled to know a restriction was used.
         out << "; via " << winning_entry;
+    }
+    if (!accepted && s.refuted_any_depth) {
+        // The strongest negative this engine can make: no solution at ANY depth,
+        // so no larger budget and no deeper search will change it. Distinct from
+        // the bare no-solution line, which only says "none within the depth
+        // searched". See docs/GAP1_DERIVATION.md.
+        out << "; refuted";
     }
     if (!accepted && s.timed_out) {
         // Distinguish "gave up" from "proved there is no mate". Without this a
