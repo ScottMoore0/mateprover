@@ -152,6 +152,7 @@ did. If you are reading it for the first time:
 - [73. The Cooperative Search: One Idea Rejected, One Kept](#73-the-cooperative-search-one-idea-rejected-one-kept)
 - [74. Tightening The Reachability Bound Found It Was Unsound](#74-tightening-the-reachability-bound-found-it-was-unsound)
 - [75. The Flight-Square Bound, And A Mate Delivered By Underpromotion](#75-the-flight-square-bound-and-a-mate-delivered-by-underpromotion)
+- [76. Characterising The Cooperative Residue: There Is No Class](#76-characterising-the-cooperative-residue-there-is-no-class)
 
 ## Impact-Ordered Architecture
 
@@ -5331,3 +5332,69 @@ regression tests rather than comments.
 Single-threaded, 482 against Chest's 491. **Nine positions**, from twenty-seven
 before any of this work. The bound is no longer obviously the limiting factor,
 and what remains is not another relaxation of the same argument.
+
+### 76. Characterising The Cooperative Residue: There Is No Class
+
+75 left the cooperative search nine positions behind Chest per core and the
+obvious next move was another theorem. Before proposing one, the residue was
+characterised — because the mechanism had been predicted twice already and was
+wrong about which half mattered both times.
+
+**Nine was a net figure and the wrong number to reason from.** Chest solves 491
+single-threaded, mateprover 482, but the sets are not nested: there are **14**
+positions Chest reaches and single-threaded mateprover does not, and 5 the other
+way. Fourteen is the set to characterise.
+
+| | |
+| --- | --- |
+| solved by mateprover at 16 threads | **14 of 14** |
+| solved single-threaded at 60 s | **14 of 14** |
+| genuine reach gaps | **0** |
+
+Every one falls to six times the clock, or to threads. Not one is a position this
+engine cannot reach.
+
+And there is no shape to them. Depths 3 and 4; six men to twenty; White holding
+anything from a lone king and pawn to bishop-knight-pawn-rook; no repeated
+material signature. Compare the selfmate residue, where king+pawn is 127 of 904
+and king+queen 42 — a class with a name. This is not a class. It is fourteen
+ordinary helpmates that happen to sit the wrong side of a ten-second cap.
+
+#### Where the per-core deficit actually lives
+
+On the 478 positions both engines solve single-threaded:
+
+| | |
+| --- | --- |
+| total time, Chest | 260.7 s |
+| total time, mateprover | 367.2 s |
+| **aggregate** | **0.71x — mateprover is 1.4x SLOWER** |
+| **median per position** | **1.44x — mateprover is faster** |
+| positions where Chest is faster | 187 of 478 |
+
+Those two rows point opposite ways and both are true. mateprover wins the typical
+position and loses the aggregate, which can only mean it is much slower on the
+HARD ones — and the hard ones are what a fixed cap decides. The deficit is not
+spread across the corpus; it is concentrated in the deep tail.
+
+#### What that rules out
+
+**A better admissible bound is not the answer.** The bound of 75 is worth 3x and
+none of the fourteen is out of reach — they are reachable, just not inside ten
+seconds. A bound prunes dead subtrees; these positions lose their time in
+subtrees that are alive.
+
+**Nor is there a theorem to find.** A theorem needs a class, and there is no
+class. Every structural axis tried — depth, material count, material signature,
+which side holds what — separates nothing.
+
+What remains is ordinary throughput on deep cooperative trees: the node cost
+itself, or move ordering good enough to reach the solution sooner. 73 measured
+ordering at 70% of the time and found that removing it LOST eight positions, so
+ordering already pays for itself; the open question is whether a better order pays
+more.
+
+That is a constant-factor engineering problem with no clean theorem attached, and
+it is worth saying so plainly rather than proposing a fourth mechanism. Two of the
+three predictions made about this search were wrong about which half mattered. The
+third was made only after measuring.
