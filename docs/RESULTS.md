@@ -197,7 +197,7 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | mate-in-8 | **all 200** | 146 | **167** | 9 | 30 |
 | mate-in-10 | **all 60** | 20 | **52** | 2 | 34 |
 | stalemate | **all 792** | 725 | **761** | 1 | 37 |
-| helpmate | **all 546** | 491 | **506** | 2 | 17 |
+| helpmate | **all 546** | 491 | **508** | 2 | 19 |
 | helpstalemate | **all 431** | 308 | **363** | **0** | 55 |
 | selfmate | **all 903** | 318 | **389** | 15 | 86 |
 | selfstalemate | **all 76** | 49 | **52** | 1 | 4 |

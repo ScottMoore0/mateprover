@@ -540,7 +540,11 @@ Proof prove_help(Search& s, const Board& b, int plies) {
                     king_disc_table()[static_cast<std::size_t>(king_sq)]
                                      [static_cast<std::size_t>(their_moves > 8 ? 8 : their_moves)];
                 const auto& within = attack_within_table();
-                std::uint64_t men = b.by_color[mating];
+                // The mating KING is excluded: a king cannot give check, so it
+                // can never be the unit attacking the mated king at the end.
+                // Free, and strictly tighter -- with it included, a mating king
+                // anywhere near the enemy king kept every subtree alive.
+                std::uint64_t men = b.by_color[mating] & ~b.by_type[PT_KING];
                 bool possible = false;
                 while (men) {
                     const int from = lsb_index(men);

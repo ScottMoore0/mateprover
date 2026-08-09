@@ -145,11 +145,11 @@ const std::array<std::array<std::uint64_t, 9>, 64>& king_disc_table() {
 //
 // Pawns are modelled with their forward moves (an empty board offers nothing to
 // capture) and promote to a queen on the last rank, so they stay a superset too.
-// d is capped at 3; a caller with more moves than that must not use the table,
-// because out[..][3] is the THREE-move set and would be an underestimate.
-const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12>& attack_within_table() {
-    static const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12> table = [] {
-        std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12> out{};
+// d is capped at 5; a caller with more moves than that must not use the table,
+// because out[..][5] is the FIVE-move set and would be an underestimate.
+const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12>& attack_within_table() {
+    static const std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> table = [] {
+        std::array<std::array<std::array<std::uint64_t, 6>, 64>, 12> out{};
         auto attacks_from = [](int pt, int c, int s) -> std::uint64_t {
             std::uint64_t mask = 0;
             const int f = file_of(s), r = rank_of(s);
@@ -179,11 +179,11 @@ const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12>& attack_withi
                 for (int sq = 0; sq < 64; ++sq) {
                     std::vector<std::pair<int, int>> cur{{sq, pt}};
                     std::uint64_t acc = 0;
-                    for (int d = 0; d <= 3; ++d) {
+                    for (int d = 0; d <= 5; ++d) {
                         for (const auto& st : cur) acc |= attacks_from(st.second, c, st.first);
                         out[static_cast<std::size_t>(c * 6 + pt)][static_cast<std::size_t>(sq)]
                            [static_cast<std::size_t>(d)] = acc;
-                        if (d == 3) break;
+                        if (d == 5) break;
                         std::vector<std::pair<int, int>> next;
                         for (const auto& st : cur) {
                             if (st.second == PT_PAWN) {
@@ -196,6 +196,23 @@ const std::array<std::array<std::array<std::uint64_t, 4>, 64>, 12>& attack_withi
                                     const int nr = r + dr * step;
                                     if (!on_board(f, nr)) break;
                                     next.emplace_back(square_of(f, nr),
+                                                      nr == back ? PT_QUEEN : PT_PAWN);
+                                }
+                                // The diagonals too, and this is not optional.
+                                //
+                                // An empty board offers nothing to capture, but
+                                // this table must be a superset of what happens
+                                // on a REAL board, and there a pawn captures
+                                // sideways and changes file. Modelling only the
+                                // forward moves made the table an UNDERestimate
+                                // for pawns, which is the one direction that
+                                // makes the bound unsound: it pruned a helpmate
+                                // whose mate was delivered by a pawn that had
+                                // captured its way off its file.
+                                for (int df = -1; df <= 1; df += 2) {
+                                    const int nf = f + df, nr = r + dr;
+                                    if (!on_board(nf, nr)) continue;
+                                    next.emplace_back(square_of(nf, nr),
                                                       nr == back ? PT_QUEEN : PT_PAWN);
                                 }
                                 continue;

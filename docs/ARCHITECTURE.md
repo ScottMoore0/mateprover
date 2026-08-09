@@ -150,6 +150,7 @@ did. If you are reading it for the first time:
 - [71. GAP-2 Implemented, Sound, And Worth Nothing Yet](#71-gap-2-implemented-sound-and-worth-nothing-yet)
 - [72. Closing The Cheap Half: One Win, One Loss Found, And Five Budgets](#72-closing-the-cheap-half-one-win-one-loss-found-and-five-budgets)
 - [73. The Cooperative Search: One Idea Rejected, One Kept](#73-the-cooperative-search-one-idea-rejected-one-kept)
+- [74. Tightening The Reachability Bound Found It Was Unsound](#74-tightening-the-reachability-bound-found-it-was-unsound)
 
 ## Impact-Ordered Architecture
 
@@ -5172,3 +5173,82 @@ three mating moves; extending the table deeper would widen its reach, and a
 tighter bound — counting the moves needed to cover the king's flight squares
 rather than merely to check it — is the obvious next step and a much harder
 theorem to keep admissible.
+
+### 74. Tightening The Reachability Bound Found It Was Unsound
+
+73 added an admissible reachability bound to the cooperative search and reported
+it sound on the evidence available: 412 checks passing, 240 cooperative negatives
+among them, and no solvable position lost on the corpus. It was not sound. The
+attempt to tighten it is what exposed that, which is worth recording, because the
+bug had already shipped and every gate in place had passed it.
+
+**The tightening.** Two candidates, both free:
+
+- Exclude the mating KING from the "can attack the enemy king" test. A king
+  cannot give check, so it can never be the unit attacking at the end — and a
+  discovered check is delivered by the piece whose line opens, not by the king
+  that vacated. Strictly tighter at zero cost.
+- Extend the table from three of the mating side's moves to five, so the bound
+  applies at shallower nodes too.
+
+The second was **rejected on measurement**: 26.5 s to 29.9 s on the six-man h#4,
+for 2% more prunes. The nodes it newly covers are the shallow ones, which are
+few, and testing them costs more than the rare prune returns.
+
+The first exposed the bug. With the king excluded, one position stopped solving:
+`8/3bb3/6p1/3K1k2/5P2/7P/7q/8 b - -`, an h#4 where White mates with a king and
+two pawns. Solvable in 0.36 s before the tightening; unsolvable after.
+
+**A tighter admissible bound cannot lose a solution.** So either the tightening
+was wrong — it is not, a king really cannot give check — or the bound was already
+unsound and the king's very wide attack set had been masking it.
+
+It was the second. The pawn model:
+
+> Pawns are modelled with their forward moves (an empty board offers nothing to
+> capture)
+
+True of an empty board and **irrelevant**, because the table must be a superset
+of what happens on a REAL board, and there a pawn captures diagonally and changes
+file. Modelling only forward moves made the table an UNDERestimate for pawns,
+which is the one direction that makes the bound unsound. The position above is
+mated by a pawn that captures its way off its file, so the bound declared the
+subtree dead. Including the king had been hiding it: a king near the action
+attacks so much that the test almost never failed, whatever the pawns did.
+
+The fix is three lines — a pawn's relaxed moves include both diagonals — and the
+position returns in 0.43 s.
+
+#### The gate that should have existed from the start
+
+The bound is unconditional, so it cannot be tested by toggling a flag, and 73's
+guard tested it only by consequence on a 30-position sample. That sample is what
+caught this, at 26 of 30 against a threshold of 27 — a margin of one, on an
+arbitrary threshold. It could as easily have passed.
+
+So the bound was measured properly: a temporary switch, the whole 546 at 10 s,
+bound on against bound off, comparing solved SETS rather than counts.
+
+| | solved | |
+| --- | --- | --- |
+| bound off | 500 / 546 | |
+| bound on | **508 / 546** | |
+| **lost by enabling it** | **0** | |
+| gained | 8 | |
+
+(The switch had to be read once into a static. Read per node, `getenv` cost more
+than the bound saved and dropped the same binary from 508 to 469 — a measurement
+apparatus expensive enough to destroy the measurement.)
+
+**Where it stands.** With the pawn model fixed and the king excluded:
+
+| helpmate, 546, 10 s | 73 | now |
+| --- | --- | --- |
+| 1 thread | 473 | **476** |
+| 16 threads | 506 | **508** |
+
+Single-threaded, 476 against Chest's 491: fifteen positions, from twenty-seven
+before any of this. The gap is two thirds closed and the remaining third still
+wants the harder theorem — counting the moves needed to COVER the king's flight
+squares, not merely to check it, which needs a coverage argument where one move
+can cover several squares at once.
