@@ -1989,6 +1989,80 @@ def test_parallel_positions(engine: Path, res: Results) -> None:
               str(config.get("parallel_positions")))
 
 
+def test_any_depth_refutations(engine: Path, res: Results) -> None:
+    """GAP-1's verdict lattice: the one option that can make a WRONG answer.
+
+    An unsound "no solution at any depth" makes the engine confidently declare a
+    sound problem unsolvable, so these are correctness checks rather than
+    performance ones. The derivation is in docs/GAP1_DERIVATION.md; what is
+    tested here is each obligation it lists.
+
+    The acceptance criterion is that the gate OFF changes nothing. That holds
+    structurally -- `Refuted` enters only through gated axioms and every
+    composition rule needs a `Refuted` child, so with the gate off no node can
+    ever become one -- but a structural argument is a reason to expect a result,
+    not a substitute for observing it.
+    """
+    print("\n[gap1] any-depth refutations are sound and inert by default")
+
+    config = json.loads(run(engine, ["--print-config"], ""))
+    res.check("any-depth refutations default to OFF",
+              config.get("any_depth_refutations") is False,
+              str(config.get("any_depth_refutations")))
+
+    # The axiom: a bare attacker king cannot mate, at any depth. With the gate
+    # on this must cost NO search at all -- not a fast search, none. That is the
+    # difference between a refutation and a failure.
+    bare = "8/8/8/4k3/8/8/8/4K3 w - -\n"
+    on = run(engine, ["-z", "12", "--any-depth-refutations", "--time-limit", "30", "-"], bare)
+    off = run(engine, ["-z", "12", "--time-limit", "30", "-"], bare)
+    # Solve lines report `acn`; NODES_RE matches the perft format instead.
+    acn = re.compile(r"\bacn\s+(\d+)\b")
+    nodes_on = int(acn.search(on).group(1)) if acn.search(on) else -1
+    nodes_off = int(acn.search(off).group(1)) if acn.search(off) else -1
+    res.check("a bare attacker king is refuted without searching",
+              nodes_on == 0, f"acn {nodes_on}")
+    res.check("and without the gate the same position is searched",
+              nodes_off > 1000, f"acn {nodes_off}")
+    res.check("a refuted position still reports no mate, never a false one",
+              not DM_RE.search(on), on.strip()[:90])
+
+    # The axiom is goal-scoped, and getting that wrong is the first mistake
+    # available: a bare king CAN force stalemate, and under selfmate the
+    # attacker is trying to be mated rather than to mate.
+    sm = run(engine, ["--stalemate", "-z", "3", "--any-depth-refutations",
+                      "--time-limit", "20", "-"],
+             "8/8/8/8/8/8/6k1/K2Q1N2 w - -\n")
+    res.check("the mate axiom does not leak into the stalemate goal",
+              bool(SM_RE.search(sm)), sm.strip()[:90])
+
+    # It must never fire where a solution exists. A single false positive is a
+    # critical bug, so this runs the whole mates.epd set with the gate ON and
+    # requires every one of them to still be proved.
+    cases = load_epd(HERE / "mates.epd")
+    stdin = "".join(f"{fen} bm #{dm};" + chr(10) for fen, dm in cases)
+    proved = run(engine, ["-5", "--any-depth-refutations", "--time-limit", "20", "-"], stdin)
+    found = sum(1 for line in proved.splitlines() if DM_RE.search(line))
+    res.check(f"the axiom never fires on {len(cases)} positions with known mates",
+              found == len(cases), f"{found}/{len(cases)} still proved")
+
+    # Inertness, observed rather than assumed: same verdicts with the gate off.
+    base = run(engine, ["-5", "--time-limit", "20", "-"], stdin)
+    def verdicts(text):
+        return [DM_RE.search(l).group(1) if DM_RE.search(l) else "none"
+                for l in text.splitlines() if l.strip()]
+    res.check("the gate off gives the same verdicts as the gate on, here",
+              verdicts(base) == verdicts(proved), "verdicts differ")
+
+    # No-mate positions must stay no-mate. A refutation that fires wrongly would
+    # be invisible on positives and show up only as a faster wrong answer.
+    nomate = load_epd(HERE / "nomate.epd")
+    nstdin = "".join(f"{fen} bm #{dm};" + chr(10) for fen, dm in nomate)
+    out = run(engine, ["-5", "--any-depth-refutations", "--time-limit", "20", "-"], nstdin)
+    res.check(f"no mate is invented on {len(nomate)} negative controls",
+              not DM_RE.search(out), out.strip()[:90])
+
+
 def test_corpus_integrity(engine: Path, res: Results) -> None:
     """The denominator gets the same scrutiny as the numerator.
 
@@ -2315,6 +2389,7 @@ def main() -> int:
     test_memory_budget_is_a_total(args.engine, res)
     test_persistent_service_mode(args.engine, res)
     test_parallel_positions(args.engine, res)
+    test_any_depth_refutations(args.engine, res)
     test_corpus_integrity(args.engine, res)
     test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)

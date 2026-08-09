@@ -267,6 +267,7 @@ void emit_config_json(const SearchConfig& c) {
     out << ",\"shared_tt\":" << (c.shared_tt ? "true" : "false");
     out << ",\"move_reserve\":" << (c.move_reserve ? "true" : "false");
     out << ",\"proof_hints\":" << (c.proof_hints ? "true" : "false");
+    out << ",\"any_depth_refutations\":" << (c.any_depth_refutations ? "true" : "false");
     out << ",\"refutation_hints\":" << (c.refutation_hints ? "true" : "false");
     out << ",\"keep_iter_tt\":" << (c.keep_iter_tt ? "true" : "false");
     out << ",\"ordered_check_shortcut\":" << (c.ordered_check_shortcut ? "true" : "false");

@@ -43,6 +43,12 @@ struct SearchConfig {
     Goal goal = Goal::Mate;
     bool debug = false;
     bool emit_proof = false;
+    // Any-depth refutations (GAP-1). DEFAULT OFF, and off means inert rather
+    // than merely unused: `Refuted` enters the lattice only through the gated
+    // axioms below, and every composition rule needs a `Refuted` child, so with
+    // this false no node can ever become `Refuted` and the search is
+    // byte-identical to the version without it. See docs/GAP1_DERIVATION.md §7.
+    bool any_depth_refutations = false;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

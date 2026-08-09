@@ -25,6 +25,16 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
     } else if (!s.tt.probe(key, entry)) {
         return false;
     }
+    // Refuted is depth-independent by construction, so it answers any query
+    // regardless of the depth asked for. It is checked FIRST: it is the
+    // strongest statement in the lattice and no depth bound can improve on it.
+    if (entry.refuted) {
+        ++s.stats.tt_hits;
+        ++s.stats.exact_tt_disproof_hits;
+        out = {};
+        out.refuted = true;
+        return true;
+    }
     // A mate within min_proved is a mate within any larger bound.
     if (depth >= entry.min_proved) {
         ++s.stats.tt_hits;
@@ -56,9 +66,9 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
         ++s.stats.exact_tt_disproof_stores;
     }
     if (s.shared_table != nullptr) {
-        s.shared_table->merge(key, depth, proof.ok, proof.pv, proof.cert);
+        s.shared_table->merge(key, depth, proof.ok, proof.pv, proof.cert, proof.refuted);
     } else {
-        s.tt.merge(key, depth, proof.ok, proof.pv, proof.cert);
+        s.tt.merge(key, depth, proof.ok, proof.pv, proof.cert, proof.refuted);
     }
 }
 

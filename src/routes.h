@@ -726,6 +726,16 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
 }
 
 RouteResult run_route(Search& s, const Board& b, int max_depth) {
+    // GAP-1: a root the theorems refute outright needs no search at all, and --
+    // the whole point -- no iteration either. Under iterative deepening a
+    // position provably unsolvable at every depth is otherwise re-searched to
+    // exhaustion at depth 1, 2, 3, ... until the clock runs out, and the engine
+    // reports "not found within budget" rather than "no solution".
+    //
+    // Inert when the gate is off: the predicate returns false immediately.
+    if (position_is_refuted_axiomatically(s, b)) {
+        return {};
+    }
     // A selfmate always takes the exact route, whatever --route asked for.
     //
     // DFPN's proof and disproof numbers are defined against the directmate

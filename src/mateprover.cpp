@@ -213,6 +213,13 @@ void print_usage() {
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
 "                                default: --no-refutation-hints (measured harmful)\n"
+"  --any-depth-refutations | --no-any-depth-refutations\n"
+"                                default: OFF. Static theorems that prove no\n"
+"                                solution exists at ANY depth, so iterative\n"
+"                                deepening stops instead of re-searching. This\n"
+"                                is the one option that can make a WRONG answer\n"
+"                                rather than a slow one; off means inert, not\n"
+"                                merely unused. See docs/GAP1_DERIVATION.md\n"
 "  --keep-iter-tt | --clear-iter-tt\n"
 "                                default: --keep-iter-tt\n"
 "  --ordered-check-shortcut | --no-ordered-check-shortcut\n"
@@ -408,6 +415,10 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--any-depth-refutations") {
+            config.any_depth_refutations = true;
+        } else if (arg == "--no-any-depth-refutations") {
+            config.any_depth_refutations = false;
         } else if (arg == "--tt-reserve") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--tt-reserve' requires a bucket count");

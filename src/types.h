@@ -138,6 +138,13 @@ struct Proof {
     bool ok = false;
     std::vector<Move> pv;
     std::string cert;
+    // "No solution at ANY depth", not merely "none within the depth searched".
+    // See docs/GAP1_DERIVATION.md. This is the one field in the program whose
+    // wrongness produces a wrong ANSWER rather than a slow one, so it has
+    // exactly two sources: a gated static theorem, or composition from children
+    // that carry it. Running out of depth, nodes or clock must never set it --
+    // those are `ok == false && !refuted`, which is "unknown", not "impossible".
+    bool refuted = false;
 };
 
 struct RouteResult {
@@ -338,14 +345,20 @@ struct TTEntry {
     std::vector<Move> pv;
     std::string cert;
     std::uint32_t gen = 0;
+    // Top of the disproof chain: Unknown < Disproved(d) < Disproved(d') < Refuted.
+    // Absorbing, so a deeper search may never downgrade it to a depth bound.
+    bool refuted = false;
 
     bool empty() const {
-        return max_disproved == NO_DISPROOF && min_proved == NO_PROOF;
+        return max_disproved == NO_DISPROOF && min_proved == NO_PROOF && !refuted;
     }
 
     // Fold a new verdict in, keeping the strongest bound seen.
     void absorb(int depth, bool proved, const std::vector<Move>& new_pv,
-                const std::string& new_cert) {
+                const std::string& new_cert, bool now_refuted = false) {
+        if (now_refuted) {
+            refuted = true;         // absorbing: nothing downgrades it
+        }
         if (proved) {
             if (depth < min_proved) {
                 min_proved = depth;

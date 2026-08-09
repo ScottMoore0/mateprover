@@ -568,8 +568,16 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
                 ++s.stats.refutation_hint_stores;
                 s.defender_refutations[get_hint_key()] = dmove;
             }
-            store_exact_proof_table(s, key, depth, {});
-            return {};
+            // AND-node composition (GAP-1): the attacker needs the goal after
+            // EVERY reply, so one reply he can never win from is a permanent
+            // escape and the defender will take it. ONE witness suffices here --
+            // the OR node needs all of them. Carried up only when this child was
+            // Refuted; a child that merely failed within depth leaves the node
+            // depth-bounded, exactly as before.
+            Proof out;
+            out.refuted = child.refuted;
+            store_exact_proof_table(s, key, depth, out);
+            return out;
         }
         std::vector<Move> candidate;
         candidate.push_back(dmove);
@@ -604,12 +612,45 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     return proof;
 }
 
+// ---- The axioms: the only way `Refuted` enters the lattice.
+//
+// Each is a theorem about the position, not an observation about the search, and
+// each must be sound in the strong sense: a single false positive makes the
+// engine declare a sound problem unsolvable. See docs/GAP1_DERIVATION.md §4.
+//
+// Axiom 1 -- a bare attacker king cannot mate. In a directmate the attacker must
+// deliver checkmate; a lone king can never give check, so it can never mate, at
+// any depth. Material only ever decreases in the attacker's favour by promotion,
+// which needs a pawn he does not have. P-CHESS-THEORY, and about as safe as a
+// chess theorem gets.
+//
+// Deliberately NOT applied to the other goals. Under a stalemate goal a bare
+// king can absolutely force stalemate, and under selfmate the attacker is trying
+// to be mated rather than to mate, so the argument does not transfer. Goal
+// scope is the first thing to get wrong here.
+inline bool position_is_refuted_axiomatically(const Search& s, const Board& b) {
+    if (!s.any_depth_refutations) {
+        return false;                 // inert by construction
+    }
+    if (s.goal != Goal::Mate) {
+        return false;
+    }
+    const std::uint64_t attacker_men = b.by_color[s.attacker];
+    const std::uint64_t attacker_king = attacker_men & b.by_type[PT_KING];
+    return attacker_men == attacker_king;
+}
+
 Proof prove_attacker(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
     }
     ++s.stats.nodes;
     ++s.stats.attacker_nodes;
+    if (position_is_refuted_axiomatically(s, b)) {
+        Proof out;
+        out.refuted = true;
+        return out;
+    }
     if (depth <= 0 || b.stm != s.attacker) {
         return {};
     }
@@ -659,6 +700,15 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     //
     // So the goals that cannot carry the flag safely pay for the terminal test.
     const bool can_use_ordered_check_shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates && s.goal == Goal::Mate;
+    // OR-node composition (GAP-1): the attacker reaches the goal only by
+    // choosing SOME move, so if every move leads to a position he can never win
+    // from, he can never win here. All successors must be Refuted -- contrast
+    // the AND node, where one suffices. Swapping the two is the likely bug and
+    // it is invisible on positives.
+    //
+    // `moves.empty()` must not count as "all refuted": a node with no moves is
+    // terminal and the goal decides it, not composition.
+    bool all_moves_refuted = s.any_depth_refutations && !moves.empty();
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);
@@ -727,10 +777,21 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 std::cerr << "\n";
             }
         }
+        if (all_moves_refuted && !position_is_refuted_axiomatically(s, nb)) {
+            // Only a child that is itself Refuted keeps the claim alive. At
+            // depth 1 no child is searched, so nothing below is Refuted and the
+            // claim lapses -- which is correct: "no mate in 1" is not "no mate".
+            if (depth <= 1) {
+                all_moves_refuted = false;
+            }
+        }
         if (depth > 1) {
             Proof all_replies = prove_defender(s, nb, depth - 1);
             if (s.aborted) {
                 return {};
+            }
+            if (!all_replies.refuted) {
+                all_moves_refuted = false;
             }
             if (all_replies.ok) {
                 std::vector<Move> pv{amove};
@@ -753,8 +814,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
-    store_exact_proof_table(s, key, depth, {});
-    return {};
+    Proof failed;
+    failed.refuted = all_moves_refuted;
+    store_exact_proof_table(s, key, depth, failed);
+    return failed;
 }
 
 } // namespace mateprover
