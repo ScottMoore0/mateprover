@@ -199,7 +199,7 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | stalemate | **all 792** | 725 | **759** | 1 | 35 |
 | helpmate | **all 546** | 491 | **501** | 2 | 12 |
 | helpstalemate | **all 431** | 308 | **344** | **0** | 36 |
-| selfmate | **all 904** | 475 | **646** | 36 | 207 |
+| selfmate | **all 903** | 318 | **389** | 15 | 86 |
 | selfstalemate | **all 35** | 23 | 23 | **0** | 0 |
 
 **Every row here except helpmate was run with `-M 256`, which is NOT the shipped
@@ -224,6 +224,7 @@ is comparing a number against a cap:
 
 | goal | paired | total | median per position |
 |---|---|---|---|
+| selfmate | 303 | 1.90x | **5.4x** |
 | mate-in-8 | 137 | 2.75x | **10.9x** |
 | mate-in-10 | 18 | 5.24x | **94.5x** |
 | stalemate | 724 | 2.42x | **22.3x** |
