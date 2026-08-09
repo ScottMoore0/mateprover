@@ -147,6 +147,7 @@ did. If you are reading it for the first time:
 - [68. The Preconditioner Gate: A Real Effect, Measured, And Rejected](#68-the-preconditioner-gate-a-real-effect-measured-and-rejected)
 - [69. Six Corpora, Measured Together: Where Chest Still Wins, And Where It Is Wrong](#69-six-corpora-measured-together-where-chest-still-wins-and-where-it-is-wrong)
 - [70. The Harness Handicapped The Engine With Its Own Tuning Knob](#70-the-harness-handicapped-the-engine-with-its-own-tuning-knob)
+- [71. GAP-2 Implemented, Sound, And Worth Nothing Yet](#71-gap-2-implemented-sound-and-worth-nothing-yet)
 
 ## Impact-Ordered Architecture
 
@@ -4973,3 +4974,66 @@ resists all seven configurations tried at 120 s each: default, no preconditioner
 depth-first route, shallow-fast route, single thread, 2048 MB, no portfolio.
 Chest solves it in under 10 s. A population of one, and the only position in the
 project with that status.
+
+### 71. GAP-2 Implemented, Sound, And Worth Nothing Yet
+
+The perpetual-check refutation for a lone-queen defender, built on GAP-1's
+lattice. `docs/GAP2_DERIVATION.md` has the theorem and the three corrections the
+specification's sketch needed; this is what it measured.
+
+**Sound.** The bar the specification sets is that the predicate must never fire
+on a selfmate that has a solution — a single false positive is a critical bug,
+not a regression. Run paired over all 319 solvable positions in the 904-corpus,
+at 10 s each, with the gate on and off:
+
+| | solved |
+| --- | --- |
+| gate off | 317 / 319 |
+| gate on | 317 / 319 |
+| **lost by enabling it** | **0** |
+| gained | 0 |
+
+Identical sets, not merely identical counts. The paired form is what matters: two
+positions fail either way, and without the pairing they would have looked like
+false positives. Both are budget effects — one solves in 10.1 s when run alone,
+the other still times out at 60 s with the gate on rather than being refuted.
+
+**And it converts nothing.** On the 22 unsolved roots with a king+queen defender,
+which is precisely the class it was built for:
+
+| | solved | refuted | timed out |
+| --- | --- | --- | --- |
+| gate off | 10 | 0 | 12 |
+| gate on | 10 | **0** | 12 |
+
+Zero on the 14 selfmates still open after independent adjudication, too. What it
+does buy is a subtree prune where it fires — 18,329 nodes down to 15,063 on a
+king+queen position, about 18% — and the predicate fires 69,452 times across the
+solvable corpus, so it is doing real work deep in the tree. None of that reaches
+a root.
+
+**Why, and it was predicted.** Refuting a root needs EVERY attacker move to lead
+to a refuted position, which is enormously stronger than the perpetual holding
+somewhere in the tree. The derivation said as much before the code existed: 42
+roots have this material against 127 for king+pawn, and of the 14 open positions
+one is king+queen and three are king+pawn. GAP-2 was never the explanation of the
+residue and the measurement agrees.
+
+The specification called this "the highest value-per-line item in the document".
+On this corpus it is not. It is sound, it is cheap, it prunes, and it converts
+nothing — which is a result worth having, because the alternative was believing
+it had.
+
+**The composition gap.** A refutation at a defender node currently prunes its
+subtree and stops there: the selfmate node routines do not yet propagate
+`Refuted` upward the way the directmate ones do. That is the missing wiring
+between GAP-2 and GAP-1, and it is why the "refuted" column above is zero rather
+than small. Even wired, a root refutation needs the universal condition above,
+so the honest expectation is small rather than transformative.
+
+**What the residue actually needs.** King+pawn, 127 roots and the largest class
+by a distance. The perpetual argument does not transfer at all — a lone pawn
+cannot check repeatedly, so there is no perpetual to find, and the "decline
+forever" mechanism is unavailable. A lone pawn can also promote and mate, so
+there is no trivial impossibility either. That theorem is genuinely different,
+genuinely open, and is not attempted here.

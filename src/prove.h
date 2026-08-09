@@ -15,6 +15,10 @@ namespace mateprover {
 
 Proof prove_attacker(Search& s, const Board& b, int depth);
 
+// GAP-1's axioms. Defined below with their proofs; declared here because the
+// selfmate node routines come first in this file.
+inline bool position_is_refuted_axiomatically(const Search& s, const Board& b);
+
 // Is `m` a threat move? WinChest defines one as a move after which, if the
 // defender were allowed to pass, the attacker could mate within ThreatDepth.
 //
@@ -196,6 +200,11 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     }
     ++s.stats.nodes;
     ++s.stats.attacker_nodes;
+    if (position_is_refuted_axiomatically(s, b)) {
+        Proof out;
+        out.refuted = true;
+        return out;
+    }
     if (b.stm != s.attacker) {
         return {};
     }
@@ -275,12 +284,121 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     return {};
 }
 
+// GAP-2: perpetual check by a lone queen. See docs/GAP2_DERIVATION.md.
+//
+// True when the defender, holding exactly king and queen and to move, can check
+// forever without ever mating -- which makes the selfmate unreachable at any
+// depth, because the attacker needs the defender to deliver the mate.
+//
+// The specification offers local conditions on a single checking move. Those are
+// NOT sufficient: the attacker's king may reach a square where his own men block
+// every queen line, and then the defender cannot check and the attacker is free.
+// The property is about a REGION, so this computes the closure directly.
+//
+// It is cheap because of an observation that makes the region finite: if the
+// attacker is in check after every defender move, cannot block, and will not
+// capture the queen, then every attacker move is a KING move -- so all his other
+// pieces are frozen for the whole line, and the state is three squares.
+//
+// Selfmate ONLY. Under selfstalemate the argument is unsound: it rests on the
+// capture of the queen being fatal because a bare king cannot mate, and a bare
+// king can perfectly well stalemate.
+inline bool selfmate_perpetual_check(Search& s, const Board& root) {
+    if (!s.any_depth_refutations || s.goal != Goal::Selfmate) {
+        return false;                       // goal scope first, before material
+    }
+    const Color defender = other(s.attacker);
+    if (root.stm != defender) {
+        return false;
+    }
+    const std::uint64_t men = root.by_color[defender];
+    const std::uint64_t queens = men & root.by_type[PT_QUEEN];
+    const std::uint64_t kings = men & root.by_type[PT_KING];
+    if (queens == 0 || (men & ~(queens | kings)) != 0) {
+        return false;                       // defender is not exactly king + queen
+    }
+
+    // A bound, not a budget. Hitting it means "no proof found", never "proved":
+    // running out of room is not a theorem. GAP-1's rule, again.
+    const std::size_t kMaxStates = 256;
+    std::vector<std::array<std::uint64_t, 4>> seen;
+    std::vector<Board> frontier{root};
+
+    while (!frontier.empty()) {
+        const Board p = frontier.back();
+        frontier.pop_back();
+        if (std::find(seen.begin(), seen.end(), p.packed) != seen.end()) {
+            continue;
+        }
+        if (seen.size() >= kMaxStates) {
+            return false;
+        }
+        seen.push_back(p.packed);
+
+        // Does SOME queen check keep the whole closure alive? One witness per
+        // state is enough -- the defender is choosing.
+        bool state_ok = false;
+        std::vector<Board> pending;
+        for (const Move& dm : legal_moves(p, s.move_reserve, s.move_reserve_capacity,
+                                          s.static_pseudo)) {
+            if (type_of(p.sq[static_cast<std::size_t>(dm.from)]) != PT_QUEEN) {
+                continue;
+            }
+            const Board q = make_move(p, dm);
+            if (!in_check(q, q.stm)) {
+                continue;                   // not a check: the attacker is not forced
+            }
+            const auto replies = legal_moves(q, s.move_reserve, s.move_reserve_capacity,
+                                             s.static_pseudo);
+            if (replies.empty()) {
+                continue;                   // this check is MATE, which is what the
+                                            // attacker wants; the defender declines it
+            }
+            pending.clear();
+            bool all_ok = true;
+            for (const Move& am : replies) {
+                if (am.to == dm.to) {
+                    continue;               // captures the queen: attacker loses
+                                            // outright, since a bare king cannot mate
+                }
+                if (type_of(q.sq[static_cast<std::size_t>(am.from)]) != PT_KING) {
+                    all_ok = false;         // a block, or some other unit moving:
+                    break;                  // the frozen-pieces argument fails
+                }
+                const Board r = make_move(q, am);
+                if (in_check(r, r.stm)) {
+                    all_ok = false;         // the defender must answer a check
+                    break;                  // instead of giving one
+                }
+                pending.push_back(r);
+            }
+            if (all_ok) {
+                state_ok = true;
+                for (const Board& r : pending) {
+                    frontier.push_back(r);
+                }
+                break;
+            }
+        }
+        if (!state_ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
 Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
     }
     ++s.stats.nodes;
     ++s.stats.defender_nodes;
+    if (selfmate_perpetual_check(s, b)) {
+        ++s.stats.perpetual_refutations;
+        Proof out;
+        out.refuted = true;
+        return out;
+    }
 
     // Instrumentation only: how often does the DEFENDER reduce to king + queen?
     //
@@ -632,12 +750,28 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b) {
     if (!s.any_depth_refutations) {
         return false;                 // inert by construction
     }
-    if (s.goal != Goal::Mate) {
-        return false;
+    if (s.goal == Goal::Mate) {
+        const std::uint64_t attacker_men = b.by_color[s.attacker];
+        return attacker_men == (attacker_men & b.by_type[PT_KING]);
     }
-    const std::uint64_t attacker_men = b.by_color[s.attacker];
-    const std::uint64_t attacker_king = attacker_men & b.by_type[PT_KING];
-    return attacker_men == attacker_king;
+    // Axiom 2 -- a bare DEFENDER king cannot deliver a selfmate. The attacker
+    // needs the defender to mate him; a lone king cannot give check, so cannot
+    // mate, and the defender's material never increases (he has no pawn to
+    // promote). This is the lemma GAP-2's perpetual argument rests on, so the
+    // engine holds it directly rather than only implicitly.
+    //
+    // No root in the corpus has this shape, which makes it look worthless. It is
+    // reached constantly MID-SEARCH -- every line that captures the defender's
+    // last unit -- and each such node was otherwise searched to the depth limit
+    // at every iteration.
+    //
+    // Selfmate only, never selfstalemate: a bare king cannot mate, but it can
+    // certainly stalemate. See docs/GAP2_DERIVATION.md section 4.
+    if (s.goal == Goal::Selfmate) {
+        const std::uint64_t defender_men = b.by_color[other(s.attacker)];
+        return defender_men == (defender_men & b.by_type[PT_KING]);
+    }
+    return false;
 }
 
 Proof prove_attacker(Search& s, const Board& b, int depth) {

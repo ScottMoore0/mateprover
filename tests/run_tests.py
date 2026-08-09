@@ -2054,6 +2054,37 @@ def test_any_depth_refutations(engine: Path, res: Results) -> None:
     res.check("the gate off gives the same verdicts as the gate on, here",
               verdicts(base) == verdicts(proved), "verdicts differ")
 
+    # GAP-2, the perpetual-check refutation for a lone-queen defender. It feeds
+    # the same Refuted verdict, so the same standard applies: it must never cost
+    # a selfmate that has a solution. Run paired, because a difference in the
+    # solved SET is the only thing that distinguishes a false refutation from a
+    # position that was always too slow.
+    selfmates = [json.loads(l) for l in
+                 (HERE.parent / "benchmarks" / "selfmate_deep.jsonl").read_text().splitlines()
+                 if l.strip()]
+    quick = [r for r in selfmates if r["status"] == "solved" and r["mate"] <= 5][:40]
+    if quick:
+        sstdin = "".join(r["fen4"] + chr(10) for r in quick)
+        depth = max(r["mate"] for r in quick)
+        def solved_set(extra):
+            text = run(engine, ["--selfmate", "-z", str(depth), "--time-limit", "10",
+                                *extra, "-"], sstdin)
+            return {r["fen4"] for r, line in zip(quick, text.splitlines())
+                    if SFM_RE.search(line)}
+        with_gate = solved_set(["--any-depth-refutations"])
+        without = solved_set([])
+        res.check(f"the perpetual refutation costs no solvable selfmate ({len(quick)})",
+                  with_gate == without,
+                  f"lost {sorted(without - with_gate)[:2]}")
+
+    # And it must not touch selfstalemate at all: the argument rests on a bare
+    # king being unable to MATE, and a bare king can certainly stalemate.
+    ssm = run(engine, ["--selfstalemate", "-z", "2", "--any-depth-refutations",
+                       "--time-limit", "20", "-"],
+              "b7/8/8/6p1/6P1/1RQ3PK/k6P/8 w - -\n")
+    res.check("the perpetual refutation does not reach selfstalemate",
+              bool(SSM_RE.search(ssm)) or "timeout" in ssm, ssm.strip()[:90])
+
     # No-mate positions must stay no-mate. A refutation that fires wrongly would
     # be invisible on positives and show up only as a faster wrong answer.
     nomate = load_epd(HERE / "nomate.epd")
