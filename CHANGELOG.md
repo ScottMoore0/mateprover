@@ -10,6 +10,30 @@ without one.
 
 ## Unreleased
 
+**Selfmate against Chest 3.19, re-measured over all 903 positions at 10 s each:
+626 to 416.** 238 positions only MateProver solves, 28 only Chest; on the 388
+both solve, 2.24x in total time and a 6.14x median per position. Section 81's
+389-against-318 came from a run at a different budget and is not comparable --
+Chest itself scores 318 there and 416 here. The Chest-only residue is now 28
+against a much larger denominator, and that is the baseline for what comes next.
+Chest also returned a definitive "no solution" on 15 positions, which is evidence
+about the corpus rather than either engine.
+
+**The answer-ordering band was swept rather than assumed.** `--answer-order-min-depth`
+defaults to 2; on 200 selfmates 2 solves 166, 3 and 4 solve 164, off solves 163.
+Most of the heuristic's value is at remaining depth exactly two.
+
+**Two follow-ups were measured out before being built.** A per-move disproof
+array can be consulted at only 6.24% of attacker expansions, because MateProver
+deepens at the root rather than per node, so its table usually settles a position
+outright instead of re-entering it at a greater depth -- it is the second half of
+an architecture this engine does not have, and internal iterative deepening is
+the prerequisite, not the array. And replacing the estimator's static weights
+with occupancy-aware mobility made it worse (11.1M nodes to 14.0M), because the
+larger totals swamp the king-escape term that carries the signal and the
+"improvement" approximated captures the old version had exactly. See
+`docs/ARCHITECTURE.md` section 83.
+
 **The selfmate defender now orders its replies, and scans them lazily.** Two
 independent changes to the same node, together worth +3 positions on 250
 selfmates at a 4 s budget (198 to 201) and 4.6x on a hard depth-5 disproof.

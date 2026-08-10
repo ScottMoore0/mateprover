@@ -220,6 +220,11 @@ void print_usage() {
 "                                taken is the one proving the most. Cannot\n"
 "                                change a verdict; the off switch is the\n"
 "                                differential test\n"
+"  --answer-order-min-depth N    remaining depth at or above which replies are\n"
+"                                ordered (default 2). Below it the lazy scan\n"
+"                                runs instead. Swept, not assumed: on 200\n"
+"                                selfmates 2 solves 166, 3 and 4 solve 164,\n"
+"                                and ordering off solves 163\n"
 "  --selfmate-bound | --no-selfmate-bound\n"
 "                                default: OFF. The same bound on a selfmate,\n"
 "                                where the roles invert and the DEFENDER is the\n"
@@ -434,6 +439,8 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--answer-order-min-depth" && i + 1 < argc) {
+            config.answer_order_min_depth = std::atoi(argv[++i]);
         } else if (arg == "--answer-order") {
             config.answer_order = true;
         } else if (arg == "--no-answer-order") {

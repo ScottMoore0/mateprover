@@ -52,7 +52,12 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
         out.fail_depth = entry.max_disproved;
         return true;
     }
-    // The position is known, but not at a bound that settles this depth.
+    // The position is known, but not at a bound that settles this depth. This
+    // is precisely the re-entry a PER-MOVE disproof array would exploit: the
+    // node must be searched again at a greater depth, and without per-move
+    // bounds every one of its moves is re-executed from scratch. Counting it
+    // says whether that array can pay before it is built.
+    ++s.stats.tt_known_weaker;
     return false;
 }
 

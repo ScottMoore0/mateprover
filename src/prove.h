@@ -596,7 +596,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     // depth 2 there is no subtree left for ordering to shape and the lazy scan
     // runs, at 2 and above the list is materialised and sorted. That band is
     // also where the lazy scan was worth least, so little is given up.
-    if (s.answer_order && depth >= 2) {
+    if (s.answer_order && depth >= s.answer_order_min_depth) {
         std::vector<Move> pseudo;
         if (s.move_reserve) pseudo.reserve(s.move_reserve_capacity);
         gen_pseudo(b, pseudo);

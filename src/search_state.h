@@ -68,6 +68,10 @@ struct SearchConfig {
     // Order the selfmate defender's replies by how little room they leave the
     // attacker. On by default; the off switch is the differential test.
     bool answer_order = true;
+    // Remaining depth at or above which replies are ordered. Below it the
+    // lazy scan runs instead, since there is no subtree left to shape and
+    // materialising the list to sort it would be pure cost.
+    int answer_order_min_depth = 2;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

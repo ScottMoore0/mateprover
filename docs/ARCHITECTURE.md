@@ -159,6 +159,7 @@ did. If you are reading it for the first time:
 - [80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times](#80-material-knowledge-the-useful-form-is-unsound-and-the-sound-form-fires-zero-times)
 - [81. The Selfmate Gap Is A Disproof Gap, And The Solution Search Was Never The Problem](#81-the-selfmate-gap-is-a-disproof-gap-and-the-solution-search-was-never-the-problem)
 - [82. Answer Ordering: A Real Win Through The Wrong Mechanism](#82-answer-ordering-a-real-win-through-the-wrong-mechanism)
+- [83. Three Follow-Ups, Two Measured Out Before They Were Built](#83-three-follow-ups-two-measured-out-before-they-were-built)
 
 ## Impact-Ordered Architecture
 
@@ -6094,3 +6095,134 @@ lazy scan is a constant factor nobody had noticed. The estimator is a real 4.7x
 through a mechanism its author did not claim for it. The graded failure depth is
 correct, now honestly sourced at the leaves, and still inert -- and 82 can at
 least say why in one sentence where 78 could only say that it was.
+
+### 83. Three Follow-Ups, Two Measured Out Before They Were Built
+
+82 left four items. Three are settled here, and two of them were settled by a
+measurement that cost minutes rather than by an implementation that would have
+cost days. That is the point of the section as much as the results are.
+
+#### The per-move disproof array, measured out for the cost of one counter
+
+82 argued the per-move array is the only workable consumer of graded failure
+depth, since an OR node collapses its moves to a minimum. That argument is
+correct and it is not sufficient, because it says nothing about how often the
+array would be *consulted*.
+
+The array pays exactly when a node must be searched again at a greater depth than
+the bound already stored for it -- the case where the table knows the position
+but not strongly enough to settle the question. One counter on that branch of the
+probe answers it:
+
+| | |
+| --- | --- |
+| attacker expansions | 357,008 |
+| table probes | 748,086 |
+| known, but at too weak a bound | **22,284** |
+| as a share of expansions | **6.24%** |
+
+So the per-move array has an upper bound of about six percent, and would realise
+only a fraction of that, since it skips *some* moves at those nodes rather than
+all of them. Against an implementation carrying per-move bounds through the table
+that is not worth building.
+
+**Why it is so low is the useful part.** The array's value in the original comes
+with per-node internal iterative deepening: a node that deepens itself re-enters
+its own move list once per level, and the bounds accumulated on the earlier passes
+skip work on the later ones. MateProver deepens only at the root, so a node is
+entered once per depth it is reached at, and its table entry usually settles the
+question outright -- 391,078 hits against 22,284 too-weak. The array is not a
+missing optimisation; it is the second half of an architecture this engine does
+not have.
+
+**The condition for revisiting is therefore internal iterative deepening, not the
+array.** Building the array first would be building the consumer of a producer
+that does not exist, which is the same mistake as 78 in the opposite direction.
+
+#### A stronger estimator, rejected on measurement
+
+The obvious weakness of 82's estimator is that its mobility term is a static
+per-type weight rather than a real move count, which is exactly what the
+specification asks not to do. Replacing it with an occupancy-aware count -- rays
+walked to the first blocker, a capture counted and the ray stopped, computed once
+per node with a per-reply subtraction for captures, which is the base-plus-
+adjustment shape specified -- makes it worse:
+
+| depth-5 disproof | nodes | time |
+| --- | --- | --- |
+| static weights | 11,058,829 | 2.89 s |
+| exact mobility | 14,035,427 | 4.21 s |
+
+Two reasons, both visible afterwards. Exact mobility totals are several times
+larger than the static weights, so the king-escape term -- three points per
+escape, at most twenty-four -- goes from being comparable to the mobility term to
+being swamped by it, and the escape term is where the signal is. And the static
+version computes the width on the POST-reply board, so a capture is already
+exactly reflected; the "improvement" replaced that with a subtraction from a base
+computed before the reply, which is an approximation. The more faithful-looking
+implementation was less accurate on the term that mattered and diluted the term
+that mattered more.
+
+Rejected; the static weights stay. The headroom against the 160x the
+specification reports is still there, but it is not in this direction.
+
+#### The band, swept rather than assumed
+
+82 set the ordering gate at remaining depth 2 by assumption and then gained three
+positions on one corpus while losing one on a harder subset -- the signature of a
+threshold nobody measured. 200 selfmates at a 4 s budget:
+
+| ordering runs at remaining depth | solved |
+| --- | --- |
+| off | 163 |
+| **2 and above** | **166** |
+| 3 and above | 164 |
+| 4 and above | 164 |
+
+The assumption was right, and the sweep says something the single setting could
+not: moving the gate from 2 to 3 gives back two of the three positions gained, so
+**most of the heuristic's value is at remaining depth exactly two** -- the level
+where the subtree below each reply is small enough that choosing the cheapest one
+decides the node's whole cost. That matches the specification's remark that a
+specialised variant runs at exactly that depth, and it says where a better
+estimator should be aimed.
+
+The gate is now `--answer-order-min-depth`, defaulted to 2, so the next person
+does not have to re-derive this.
+
+The identity check reports the same single disagreement as 82 at bands 2 and 3
+and none at band 4, and it is the same non-issue: a position where the committed
+build returns a restricted lane's non-minimal answer marked `via K2`, documented
+at 627, and the faster build returns the true minimum. It appears at exactly the
+bands that are fast enough to win the race, which is confirmation rather than
+concern.
+
+#### The paired comparison, re-run
+
+81's figures were measured against a build three changes old, so they were stale
+before this section started. Re-run over all 903 distinct selfmates, 10 s and
+2 GB a position for each engine:
+
+| | solved |
+| --- | --- |
+| **MateProver** | **626** |
+| Chest 3.19 | 416 |
+| only MateProver | 238 |
+| only Chest | 28 |
+
+On the 388 both solve: 373.9 s against 838.9 s, **2.24x** in total and a **6.14x**
+median per position -- the median being the larger figure because the total is
+dominated by a handful of positions near the budget where both engines spend
+almost all of it.
+
+**81's 389-against-318 is not comparable to this and should not be quoted beside
+it.** That run used a different budget; Chest itself scores 318 there and 416
+here, so the change in MateProver's number is not all improvement. The honest
+statement is the internal one: at an identical budget, 626 against 416, with the
+Chest-only residue now 28 positions rather than 81's 15 -- a larger residue
+measured against a much larger denominator, and the correct baseline for whatever
+comes next.
+
+Chest also returned a definitive "no solution" on 15 positions. That is evidence
+about the CORPUS rather than about either engine, and those entries want the
+same two-prover adjudication that produced the 71 in `KNOWN_BAD.jsonl`.

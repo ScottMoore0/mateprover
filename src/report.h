@@ -208,6 +208,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"disproof_excess_5plus\":" << st.disproof_excess_5plus
               << ",\"levels_skipped\":" << st.levels_skipped
               << ",\"answer_orderings\":" << st.answer_orderings
+              << ",\"tt_known_weaker\":" << st.tt_known_weaker
               << ",\"defender_refutations\":" << st.defender_refutations
               << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
               << ",\"refutation_hint_hits\":" << st.refutation_hint_hits
