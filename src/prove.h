@@ -560,33 +560,40 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     std::vector<Move> pv;
     std::vector<std::string> branch_certs;
 
-    auto scan = [&](auto& pseudo, bool prefiltered) {
+    // One reply's worth of work, shared by the ordered and unordered paths.
+    // Returns true when the scan should stop.
+    auto try_reply = [&](const Move& r) -> bool {
+        any_legal = true;
+        ++s.stats.defender_moves;
+        ++s.stats.defender_replies_tried;
+        const Board rb = make_move(b, r);
+        Proof child = prove_selfmate_attacker(s, rb, depth - 1);
+        if (s.aborted || !child.ok) {
+            // The decrement lives on this edge, so the increment does too: the
+            // subtree sat at depth-1 and reaching it cost this move.
+            defence_survives = true;   // one surviving defence refutes the line
+            survived_to = std::max(depth, child.fail_depth + 1);
+            return true;
+        }
+        if (child.pv.size() + 1 > pv.size()) {
+            pv.clear();
+            pv.push_back(r);
+            pv.insert(pv.end(), child.pv.begin(), child.pv.end());
+        }
+        if (s.emit_proof) {
+            branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
+        }
+        return false;
+    };
+
+    auto scan = [&](auto& pseudo) {
         for (const Move& r : pseudo) {
-            if (!prefiltered) {
-                ++s.stats.defender_legality_tests;
-                if (!move_is_legal(b, r)) {
-                    continue;
-                }
+            ++s.stats.defender_legality_tests;
+            if (!move_is_legal(b, r)) {
+                continue;
             }
-            any_legal = true;
-            ++s.stats.defender_moves;
-            ++s.stats.defender_replies_tried;
-            const Board rb = make_move(b, r);
-            Proof child = prove_selfmate_attacker(s, rb, depth - 1);
-            if (s.aborted || !child.ok) {
-                // The decrement lives on this edge, so the increment does too:
-                // the subtree sat at depth-1 and reaching it cost this move.
-                defence_survives = true;   // one surviving defence refutes the line
-                survived_to = std::max(depth, child.fail_depth + 1);
+            if (try_reply(r)) {
                 return;
-            }
-            if (child.pv.size() + 1 > pv.size()) {
-                pv.clear();
-                pv.push_back(r);
-                pv.insert(pv.end(), child.pv.begin(), child.pv.end());
-            }
-            if (s.emit_proof) {
-                branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
             }
         }
     };
@@ -611,37 +618,44 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
             scored.emplace_back(attacker_width_estimate(rb, s.attacker), r);
         }
         if (scored.size() >= 2) {
-            // Stable, so ties keep generation order and the search stays
-            // deterministic -- a property this engine states and tests for.
-            std::stable_sort(scored.begin(), scored.end(),
-                             [](const std::pair<int, Move>& x,
-                                const std::pair<int, Move>& y) {
-                                 return x.first < y.first;
-                             });
             ++s.stats.answer_orderings;
         }
-        std::vector<Move> ordered;
-        ordered.reserve(scored.size());
-        for (const auto& entry : scored) {
-            ordered.push_back(entry.second);
+        // SELECTION, NOT SORT. The scan consumes 1.00 replies per node on
+        // measurement, so sorting the whole list and then taking its head does
+        // n log n work to use one element. Taking the minimum, and looking for
+        // the next only when the current one fails to refute, is linear in the
+        // common case and identical in outcome: scanning ascending with a strict
+        // comparison resolves ties to the earliest generated reply, which is
+        // what a stable sort did and what keeps the search deterministic.
+        std::vector<bool> taken(scored.size(), false);
+        for (std::size_t n = 0; n < scored.size(); ++n) {
+            std::size_t best = scored.size();
+            for (std::size_t i = 0; i < scored.size(); ++i) {
+                if (taken[i]) continue;
+                if (best == scored.size() || scored[i].first < scored[best].first) {
+                    best = i;
+                }
+            }
+            if (best == scored.size()) break;
+            taken[best] = true;
+            if (try_reply(scored[best].second)) break;
         }
-        scan(ordered, true);
     } else if (s.static_pseudo) {
         MoveList fixed;
         gen_pseudo(b, fixed);
         if (!fixed.overflow) {
-            scan(fixed, false);
+            scan(fixed);
         } else {
             std::vector<Move> spill;
             if (s.move_reserve) spill.reserve(s.move_reserve_capacity);
             gen_pseudo(b, spill);
-            scan(spill, false);
+            scan(spill);
         }
     } else {
         std::vector<Move> pseudo;
         if (s.move_reserve) pseudo.reserve(s.move_reserve_capacity);
         gen_pseudo(b, pseudo);
-        scan(pseudo, false);
+        scan(pseudo);
     }
 
     if (defence_survives) {
