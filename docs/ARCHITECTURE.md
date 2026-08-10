@@ -162,6 +162,7 @@ did. If you are reading it for the first time:
 - [83. Three Follow-Ups, Two Measured Out Before They Were Built](#83-three-follow-ups-two-measured-out-before-they-were-built)
 - [84. The Cache Is Provably Sound, The Residue Is Two Classes, And Ordering Has No Headroom Left](#84-the-cache-is-provably-sound-the-residue-is-two-classes-and-ordering-has-no-headroom-left)
 - [85. Internal Iterative Deepening, And The Closure Of The Graded-Failure-Depth Line](#85-internal-iterative-deepening-and-the-closure-of-the-graded-failure-depth-line)
+- [86. The Attacker Rejection Test: The Mechanism Six Investigations Missed](#86-the-attacker-rejection-test-the-mechanism-six-investigations-missed)
 
 ## Impact-Ordered Architecture
 
@@ -6425,3 +6426,107 @@ documented absence. The `--internal-deepening` and `--iid-min-depth` switches go
 with it. This section is the specification for rebuilding it, and the condition
 for doing so is explicit and unchanged since 78: something must first make a
 disproof prove more than it was asked.
+
+### 86. The Attacker Rejection Test: The Mechanism Six Investigations Missed
+
+A fifth clean-room specification corrected the third, which had stated there was
+no static attacker-rejection test in Chest's selfmate search. There is, it is the
+largest work-avoidance mechanism in that search, and it is the first thing from
+any specification to move the residue.
+
+#### Why it was missed, which matters more than that it was
+
+The earlier conclusion rested on a flag ablation: disabling the fatal-check
+cutoff, anti-mate and the mate-in-2 specialist changed selfmate node counts by
+exactly zero, so no attacker-side static test was contributing. **The test has no
+flag.** It is unconditional, undocumented, and lives inside a routine that reads
+as a depth-1 special case rather than as a heuristic. An ablation over the
+configurable options cannot see it.
+
+> Ablation measures what is switchable, and a mature program's best ideas are
+> often the ones nobody thought to make switchable.
+
+That is the general lesson and it explains the run of six empty results at 68,
+77, 78, 80, 83 and 85 more convincingly than any of the individual
+post-mortems did.
+
+#### What the test decides
+
+A selfmate in one requires the defender to have at least one legal move and
+**every** legal move to checkmate the attacker. The contrapositive is cheap: one
+legal reply that does not mate refutes the attacker's move, and the cheapest
+witness is a defender KING move. A king move is never itself a check, so any
+flight square the king can reach without discovering check is a legal non-mating
+reply.
+
+#### Measured as an observer before being built
+
+The specification's own first recommendation, and the right one: compute the
+verdict, count it, act on nothing. On the reference disproof:
+
+| | |
+| --- | --- |
+| depth-1 attacker moves | 4,865,361 |
+| would be rejected | **4,514,383 (92.8%)** |
+| depth-1 share of all attacker candidates | 91.2% |
+
+So the test covers **84.7% of all attacker work**. A day's measurement settled
+what six previous investigations had each spent days failing to find.
+
+#### Implemented exactly rather than geometrically
+
+The specification gives a board-free derivation of the flight set from
+incrementally-maintained per-square attacker sets, which MateProver does not have
+and which §2 correctly identifies as the real port. It also warns that the
+approximation is unsound in the dangerous direction: **over**-estimating the
+flight set rejects a real solution silently.
+
+That warning is avoidable entirely. Making the attacker move and walking the
+defender king's eight neighbours is exact -- it cannot over-estimate anything --
+and it still avoids the whole defender node, which was generating a full reply
+list to consume one entry of it. The board representation change is deferred
+until the exact form stops paying, and may never be needed.
+
+    sfm 5 disproof   11,059,528 nodes, 2.87 s  ->  1,867,551 nodes, 1.37 s
+                          5.9x fewer nodes           2.1x faster
+
+#### The failure the suite caught within seconds
+
+Defaulting it on broke two selfstalemate checks immediately. The witness is "a
+king move cannot be checkmate" -- true under a mate goal, false under a stalemate
+one, where a quiet king move is exactly what MIGHT stalemate the attacker. The
+selfmate and selfstalemate goals share this routine, and the test had been
+applied to both.
+
+This is precisely the failure mode 4.5 of the specification describes: a silent
+loss of solutions, correct-looking on everything else. It survived zero minutes
+against the regression suite, on a composed selfstalemate in 2. Now gated to
+`Goal::Selfmate`.
+
+#### Results
+
+250 selfmates at a 4 s budget, and the 28-position residue at 30 s:
+
+| | corpus | residue | miniatures | heavy |
+| --- | ---: | ---: | ---: | ---: |
+| committed | 205 | 10/28 | **0/14** | 10/14 |
+| rejection on | **208** | **16/28** | **4/14** | **12/14** |
+
+Zero depth disagreements against the committed build across 203 shared positions.
+
+The residue result is the significant one. **Four of the fourteen miniatures
+fall**, and every previous mechanism scored zero on them -- the reachability
+bound, material knowledge, level skipping, the per-move array, internal
+deepening, both estimators. The specification predicted exactly this, and for the
+right reason: a lone defender king in open space has many flight squares, so the
+witness is almost always available.
+
+It also revises the residue itself. The 28 came from a 10 s paired run; at 30 s
+the committed build already had 10 of them, so a good part of what looked
+structural was budget.
+
+#### Disposition
+
+Promoted, default on, gated to selfmate, with `--no-attacker-reject` retained as
+the differential test and `--reject-observer` kept as the measurement aid that
+justified the work. 414 checks pass.

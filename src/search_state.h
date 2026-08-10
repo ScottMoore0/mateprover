@@ -74,6 +74,11 @@ struct SearchConfig {
     // Use the additive scorer at remaining depth 2 rather than the width
     // estimator. Off until measured.
     bool depth2_scorer = false;
+    // Measurement only: count how many depth-1 attacker moves the selfmate
+    // rejection test WOULD discard, without acting on it.
+    bool reject_observer = false;
+    // Act on the rejection test rather than merely counting it.
+    bool attacker_reject = true;
     // Remaining depth at or above which replies are ordered. Below it the
     // lazy scan runs instead, since there is no subtree left to shape and
     // materialising the list to sort it would be pure cost.

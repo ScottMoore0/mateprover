@@ -209,6 +209,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"levels_skipped\":" << st.levels_skipped
               << ",\"answer_orderings\":" << st.answer_orderings
               << ",\"tt_known_weaker\":" << st.tt_known_weaker
+              << ",\"d1_attacker_moves\":" << st.d1_attacker_moves
+              << ",\"d1_would_reject\":" << st.d1_would_reject
               << ",\"defender_refutations\":" << st.defender_refutations
               << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
               << ",\"refutation_hint_hits\":" << st.refutation_hint_hits

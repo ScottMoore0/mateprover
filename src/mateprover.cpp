@@ -220,6 +220,16 @@ void print_usage() {
 "                                taken is the one proving the most. Cannot\n"
 "                                change a verdict; the off switch is the\n"
 "                                differential test\n"
+"  --attacker-reject | --no-attacker-reject\n"
+"                                default: on. At selfmate depth 1, refute an\n"
+"                                attacker move without searching it when the\n"
+"                                defender king has a legal move giving no check.\n"
+"                                A selfmate in one needs EVERY reply to mate, so\n"
+"                                one quiet king move refutes it. Exact, so it\n"
+"                                cannot change a verdict; the off switch is the\n"
+"                                differential test\n"
+"  --reject-observer             count what that test would reject without acting\n"
+"                                on it. A measurement aid, not a tuning knob\n"
 "  --depth2-scorer | --no-depth2-scorer\n"
 "                                default: off. At remaining depth 2, order\n"
 "                                replies with an additive scorer -- checks,\n"
@@ -455,6 +465,12 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--attacker-reject") {
+            config.attacker_reject = true;
+        } else if (arg == "--no-attacker-reject") {
+            config.attacker_reject = false;
+        } else if (arg == "--reject-observer") {
+            config.reject_observer = true;
         } else if (arg == "--depth2-scorer") {
             config.depth2_scorer = true;
         } else if (arg == "--no-depth2-scorer") {

@@ -204,6 +204,40 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth);
 // +1 as it propagates upward cannot overflow an int.
 constexpr int kFailAnyDepth = 1 << 20;
 
+
+// OBSERVER for the selfmate attacker-rejection test. Computes the verdict,
+// counts it, and does nothing with it.
+//
+// The test's claim: an attacker move at selfmate depth 1 is refuted if, after
+// it, the defender KING has a legal move that does not give check -- a king move
+// is never itself a check, so such a move is a legal non-mating reply and the
+// "every defender move mates" requirement fails immediately.
+//
+// Computed EXACTLY here, by making the move and looking, rather than by the
+// specification's board-free geometry. Far too slow to ship and exactly right
+// for a measurement: it cannot be wrong, so the rate it reports is the true
+// applicability of the test rather than the applicability of my approximation of
+// it. High rate justifies porting the geometry; low rate owes nothing further.
+inline bool defender_has_quiet_king_move(const Board& nb, Color attacker) {
+    const Color defender = other(attacker);
+    const int dk = nb.king_sq[defender];
+    if (dk < 0) return false;
+    const SquareList& l = king_table()[dk];
+    for (int i = 0; i < l.count; ++i) {
+        const int to = l.sq[i];
+        if (nb.by_color[defender] & (1ull << to)) continue;   // own piece
+        Move km;
+        km.from = dk;
+        km.to = to;
+        if (!move_is_legal(nb, km)) continue;
+        const Board rb = make_move(nb, km);
+        if (!in_check(rb, attacker)) {
+            return true;            // legal, and does not mate -- a witness
+        }
+    }
+    return false;
+}
+
 Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -301,6 +335,37 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     for (const Move& amove : moves) {
         ++s.stats.attacker_candidates;
         const Board nb = make_move(b, amove);
+        // ATTACKER REJECTION at selfmate depth 1.
+        //
+        // A selfmate in one requires EVERY legal defender reply to checkmate the
+        // attacker. So one legal reply that does not mate refutes the move, and
+        // the cheapest witness is a defender KING move: a king move is never
+        // itself a check, so any flight square the king can reach without
+        // discovering check is a legal non-mating reply.
+        //
+        // Exact rather than approximate, so it is sound by construction --
+        // unlike the board-free geometry, which must UNDER-estimate the flight
+        // set because over-estimating it rejects a real solution silently.
+        // What it saves is the defender node: generating the whole reply list to
+        // consume one entry of it, replaced by a walk of eight king neighbours.
+        // SELFMATE ONLY. The witness is "a king move cannot be checkmate", which
+        // is true for a mate goal and false for a stalemate one -- a quiet king
+        // move is exactly what MIGHT stalemate the attacker, so under
+        // selfstalemate this rejects real solutions. The suite caught it on
+        // b7/8/8/6p1/6P1/1RQ3PK/k6P/8 within seconds of the default being
+        // flipped, which is the failure mode the specification warns about:
+        // silent loss of a solution, correct-looking everywhere else.
+        if ((s.reject_observer || s.attacker_reject) && depth == 1 &&
+            s.goal == Goal::Selfmate) {
+            ++s.stats.d1_attacker_moves;
+            const bool witness = defender_has_quiet_king_move(nb, s.attacker);
+            if (witness) {
+                ++s.stats.d1_would_reject;
+                if (s.attacker_reject) {
+                    continue;             // refuted without touching the subtree
+                }
+            }
+        }
         Proof replies = prove_selfmate_defender(s, nb, depth);
         if (!replies.ok && replies.fail_depth > 0 && replies.fail_depth < sm_node_fail) {
             sm_node_fail = replies.fail_depth;

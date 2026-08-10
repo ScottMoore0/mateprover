@@ -10,6 +10,32 @@ without one.
 
 ## Unreleased
 
+**The selfmate attacker-rejection test, and the first mechanism to move the
+residue.** At selfmate depth 1 an attacker move is refuted without searching it
+whenever the defender king has a legal move that gives no check: a selfmate in
+one needs EVERY reply to mate, and a king move can never be one. Measured as a
+read-only observer first -- it would reject 92.8% of depth-1 attacker moves, and
+those are 91.2% of all attacker candidates, so it covers 84.7% of attacker work.
+
+    sfm 5 disproof  11,059,528 nodes / 2.87 s  ->  1,867,551 / 1.37 s
+
+250 selfmates at 4 s: 208 against 205, zero depth disagreements. The 28-position
+Chest-only residue at 30 s: **16 against 10**, including **4 of the 14
+miniatures**, which every previous mechanism had scored zero on. Default on,
+`--no-attacker-reject` is the differential test, `--reject-observer` counts
+without acting.
+
+Implemented exactly -- make the move, walk the king's eight neighbours -- rather
+than by the specification's board-free geometry, which needs per-square attacker
+sets this board does not maintain and which is unsound if it over-estimates the
+flight set. The exact form cannot over-estimate anything and still skips the
+defender node, so the representation change is deferred and may never be needed.
+
+Gated to selfmate. Defaulting it on broke two selfstalemate checks within
+seconds: a quiet king move cannot be checkmate but is exactly what might
+STALEMATE the attacker, and the two goals share the routine. See
+`docs/ARCHITECTURE.md` section 86.
+
 **Internal iterative deepening is rejected, and with it the whole
 graded-failure-depth line.** Built together with the per-move disproof array,
 since section 83's objection to the array -- consultable at only 6.24% of
