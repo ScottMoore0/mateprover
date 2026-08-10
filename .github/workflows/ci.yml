@@ -27,6 +27,8 @@ jobs:
             compiler: clang
           - os: windows-latest
             compiler: msvc
+          - os: windows-latest
+            compiler: mingw
 
     steps:
       - uses: actions/checkout@v5
@@ -44,8 +46,96 @@ jobs:
         if: matrix.compiler == 'clang' && runner.os == 'Linux'
         run: echo "CXX=clang++" >> "$GITHUB_ENV"
 
+      - name: Install MinGW-w64
+        # The MinGW toolchain is the one the AVX alignment fault of section 79
+        # appeared on, and it was the only supported platform with no CI job --
+        # the README could claim it was tested only because it was tested by
+        # hand. Chocolatey rather than a third-party action, to keep the set of
+        # things trusted by this workflow as small as it already is.
+        if: matrix.compiler == 'mingw'
+        run: choco install mingw -y --no-progress
+
       - name: Configure
+        if: matrix.compiler != 'mingw'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure (MinGW)
+        # An explicit generator: on a Windows runner CMake defaults to Visual
+        # Studio, which would silently build with MSVC and test nothing new.
+        if: matrix.compiler == 'mingw'
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+  native-flags:
+    # Every other gate in this repository tests a BINARY. None of them test a
+    # BUILD, so the compiler sits outside the system under test -- and that is
+    # precisely where the fault of section 79 lived: `-march=native` on MinGW
+    # produced an engine that segfaulted inside move generation, on source that
+    # is correct and that every existing job passes. `-march=native` is also the
+    # first flag anyone adds to a chess engine, so it is not an exotic
+    # configuration to leave uncovered.
+    #
+    # This job builds with architecture-specific flags on every supported
+    # platform and RUNS the full suite, because the failure was at runtime in
+    # perft rather than at compile time. The MinGW leg is the regression test
+    # for the guard in CMakeLists.txt: delete that guard and this job fails.
+    name: native flags / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-latest
+            flags: "-march=native"
+          - name: linux-clang
+            os: ubuntu-latest
+            flags: "-march=native"
+            cxx: clang++
+          - name: macos-clang
+            os: macos-latest
+            # macos-latest is arm64, where clang rejects -march=native; -mcpu is
+            # the spelling that means the same thing there.
+            flags: "-mcpu=native"
+          - name: windows-msvc
+            os: windows-latest
+            # MSVC has no -march; /arch:AVX2 is the equivalent request, and the
+            # same class of instruction-selection change.
+            flags: "/arch:AVX2"
+          - name: windows-mingw
+            os: windows-latest
+            flags: "-march=native"
+            mingw: true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - run: python -m pip install --upgrade "chess>=1.10"
+
+      - name: Select compiler
+        if: matrix.cxx != ''
+        run: echo "CXX=${{ matrix.cxx }}" >> "$GITHUB_ENV"
+
+      - name: Install MinGW-w64
+        if: matrix.mingw
+        run: choco install mingw -y --no-progress
+
+      - name: Configure
+        if: '!matrix.mingw'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+
+      - name: Configure (MinGW)
+        if: matrix.mingw
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
 
       - name: Build
         run: cmake --build build --config Release -j 4

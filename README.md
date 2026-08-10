@@ -200,10 +200,13 @@ in `CMAKE_CXX_FLAGS`. Nothing is lost by the restriction: the engine has no
 hand-vectorised kernel, and AVX is worth 0.3% on perft and less than measurement
 noise on search. `docs/ARCHITECTURE.md` section 79 has the disassembly.
 
-Built and tested in CI on Linux/GCC, Linux/Clang, macOS/Clang and
-Windows/MSVC, plus Windows/MinGW-w64 GCC 15 locally. CI additionally runs a
-bounds-checked build, a C++20/23 forward-compatibility check, cppcheck, and
-`-Wall -Wextra -pedantic -Werror`.
+Built and tested in CI on Linux/GCC, Linux/Clang, macOS/Clang, Windows/MSVC and
+Windows/MinGW-w64. Every one of those is built a second time with
+architecture-specific flags (`-march=native`, `-mcpu=native` on arm64,
+`/arch:AVX2` on MSVC) and the full suite is run again against each, because the
+fault in section 79 was a build-level defect that every binary-level gate passed.
+CI additionally runs a bounds-checked build, a C++20/23 forward-compatibility
+check, cppcheck, and `-Wall -Wextra -pedantic -Werror`.
 
 ## Test
 
