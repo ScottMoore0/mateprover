@@ -228,6 +228,7 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"defender_kq_nodes\":" << st.defender_kq_nodes
               << ",\"perpetual_refutations\":" << st.perpetual_refutations
               << ",\"help_unreachable_prunes\":" << st.help_unreachable_prunes
+              << ",\"selfmate_unreachable_prunes\":" << st.selfmate_unreachable_prunes
               << ",\"proof_hint_probes\":" << st.proof_hint_probes
               << ",\"proof_hint_hits\":" << st.proof_hint_hits
               << ",\"proof_hint_stores\":" << st.proof_hint_stores
@@ -271,6 +272,7 @@ void emit_config_json(const SearchConfig& c) {
     out << ",\"proof_hints\":" << (c.proof_hints ? "true" : "false");
     out << ",\"any_depth_refutations\":" << (c.any_depth_refutations ? "true" : "false");
     out << ",\"help_bound\":" << (c.help_bound ? "true" : "false");
+    out << ",\"selfmate_bound\":" << (c.selfmate_bound ? "true" : "false");
     out << ",\"refutation_hints\":" << (c.refutation_hints ? "true" : "false");
     out << ",\"keep_iter_tt\":" << (c.keep_iter_tt ? "true" : "false");
     out << ",\"ordered_check_shortcut\":" << (c.ordered_check_shortcut ? "true" : "false");

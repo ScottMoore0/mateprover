@@ -153,6 +153,7 @@ did. If you are reading it for the first time:
 - [74. Tightening The Reachability Bound Found It Was Unsound](#74-tightening-the-reachability-bound-found-it-was-unsound)
 - [75. The Flight-Square Bound, And A Mate Delivered By Underpromotion](#75-the-flight-square-bound-and-a-mate-delivered-by-underpromotion)
 - [76. Characterising The Cooperative Residue: There Is No Class](#76-characterising-the-cooperative-residue-there-is-no-class)
+- [77. There Is No King+Pawn Theorem, And The Bound That Replaces It Does Not Pay](#77-there-is-no-kingpawn-theorem-and-the-bound-that-replaces-it-does-not-pay)
 
 ## Impact-Ordered Architecture
 
@@ -5398,3 +5399,73 @@ That is a constant-factor engineering problem with no clean theorem attached, an
 it is worth saying so plainly rather than proposing a fourth mechanism. Two of the
 three predictions made about this search were wrong about which half mattered. The
 third was made only after measuring.
+
+### 77. There Is No King+Pawn Theorem, And The Bound That Replaces It Does Not Pay
+
+The selfmate residue is 15 positions and the largest defender class in the
+904-corpus is **king+pawn: 127 roots, 100 unsolved at import**. The clean-room
+analysis called it the larger and harder half and asked for the king+pawn
+theorem.
+
+**There is no king+pawn theorem, and the reason is structural.** In a selfmate
+the roles invert: the attacker forces the DEFENDER to mate him, so the side that
+must deliver mate is the defender and the side that gets mated is the attacker. A
+king+pawn defender therefore means
+
+> the mate must be delivered by a pawn, or by what that pawn promotes to, and by
+> nothing else — the only other unit that side owns is a king, and a king cannot
+> give check.
+
+That is not a theorem needing its own mathematics. It is the reachability
+argument of 75 evaluated on the smallest possible mating force. King+pawn is not
+a class with a theorem; it is the class where the existing theorem has least to
+work with.
+
+So the work became: apply the 75 bound to selfmate with the roles swapped. The
+derivation is `docs/SELFMATE_REACH_DERIVATION.md`, written first as the three
+before it were, and it flags the two things that differ — who is mated, and that
+the budgets are asymmetric (the recursion runs `attacker(d) → defender(d) →
+attacker(d-1)`, so at a defender node the MATED side has one move fewer).
+
+The two implementations were **factored into one function** rather than copied.
+The last three soundness bugs in this project were all modelling divergence, and
+two copies of this reasoning would eventually disagree. The refactor was verified
+behaviour-preserving first: identical prune counts, to the unit, on the helpmate
+benchmark.
+
+#### It is sound, and it does not pay
+
+It fires enormously — 39.9M, 49.9M and 6.9M prunes on the three king+pawn
+positions from the open set — and converts none of them.
+
+Over all 903 distinct selfmates at a 5 s cap:
+
+| | solved |
+| --- | --- |
+| bound off | **573** |
+| bound on | 570 |
+| lost | 5 |
+| gained | 2 |
+
+**The five are not false prunes.** Every one solves with the bound enabled given
+60 s, so nothing was pruned that should not have been — the bound is correct.
+They are lost to its cost. Net **-3**, and it is defaulted OFF.
+
+The derivation predicted the mechanism before the measurement, which is some
+consolation for the result: in a selfmate the mated side is the ATTACKER, who
+*wants* to be mated and self-blocks his own king's flights. That makes the handled
+set enormous and the prune rare, while the test still costs at every node. The
+same argument that is worth 3x on a helpmate is worth less than its own overhead
+here, because the two goals put the cooperating side on opposite ends of it.
+
+Kept, gated, default off, with the numbers — the same disposition as
+`--dfpn-min-men` at 68. Two of this project's measured-and-rejected items now
+share a shape: a mechanism that is sound, fires constantly, and converts nothing.
+
+#### What this leaves
+
+The 15 selfmate misses are not a reachability problem and not a lone-defender
+problem. GAP-2 covered the queen case and converted nothing; this covers the pawn
+case and converts nothing. Both were the classes the analysis named. Whatever
+Chest is doing on these, it is not something either theorem describes, and the
+next honest step is to find out what — not to write a third one.

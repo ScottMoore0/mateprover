@@ -213,6 +213,12 @@ void print_usage() {
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
 "                                default: --no-refutation-hints (measured harmful)\n"
+"  --selfmate-bound | --no-selfmate-bound\n"
+"                                default: OFF. The same bound on a selfmate,\n"
+"                                where the roles invert and the DEFENDER is the\n"
+"                                side that must deliver mate. Sound, but measured\n"
+"                                a net loss of three positions over the 903: it\n"
+"                                fires constantly and converts nothing\n"
 "  --help-bound | --no-help-bound\n"
 "                                default: --help-bound. Prunes helpmate subtrees\n"
 "                                where no mate can be reached in the moves left.\n"
@@ -421,6 +427,10 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--selfmate-bound") {
+            config.selfmate_bound = true;
+        } else if (arg == "--no-selfmate-bound") {
+            config.selfmate_bound = false;
         } else if (arg == "--help-bound") {
             config.help_bound = true;
         } else if (arg == "--no-help-bound") {

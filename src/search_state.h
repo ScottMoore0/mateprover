@@ -54,6 +54,17 @@ struct SearchConfig {
     // off: a bound that can only lose solutions silently has to be differentially
     // testable, and 74 shipped an unsound one because it was not.
     bool help_bound = true;
+    // The same bound applied to selfmate, where the DEFENDER mates.
+    //
+    // DEFAULT OFF, on measurement rather than on doubt. It is SOUND -- the five
+    // positions it appeared to lose over the 903 all solve with it enabled given
+    // 60 s, so none was a false prune -- but at a 5 s cap it is a net loss of
+    // three: 570 against 573. It fires tens of millions of times per position
+    // and converts nothing, because in a selfmate the mated side is the ATTACKER,
+    // who cooperates in being mated and self-blocks his own king's flights. That
+    // makes the handled set enormous and the prune rare, while the test still
+    // costs at every node. See docs/SELFMATE_REACH_DERIVATION.md and section 77.
+    bool selfmate_bound = false;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

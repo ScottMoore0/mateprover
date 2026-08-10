@@ -19,6 +19,11 @@ Proof prove_attacker(Search& s, const Board& b, int depth);
 // selfmate node routines come first in this file.
 inline bool position_is_refuted_axiomatically(const Search& s, const Board& b);
 
+// The shared reachability/coverage bound. Defined below, next to the helpmate
+// caller; declared here because the selfmate node routines come first.
+inline bool mate_out_of_reach(const Search& s, const Board& b, Color mating,
+                              Color mated, int our_moves, int their_moves);
+
 // Is `m` a threat move? WinChest defines one as a move after which, if the
 // defender were allowed to pass, the attacker could mate within ThreatDepth.
 //
@@ -226,6 +231,17 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         }
         return {};
     }
+    // See docs/SELFMATE_REACH_DERIVATION.md. The roles invert here: the side
+    // that must DELIVER mate is the defender, and the side mated is the
+    // attacker. At an attacker node both still have `depth` moves.
+    //
+    // Placed after the terminal test above, so a position that is ALREADY
+    // selfmate is reported before any bound can look at it.
+    if (s.goal == Goal::Selfmate && s.selfmate_bound &&
+        mate_out_of_reach(s, b, other(s.attacker), s.attacker, depth, depth)) {
+        ++s.stats.selfmate_unreachable_prunes;
+        return {};
+    }
     if (depth <= 0) {
         return {};
     }
@@ -399,6 +415,14 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         out.refuted = true;
         return out;
     }
+    // The mated side has depth-1 moves here: the attacker has already spent his
+    // to arrive at this node. Overstating it would be safe, understating it
+    // would not, so it is written out rather than approximated.
+    if (s.goal == Goal::Selfmate && s.selfmate_bound &&
+        mate_out_of_reach(s, b, other(s.attacker), s.attacker, depth, depth - 1)) {
+        ++s.stats.selfmate_unreachable_prunes;
+        return {};
+    }
 
     // Instrumentation only: how often does the DEFENDER reduce to king + queen?
     //
@@ -487,6 +511,94 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
 // therefore carries `plies`, which makes each length its own entry and reduces
 // the usual "proved within N implies proved within M>N" bound to an exact
 // match. Reusing the monotone bound directly would have been unsound.
+// Is a mate simply out of reach from here? Shared by the helpmate and selfmate
+// bounds -- ONE implementation, because the two differ only in who mates and how
+// many moves each side has left, and two copies of this reasoning would drift.
+// See docs/HELPMATE_COVERAGE_DERIVATION.md and docs/SELFMATE_REACH_DERIVATION.md.
+//
+// A mate ends with the mated king in check and every flight handled. Two
+// relaxations make that checkable in a few bitboard ANDs, and both only WIDEN
+// what is allowed, so this can rule a subtree out but never rule one in:
+//
+//   the mated king ends within `their_moves` king-steps of where it stands,
+//   measured on an empty board;
+//   a mating unit attacks or occupies a square within `our_moves` of its own
+//   moves, again on an empty board, captures and promotion included.
+//
+// Returns true when NO mate is possible, so the caller may drop the subtree.
+// It is depth-bounded and must never be turned into an any-depth refutation: the
+// whole argument rests on the moves remaining, and a deeper search has more.
+inline bool mate_out_of_reach(const Search& s, const Board& b, Color mating,
+                              Color mated, int our_moves, int their_moves) {
+    // The table stops at three of the mating side's moves. Beyond that it would
+    // UNDERSTATE reach, which is the one way this becomes unsound. Extending it
+    // to five was measured at 74 and rejected: the nodes it newly covers are
+    // shallow, which are few, and testing them costs more than the prune returns.
+    if (our_moves < 1 || our_moves > 3 || their_moves < 0) {
+        return false;
+    }
+    const int king_sq = b.king_sq[mated];
+    if (king_sq < 0) {
+        return false;
+    }
+    const auto& tab = empty_board_reach();
+    const auto& disc = king_disc_table();
+    const std::size_t w = static_cast<std::size_t>(our_moves);
+    const bool their_reach_unbounded = their_moves > 5;
+    const std::size_t bm = static_cast<std::size_t>(their_moves > 5 ? 5 : their_moves);
+
+    auto piece_type_at = [&](int sq) {
+        for (int t = 0; t < 6; ++t) {
+            if (b.by_type[static_cast<std::size_t>(t)] & (1ull << sq)) return t;
+        }
+        return static_cast<int>(PT_NONE);
+    };
+
+    // A(w): only a NON-KING unit can give the check. U(w) and the occupancy
+    // reaches go into `handled`, where the mating king DOES belong -- it cannot
+    // check but it can cover a flight square.
+    std::uint64_t check_sources = 0;
+    std::uint64_t handled = b.occ;
+    std::uint64_t men = b.by_color[mating];
+    while (men) {
+        const int from = lsb_index(men);
+        men &= men - 1;
+        const int pt = piece_type_at(from);
+        if (pt == PT_NONE) continue;
+        const std::size_t slot = static_cast<std::size_t>(mating * 6 + pt);
+        const std::uint64_t atk = tab.attack[slot][static_cast<std::size_t>(from)][w];
+        handled |= atk;
+        handled |= tab.reach[slot][static_cast<std::size_t>(from)][w];
+        if (pt != PT_KING) check_sources |= atk;
+    }
+    // The mated side can self-block a flight by standing on it -- occupancy only,
+    // since what it attacks says nothing about where its own king may step.
+    std::uint64_t theirs = b.by_color[mated];
+    while (theirs) {
+        const int from = lsb_index(theirs);
+        theirs &= theirs - 1;
+        const int pt = piece_type_at(from);
+        if (pt == PT_NONE) continue;
+        handled |= their_reach_unbounded
+                       ? ~0ull
+                       : tab.reach[static_cast<std::size_t>(mated * 6 + pt)]
+                                  [static_cast<std::size_t>(from)][bm];
+    }
+
+    std::uint64_t candidates =
+        disc[static_cast<std::size_t>(king_sq)]
+            [static_cast<std::size_t>(their_moves > 8 ? 8 : their_moves)] & check_sources;
+    while (candidates) {
+        const int k = lsb_index(candidates);
+        candidates &= candidates - 1;
+        const std::uint64_t flights = disc[static_cast<std::size_t>(k)][1] & ~(1ull << k);
+        if ((flights & ~handled) == 0) {
+            return false;               // this square could still be a mate
+        }
+    }
+    return true;
+}
+
 Proof prove_help(Search& s, const Board& b, int plies) {
     if (search_cancelled(s)) {
         return {};
@@ -507,115 +619,15 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         return {};
     }
 
-    // An admissible lower bound: is the mate simply out of reach from here?
-    //
-    // A helpmate ends with one side checkmated, so at the final position some
-    // unit of the MATING side attacks the mated king's square. Two relaxations
-    // make that checkable in a few bitboard ANDs, and both only ever widen the
-    // possibilities, so the bound can rule a subtree out but never rule one in:
-    //
-    //   the mated king ends within `their_moves` king-steps of where it stands,
-    //   measured on an empty board;
-    //   a mating unit attacks that square after at most `our_moves` of its own
-    //   moves, again on an empty board, promotion included.
-    //
-    // If no unit of the mating side can attack ANY square the king could reach,
-    // no mate exists down this line at any continuation, and the whole subtree
-    // is dead. This prunes before the move list is built, so it saves the
-    // generation as well as the recursion.
-    //
-    // Only for helpmate: a helpstalemate needs no check, so the argument has
-    // nothing to stand on. Only when the mating side has three moves or fewer,
-    // because the table stops at three and using it beyond that would
-    // UNDERSTATE reach -- the one way this could become unsound.
+    // See mate_out_of_reach. In a helpmate the side to move at the END is the
+    // one mated, which parity decides from here.
     if (s.goal == Goal::Helpmate && s.help_bound) {
         const Color mated = (plies % 2 == 0) ? b.stm : other(b.stm);
         const Color mating = other(mated);
         const int our_moves = (mating == b.stm) ? (plies + 1) / 2 : plies / 2;
-        const int their_moves = plies - our_moves;
-        if (our_moves >= 1 && our_moves <= 3) {
-            const int king_sq = b.king_sq[mated];
-            if (king_sq >= 0) {
-                const std::uint64_t reachable =
-                    king_disc_table()[static_cast<std::size_t>(king_sq)]
-                                     [static_cast<std::size_t>(their_moves > 8 ? 8 : their_moves)];
-                const auto& tab = empty_board_reach();
-                const std::size_t w = static_cast<std::size_t>(our_moves);
-                // their_moves cannot exceed 4 while our_moves <= 3, so the table
-                // depth is always sufficient. Clamped anyway, and clamped UP to
-                // the whole board: a smaller occupancy set means more pruning,
-                // which is the unsound direction.
-                const bool their_reach_unbounded = their_moves > 5;
-                const std::size_t bm = static_cast<std::size_t>(their_moves > 5 ? 5 : their_moves);
-
-                auto piece_type_at = [&](int sq) {
-                    for (int t = 0; t < 6; ++t) {
-                        if (b.by_type[static_cast<std::size_t>(t)] & (1ull << sq)) return t;
-                    }
-                    return static_cast<int>(PT_NONE);
-                };
-
-                // A(w): squares a NON-KING mating unit can attack -- the check
-                // must come from one of these, since a king cannot give check.
-                // U(w): all mating attacks, king included, because the king
-                // cannot check but can perfectly well cover a flight square.
-                std::uint64_t check_sources = 0;
-                std::uint64_t handled = b.occ;          // O
-                std::uint64_t men = b.by_color[mating];
-                while (men) {
-                    const int from = lsb_index(men);
-                    men &= men - 1;
-                    const int pt = piece_type_at(from);
-                    if (pt == PT_NONE) continue;
-                    const std::size_t slot = static_cast<std::size_t>(mating * 6 + pt);
-                    const std::uint64_t atk = tab.attack[slot][static_cast<std::size_t>(from)][w];
-                    handled |= atk;                                     // U(w)
-                    handled |= tab.reach[slot][static_cast<std::size_t>(from)][w];   // Rm(w)
-                    if (pt != PT_KING) check_sources |= atk;            // A(w)
-                }
-                // Rd(b): the mated side can self-block a flight square by
-                // standing on it. Occupancy only -- what it attacks is irrelevant
-                // to whether its own king may step there.
-                std::uint64_t theirs = b.by_color[mated];
-                while (theirs) {
-                    const int from = lsb_index(theirs);
-                    theirs &= theirs - 1;
-                    const int pt = piece_type_at(from);
-                    if (pt == PT_NONE) continue;
-                    handled |= their_reach_unbounded
-                                   ? ~0ull
-                                   : tab.reach[static_cast<std::size_t>(mated * 6 + pt)]
-                                              [static_cast<std::size_t>(from)][bm];
-                }
-
-                // A mate needs a square that is both reachable by the king and
-                // attackable by a non-king mating unit, AND whose every flight
-                // is handled. See docs/HELPMATE_COVERAGE_DERIVATION.md.
-                std::uint64_t candidates = reachable & check_sources;
-                const auto& disc = king_disc_table();
-                bool possible = false;
-                while (candidates) {
-                    const int k = lsb_index(candidates);
-                    candidates &= candidates - 1;
-                    // disc[k][1] is k together with its neighbours.
-                    const std::uint64_t flights =
-                        disc[static_cast<std::size_t>(k)][1] & ~(1ull << k);
-                    if ((flights & ~handled) == 0) {
-                        possible = true;
-                        break;
-                    }
-                }
-                if (!possible) {
-                    ++s.stats.help_unreachable_prunes;
-                    if (s.debug) {
-                        std::cerr << "help_prune plies=" << plies
-                                  << " w=" << our_moves << " b=" << their_moves
-                                  << " cand=" << (reachable & check_sources)
-                                  << " fen=" << fen4(b) << '\n';
-                    }
-                    return {};
-                }
-            }
+        if (mate_out_of_reach(s, b, mating, mated, our_moves, plies - our_moves)) {
+            ++s.stats.help_unreachable_prunes;
+            return {};
         }
     }
 
