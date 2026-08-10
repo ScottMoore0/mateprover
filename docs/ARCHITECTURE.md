@@ -155,6 +155,7 @@ did. If you are reading it for the first time:
 - [76. Characterising The Cooperative Residue: There Is No Class](#76-characterising-the-cooperative-residue-there-is-no-class)
 - [77. There Is No King+Pawn Theorem, And The Bound That Replaces It Does Not Pay](#77-there-is-no-kingpawn-theorem-and-the-bound-that-replaces-it-does-not-pay)
 - [78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone](#78-level-skipping-is-correct-fires-zero-times-and-cannot-be-evaluated-alone)
+- [79. The Engine Faults Under AVX, And It Is Not The Engine's Fault](#79-the-engine-faults-under-avx-and-it-is-not-the-engines-fault)
 
 ## Impact-Ordered Architecture
 
@@ -5601,3 +5602,121 @@ back negative for reasons that were visible in the derivation beforehand. That i
 now the expected outcome for any spec item adopted without first checking which
 of its neighbours it depends on, and future items should be read for their
 dependencies before their rank.
+
+### 79. The Engine Faults Under AVX, And It Is Not The Engine's Fault
+
+Rebuilding the tree after the 78 revert turned up a crash that had nothing to do
+with the revert: `g++ -O3 -march=native` produces a binary that dies inside move
+generation. Perft does not reach depth 3.
+
+It was found by accident, which is the interesting part — nothing in the test
+suite could have found it, because the suite tests a binary someone else built.
+
+#### Isolating it
+
+Optimisation level was not the variable, and the crash depth moving with it was
+the first clue that this was alignment rather than a bad transform:
+
+| flags | result |
+| --- | --- |
+| `-O3` | ok |
+| `-O1 -march=native` | faults at perft 2 |
+| `-O2 -march=native` | faults at perft 3 |
+| `-O3 -march=native` | faults at perft 3 |
+| `-O2 -mavx2` | faults at perft 3 |
+| `-O2 -march=native -mno-avx512f` | still faults |
+| `-O2 -march=native -mno-avx2` | still faults |
+| `-O2 -march=native -mno-avx` | **ok** |
+
+Any AVX at all, at every optimisation level. Narrowing the vector width does not
+help; only turning AVX off does.
+
+#### The fault
+
+Under gdb, on `-O2 -mavx2`:
+
+    Thread 1 received signal SIGSEGV
+    0x00007ff6f7d6e01d in mateprover::perft (b=..., depth=2) at report.h:44
+    => vmovdqa %ymm0,0x40(%rsp)
+    rsp  0x5ff430
+
+That is the recursive call in `perft`, in `src/report.h`.
+
+`vmovdqa` requires its destination to be 32-byte aligned. `rsp` is `0x5ff430`;
+`0x430 mod 32 = 16`, so the slot at `0x40(%rsp)` is 16-byte aligned and the store
+is a general protection fault.
+
+The prologue says why:
+
+    push %r15 ... push %rbx        (eight pushes)
+    sub  $0x1e8,%rsp
+
+No `and $-32,%rsp`. GCC used a 32-byte aligned spill slot without emitting the
+realignment that would make the frame 32-byte aligned. Windows guarantees only
+16, so whether the store faults depends on where the frame happens to land: the
+entry `rsp` is 16-aligned, `-64-488` leaves it congruent to 0 or 16 mod 32
+depending on the caller, and the coin flip is exactly why the crash depth moves
+with the optimisation level and why it can look intermittent.
+
+#### It is not this codebase's alignment request
+
+Worth establishing rather than assuming, since "the compiler is wrong" is usually
+the wrong answer:
+
+- there is no `alignas` anywhere in `src/`, and no `__attribute__((aligned))`;
+- `Board` is a plain aggregate whose widest member is a `std::uint64_t`, so its
+  alignment is **8**;
+- the faulting store is a compiler-generated copy into a compiler-allocated
+  temporary, not into anything the source named.
+
+So the engine asks for 8-byte alignment, GCC decided on 32 for its own spill
+slot, and then did not arrange for it. `-mstackrealign` does not fix it.
+`-mpreferred-stack-boundary=5` does not fix it. `-fno-tree-vectorize` does not
+fix it either, which rules out the vectoriser and points at inline struct copy
+expansion. This is a MinGW-w64 GCC 15.2.0 code generation defect.
+
+#### The fix, and why it is free
+
+AVX is disabled for the engine target on MinGW GCC, appended after
+`CMAKE_CXX_FLAGS` so it wins over a user's `-march=native`, with
+`MATEPROVER_ALLOW_AVX=ON` to override on a toolchain known to be fixed. It is
+unconditional rather than conditional on detecting AVX, because on a baseline
+x86-64 build `-mno-avx` is a no-op — there is no configuration where it removes
+something the engine was using.
+
+That last claim was measured rather than asserted. Against a plain `-O3` build:
+
+| workload | `-O3` | `-O3 -march=native -mno-avx` |
+| --- | --- | --- |
+| perft (deterministic) | 7.073 s | 7.053 s |
+| node-limited search, 5 paired runs | mean 39.3 s | mean 42.2 s |
+
+0.3% on perft, and on search the machine's own run-to-run spread was ±14 s on a
+40 s measurement — the same binary varied from 32.0 s to 46.6 s across runs, so
+there is no signal there to find. Which is the expected result: this engine is
+branchy pointer-chasing over a transposition table and a move list, with no
+hand-vectorised kernel for wider registers to work on. `-march=native` was never
+buying anything, so declining to use it costs nothing.
+
+Verified end to end: `cmake -DCMAKE_CXX_FLAGS=-march=native` now configures with
+the guard announced, builds warning-free, and passes all 414 checks — on the
+exact flags that segfaulted at perft 2 before.
+
+#### The gap this exposes, which is the real lesson
+
+The suite could never have caught this, and neither could CI as described in the
+README, because **every gate tests a binary rather than a build.** Correctness
+here is a property of the compiled artefact, and the compiler is part of the
+system under test. The README advertises builds on Linux/GCC, Linux/Clang,
+macOS/Clang, Windows/MSVC and Windows/MinGW — none with `-march=native`, which is
+the first flag anyone adds to a chess engine.
+
+Two things follow. The direct-`g++` route stays a documented footgun no build
+file can guard, so the README now says so explicitly. And the CI matrix wants a
+native-flags entry per platform, which is on the release backlog and now has a
+concrete reason to exist rather than a speculative one.
+
+A cosmetic item was fixed on the way past: `mate_out_of_reach` took a
+`const Search&` it never read — the prune counters are incremented by its three
+callers, not by the function — and the parameter is gone, so the shipped build
+is warning-free under `-Wall -Wextra -pedantic` again.

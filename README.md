@@ -190,6 +190,16 @@ cmake --build build -j
 
 The binary lands at `build/mateprover` (`.exe` on Windows).
 
+Build through CMake rather than invoking the compiler directly. **Do not add
+`-march=native` to a hand-rolled MinGW build**: GCC then copies the board struct
+through `ymm` registers and spills it with a 32-byte aligned store into a stack
+frame it never realigned, and the binary faults inside move generation — perft
+dies before it reaches depth 3. The build file disables AVX on MinGW to prevent
+exactly this, so the supported invocation above is safe even with `-march=native`
+in `CMAKE_CXX_FLAGS`. Nothing is lost by the restriction: the engine has no
+hand-vectorised kernel, and AVX is worth 0.3% on perft and less than measurement
+noise on search. `docs/ARCHITECTURE.md` section 79 has the disassembly.
+
 Built and tested in CI on Linux/GCC, Linux/Clang, macOS/Clang and
 Windows/MSVC, plus Windows/MinGW-w64 GCC 15 locally. CI additionally runs a
 bounds-checked build, a C++20/23 forward-compatibility check, cppcheck, and

@@ -64,6 +64,45 @@ if(MINGW)
     target_link_options(mateprover PRIVATE -Wl,--no-insert-timestamp)
 endif()
 
+# AVX is disabled on MinGW because enabling it produces a binary that faults in
+# move generation. This is a code generation defect, not a portability
+# preference, and the engine asks for nothing unusual: `Board` is a plain
+# aggregate whose widest member is a uint64_t, so its alignment is 8, and there
+# is no `alignas` anywhere in the source.
+#
+# What happens is that GCC copies `Board` through ymm registers and spills with
+#
+#     vmovdqa %ymm0,0x40(%rsp)
+#
+# into a stack slot it treats as 32-byte aligned, while the function prologue is
+# eight pushes and a `sub` with no `and $-32,%rsp` to make that true. Windows
+# guarantees 16-byte stack alignment, so the slot is 32-byte aligned only by
+# luck: `perft` faulted with rsp = 0x5ff430, which is 16-aligned and not 32.
+# That coin flip is why the crash depth moves with the optimisation level and
+# why it can look intermittent. `-mstackrealign`, `-mpreferred-stack-boundary=5`
+# and `-fno-tree-vectorize` all fail to avoid it; only disabling AVX does.
+#
+# Turning it off costs nothing measurable. The engine is branchy pointer-chasing
+# work with no hand-vectorised kernel, and `-march=native -mno-avx` against a
+# plain `-O3` build differs by 0.3% on perft (7.053 s against 7.073 s) and by
+# less than the machine's own run-to-run noise on a node-limited search.
+#
+# On a baseline x86-64 build the flag is a no-op, so this is unconditional
+# rather than conditional on detecting AVX -- there is no configuration in which
+# it removes something the engine was using. Set MATEPROVER_ALLOW_AVX=ON to
+# override it on a toolchain known to be fixed.
+option(MATEPROVER_ALLOW_AVX
+       "Permit AVX codegen on MinGW (see the alignment note in CMakeLists.txt)"
+       OFF)
+if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT MATEPROVER_ALLOW_AVX)
+    # Appended after CMAKE_CXX_FLAGS, so it wins over a user's -march=native.
+    target_compile_options(mateprover PRIVATE -mno-avx)
+    target_compile_options(bench_movegen PRIVATE -mno-avx)
+    message(STATUS
+        "mateprover: AVX disabled on MinGW to avoid a stack-alignment fault "
+        "in generated struct copies (MATEPROVER_ALLOW_AVX=ON to override)")
+endif()
+
 enable_testing()
 
 find_package(Python3 COMPONENTS Interpreter)

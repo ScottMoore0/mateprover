@@ -21,7 +21,7 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b);
 
 // The shared reachability/coverage bound. Defined below, next to the helpmate
 // caller; declared here because the selfmate node routines come first.
-inline bool mate_out_of_reach(const Search& s, const Board& b, Color mating,
+inline bool mate_out_of_reach(const Board& b, Color mating,
                               Color mated, int our_moves, int their_moves);
 
 // Is `m` a threat move? WinChest defines one as a move after which, if the
@@ -238,7 +238,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     // Placed after the terminal test above, so a position that is ALREADY
     // selfmate is reported before any bound can look at it.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        mate_out_of_reach(s, b, other(s.attacker), s.attacker, depth, depth)) {
+        mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
     }
@@ -419,7 +419,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     // to arrive at this node. Overstating it would be safe, understating it
     // would not, so it is written out rather than approximated.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        mate_out_of_reach(s, b, other(s.attacker), s.attacker, depth, depth - 1)) {
+        mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth - 1)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
     }
@@ -528,7 +528,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
 // Returns true when NO mate is possible, so the caller may drop the subtree.
 // It is depth-bounded and must never be turned into an any-depth refutation: the
 // whole argument rests on the moves remaining, and a deeper search has more.
-inline bool mate_out_of_reach(const Search& s, const Board& b, Color mating,
+inline bool mate_out_of_reach(const Board& b, Color mating,
                               Color mated, int our_moves, int their_moves) {
     // The table stops at three of the mating side's moves. Beyond that it would
     // UNDERSTATE reach, which is the one way this becomes unsound. Extending it
@@ -625,7 +625,7 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         const Color mated = (plies % 2 == 0) ? b.stm : other(b.stm);
         const Color mating = other(mated);
         const int our_moves = (mating == b.stm) ? (plies + 1) / 2 : plies / 2;
-        if (mate_out_of_reach(s, b, mating, mated, our_moves, plies - our_moves)) {
+        if (mate_out_of_reach(b, mating, mated, our_moves, plies - our_moves)) {
             ++s.stats.help_unreachable_prunes;
             return {};
         }

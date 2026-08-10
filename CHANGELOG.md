@@ -10,6 +10,30 @@ without one.
 
 ## Unreleased
 
+**Fixed: the engine faulted in move generation when built with AVX enabled.**
+`g++ -O3 -march=native` produced a binary that segfaulted before perft reached
+depth 3. GCC copies the board struct through `ymm` registers and spills it with
+`vmovdqa` into a stack slot it assumed was 32-byte aligned, without emitting the
+prologue that would make that true; Windows guarantees 16, so the store faulted
+whenever the frame landed on the wrong half. The engine requests nothing unusual
+— `Board` is a plain aggregate of alignment 8, and there is no `alignas` in the
+source — so this is a MinGW-w64 GCC 15.2.0 codegen defect rather than a bug here.
+`-mstackrealign`, `-mpreferred-stack-boundary=5` and `-fno-tree-vectorize` all
+fail to avoid it; only disabling AVX does. The build file now does that on MinGW,
+appended so it wins over a user's `-march=native`, with `MATEPROVER_ALLOW_AVX=ON`
+to override. It costs nothing measurable: AVX is worth 0.3% on perft and less
+than run-to-run noise on search, because the engine has no hand-vectorised kernel.
+Release builds were never affected — the shipped CMake configuration adds no
+`-march` — so this was a footgun for people building from source, not a defect in
+any published binary. See `docs/ARCHITECTURE.md` section 79.
+
+The same section records the gap that let it through: every existing gate tests a
+*binary*, never a *build*, so no amount of self-testing could have caught it. The
+CI matrix wants a native-flags entry per platform.
+
+`mate_out_of_reach` no longer takes a `const Search&` it never read, restoring a
+warning-free build under `-Wall -Wextra -pedantic`.
+
 **Level skipping and the graded failure depth are rejected on measurement, and
 the reason is that they cannot be measured alone.** Both were implemented in
 full: a failed search reporting the largest depth it actually disproved, that
