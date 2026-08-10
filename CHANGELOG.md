@@ -10,6 +10,25 @@ without one.
 
 ## Unreleased
 
+**Internal iterative deepening is rejected, and with it the whole
+graded-failure-depth line.** Built together with the per-move disproof array,
+since section 83's objection to the array -- consultable at only 6.24% of
+expansions -- is specific to root deepening, and a node that deepens itself makes
+the array a local variable instead. It fires at **42 of 242,780 attacker
+expansions** and skips 0.014% of candidates, for 9.5% more nodes. The cause is
+structural: internal deepening needs levels to iterate and only the top few plies
+have any, while the mass of an AND/OR tree is at the bottom where remaining depth
+is 1 or 2. Reverted.
+
+That 0.014% is the same fact as section 82's disproof-excess histogram (99.98% in
+bucket zero) and section 83's 6.24% ceiling, reached from three unrelated
+directions: MateProver's disproofs prove exactly what they are asked, so nothing
+downstream of a graded failure depth can fire. That is correct behaviour for an
+exhaustive AND/OR search, not a defect -- over-proof requires depth-independent
+knowledge, and the only candidates are material theory (measured at zero
+applicability in section 80) and a tablebase (excluded). The line is closed for a
+reason rather than left unfinished. See `docs/ARCHITECTURE.md` section 85.
+
 **The exact proof table's soundness is now testable, and tested.** The table is
 keyed by position with no depth in the key, which is sound only because a
 disproof bounds every smaller depth and a proof depth is minimal. Nothing in the

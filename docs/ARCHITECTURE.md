@@ -161,6 +161,7 @@ did. If you are reading it for the first time:
 - [82. Answer Ordering: A Real Win Through The Wrong Mechanism](#82-answer-ordering-a-real-win-through-the-wrong-mechanism)
 - [83. Three Follow-Ups, Two Measured Out Before They Were Built](#83-three-follow-ups-two-measured-out-before-they-were-built)
 - [84. The Cache Is Provably Sound, The Residue Is Two Classes, And Ordering Has No Headroom Left](#84-the-cache-is-provably-sound-the-residue-is-two-classes-and-ordering-has-no-headroom-left)
+- [85. Internal Iterative Deepening, And The Closure Of The Graded-Failure-Depth Line](#85-internal-iterative-deepening-and-the-closure-of-the-graded-failure-depth-line)
 
 ## Impact-Ordered Architecture
 
@@ -6346,3 +6347,81 @@ earn that from here.
 
 Both are therefore not-built, on measurement, and the estimator work is closed
 unless something outside this band gives it a reason to reopen.
+
+### 85. Internal Iterative Deepening, And The Closure Of The Graded-Failure-Depth Line
+
+Built, measured, reverted. What makes this worth a section is not the result but
+that it closes a line four sections long with a single root cause, confirmed three
+independent ways.
+
+#### What was built
+
+83 rejected the per-move disproof array on the ground that a root-deepened search
+re-enters a node at a greater depth only 6.24% of the time. That objection is
+specific to root deepening: when the NODE deepens itself, the re-entry is the loop
+body, and the array stops being something carried across calls through the table
+and becomes a local variable. So the two were built together, which is the lesson
+78 and 82 both taught -- neither half of an interlocking mechanism can be judged
+alone.
+
+The attacker node gained its own deepening loop, starting past any disproof bound
+the table already held for the position, carrying a per-move array recording the
+depth to which each move was known refuted, and skipping at each level every move
+whose bound still covered it.
+
+#### It does not fire
+
+| | |
+| --- | --- |
+| attacker expansions | 242,780 |
+| of those running an internal loop | **42** |
+| attacker moves considered | 5,860,450 |
+| skipped without execution | **837** (0.014%) |
+| nodes | 11,067,090 -> 12,116,697 (**+9.5%**) |
+
+Lowering the band from remaining depth 3 to 2 changes the count of participating
+nodes not at all -- still 42 -- which identifies the cause precisely. **Internal
+deepening needs levels to iterate, and only the top few plies have any.** The mass
+of an AND/OR tree is at the bottom, where remaining depth is 1 or 2 and there is
+nothing to deepen through. The mechanism applies exactly where the nodes are not.
+
+And where it did fire, it skipped 0.014% of candidates.
+
+#### The root cause, measured three ways
+
+That 0.014% is not a coincidence. A move can only be skipped at level *d+1* if
+its recorded bound reaches *d+1*, which requires the disproof to have proven
+**more** than the level asked for. The disproof-excess histogram of 82 says that
+happens 0.02% of the time. The two numbers are the same number.
+
+So the whole line now reduces to one fact, arrived at from three unrelated
+directions:
+
+| section | measurement | value |
+| --- | --- | --- |
+| 82 | disproof-excess histogram, bucket 0 | 99.98% |
+| 83 | per-move array consultation ceiling | 6.24% |
+| 85 | internal-deepening skip rate | 0.014% |
+
+**MateProver's disproofs prove exactly what they are asked, and nothing
+downstream of a graded failure depth can fire until something changes that.** 78
+found the symptom, 80 eliminated material knowledge as the source, 82 wired the
+two honest any-depth leaves and found they were too rare to matter, 83 priced the
+array, and this prices the architecture the array was supposed to need. Every
+piece is now measured.
+
+It is worth being precise about what this is not. It is not a defect: proving
+exactly the depth asked for is the correct behaviour of an exhaustive AND/OR
+search. Over-proof has to come from knowledge that holds independent of depth, and
+the only candidates are material or endgame theory -- measured at zero
+applicability in 80 -- and a tablebase, excluded by standing instruction. **The
+line is closed for a reason, not merely unfinished.**
+
+#### Disposition
+
+Reverted entirely, on 78's rule: a mechanism that fires at 42 of 242,780 nodes and
+costs 9.5% is dead code no test can exercise, and dead code is worse than a
+documented absence. The `--internal-deepening` and `--iid-min-depth` switches go
+with it. This section is the specification for rebuilding it, and the condition
+for doing so is explicit and unchanged since 78: something must first make a
+disproof prove more than it was asked.
