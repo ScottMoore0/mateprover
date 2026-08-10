@@ -10,6 +10,26 @@ without one.
 
 ## Unreleased
 
+**The remaining selfmate gap is a disproof gap, not a search-quality gap.** A
+differential investigation against Chest, run as a black box, locates all 15
+remaining misses precisely: MateProver's search for a *solution* is within 3x of
+Chest and ahead on coverage (389 solved against 318, with 86 Chest cannot do at
+all), while its proof of *absence* is one to three orders of magnitude slower.
+Asked the strictly easier question one ply short of each real solution, so that
+both engines are disproving, Chest settles 14 of 15 in 5.75 s total and
+MateProver needs 401.70 s and times out on 12. Median ratio 90x, peak 2600x.
+Every one of the 15 is a position whose solution sits at depth N and whose depth
+N-1 disproof MateProver cannot finish. Two hypotheses were tested and rejected:
+the reach bound of sections 75 and 77 fires zero times here, and three positions
+cannot establish whether the gap is a widening ratio or a large constant one. No
+code change; this redirects the work. See `docs/ARCHITECTURE.md` section 81.
+
+**A sixteenth wrong corpus entry**, found in passing and the first of its kind:
+`1R2nkb1/p3p1R1/4Q2B/p5P1/Bp6/1Kp1PP2/2P5/8 w - -` is stipulated at selfmate in
+7 and is a selfmate in 6. Both provers agree and MateProver proved minimality by
+exhausting depths 1 to 5, so it is recorded as a wrong stipulation rather than a
+missing solution.
+
 **Material knowledge is rejected, and the attractive form of it is unsound.**
 Section 78 named material knowledge as the prerequisite for level skipping, so
 it was measured before being built. Its main lever — a minimum-depth table for a

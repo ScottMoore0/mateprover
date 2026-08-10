@@ -157,6 +157,7 @@ did. If you are reading it for the first time:
 - [78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone](#78-level-skipping-is-correct-fires-zero-times-and-cannot-be-evaluated-alone)
 - [79. The Engine Faults Under AVX, And It Is Not The Engine's Fault](#79-the-engine-faults-under-avx-and-it-is-not-the-engines-fault)
 - [80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times](#80-material-knowledge-the-useful-form-is-unsound-and-the-sound-form-fires-zero-times)
+- [81. The Selfmate Gap Is A Disproof Gap, And The Solution Search Was Never The Problem](#81-the-selfmate-gap-is-a-disproof-gap-and-the-solution-search-was-never-the-problem)
 
 ## Impact-Ordered Architecture
 
@@ -5821,3 +5822,129 @@ ordering assumed a codebase this one is not. The remaining gap with Chest is 15
 selfmate positions with no structural class between them, and the honest next
 step is a differential investigation of what Chest actually does on those, not a
 fifth item read off the list.
+
+### 81. The Selfmate Gap Is A Disproof Gap, And The Solution Search Was Never The Problem
+
+Four clean-room items had been measured and rejected, each for a reason visible
+beforehand, and 80 closed the last of them. What remained was a differential
+investigation: stop reading items off a specification and find out what Chest
+actually does better. This is that, and it moved the target completely.
+
+Chest is treated strictly as a black box throughout — its published input format
+and its reported times, nothing else. Its C source sits in the workspace and was
+deliberately not opened, because the clean-room protocol requires the
+specification to come from someone else; measuring behaviour is P-BLACKBOX and
+allowed, reading the implementation is not.
+
+#### Locating the gap
+
+The gap on the selfmate corpus is 15 positions. It is worth stating the rest of
+that comparison first, because it changes what the 15 mean: **MateProver solves
+389, Chest 318**, and 86 of MateProver's are positions Chest cannot do at all.
+The 15 are a residue, not a deficit.
+
+The first clue came from the position 78 used as its target,
+`1bR5/rPPPPPPP/n7/8/8/8/2pP4/KRqr3k w - -`, a selfmate in 6 that Chest answers
+in 0.055 s while MateProver needed 20 s and 70 million nodes. Running it with
+`--direct-depth` — prove *a* selfmate in 6 rather than *the shortest* — gives
+
+    iterative     70,476,186 nodes    20.1 s
+    direct depth     627,113 nodes     0.146 s
+
+a 112-fold reduction, and 0.146 s against Chest's 0.055 s is the same order.
+**Almost the entire cost was in the depths that found nothing.**
+
+That could have meant Chest was answering an easier question, so the next step
+was to establish what `zN` means to it rather than assume. Asked for a mate in 4
+on a position whose shortest is 2, Chest reports `Solution (in 2 moves)`: it
+finds the shortest, exactly as `--iterative-depth` does. The two engines are
+being asked the same thing.
+
+So the disproofs were timed directly, on the same position:
+
+| depth | Chest | MateProver | ratio |
+| --- | --- | --- | --- |
+| 3 | 0.000 s | 0.058 s (270 K nodes) | — |
+| 4 | 0.002 s | 0.981 s (2.9 M nodes) | ~490x |
+| 5 | 0.009 s | 23.47 s (52.3 M nodes) | **~2600x** |
+| 6 — *find* the solution | 0.055 s | 0.146 s | **2.7x** |
+
+#### It generalises, which is the part that matters
+
+One position is a sample. Every one of the 15 was asked the strictly easier
+question one ply short of its real solution, so that both engines are disproving
+and the solution search is removed from the comparison entirely:
+
+    Chest disproved 14 of 15 in       5.75 s total
+    MateProver needed               401.70 s, timing out on 12 of 15
+    median ratio                         90x
+
+The fifteenth is not a disproof at all — see below.
+
+**The remaining selfmate gap is entirely a disproof gap.** MateProver's search
+for a solution is competitive with Chest's, within a factor of three on the one
+position where both complete it. Its proof of *absence* is one to three orders of
+magnitude slower. Every one of the 15 misses is a position whose solution sits at
+depth *N* and whose depth *N-1* disproof MateProver cannot finish.
+
+#### What it is not
+
+Two hypotheses were tested and neither survived, which is worth recording so they
+are not tried again:
+
+- **A different branching factor.** Growth per ply was measured on three
+  positions at every depth both engines could reach. On the 7-pawn position
+  Chest grows 4.5x a ply against MateProver's 24.5x, which looks decisive — but
+  on the second position the two are 5.9-9.5x against 7.1-11x, which is no
+  separation at all. Three positions, with MateProver timing out on the deepest
+  points of each, cannot distinguish a widening ratio from a large constant one.
+  The ratio does trend upward within each position (480x then 2600x on the
+  first; 94x then 314x on the third), but the honest statement is a large factor,
+  not a proven difference in growth.
+- **The reach bound of 75 and 77.** It was rejected on the whole corpus, and the
+  obvious suspicion was that the aggregate had been dominated by positions that
+  solve quickly either way, hiding a win on exactly this class. It was not:
+  enabling `--selfmate-bound` on the depth-5 disproof changes 52,253,608 nodes to
+  52,254,837. It fires zero times here, for the reason 77 already gave — in a
+  selfmate the mated side is the attacker, who self-blocks, so the handled set
+  swallows everything.
+
+The profile does show one asymmetry worth a note: 52.3 M nodes produce only
+1.43 M table probes, because `prove_selfmate_defender` does not memoise at all
+while `prove_selfmate_attacker` does. 78 measured adding it — 12% fewer nodes,
+two positions lost — so it is not the answer either. A 12% effect is not a 90x
+one, and this section's numbers say the search is losing three orders of
+magnitude somewhere the table cannot reach.
+
+#### A sixteenth bad corpus entry, found in passing
+
+`1R2nkb1/p3p1R1/4Q2B/p5P1/Bp6/1Kp1PP2/2P5/8 w - -` is stipulated at selfmate in
+7. It was the one position of the 15 where Chest, asked to disprove at 6,
+returned a solution instead. MateProver agrees: `sfm 6` in 0.64 s directly, and
+2.38 s iteratively, which exhausts depths 1 to 5 and so proves 6 is the shortest.
+Two provers agree and one of them proved minimality, so it goes to
+`KNOWN_BAD.jsonl` as a wrong stipulation rather than a missing solution — the
+first entry of that kind.
+
+#### What this redirects
+
+Every optimisation this project has measured and rejected was aimed at the search
+as a whole. This says the target is narrower and the work so far was aimed
+slightly past it: **cheap disproof in the selfmate recursion**, and specifically
+at shallow remaining depth, where MateProver spends 52 million nodes on a
+question Chest settles in nine milliseconds.
+
+It also says what not to do. The solution search needs no work — it is within 3x
+of Chest and ahead on coverage, 389 to 318. Nothing in sections 68, 77, 78 or 80
+would have helped, and now there is a reason rather than a run of bad luck: all
+four were general-purpose pruning aimed at a search that is not where the time
+goes.
+
+The specification offers `7.1` anti-mate and `7.2` fatal check cutoff as its
+disproof accelerators. Neither transfers unexamined — `7.1` is written for the
+directmate orientation, where a defender mate refutes the attacker's move, and in
+a selfmate that same event is a *success*; `7.2` is scoped to mate-in-two and its
+selfmate variant wants a defender holding exactly two pieces, which none of these
+positions has. Whatever Chest is doing here, the specification in hand does not
+describe it, and the next honest step is a black-box characterisation of its
+disproof behaviour rather than a sixth item read off the list.
