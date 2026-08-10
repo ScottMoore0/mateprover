@@ -156,6 +156,7 @@ did. If you are reading it for the first time:
 - [77. There Is No King+Pawn Theorem, And The Bound That Replaces It Does Not Pay](#77-there-is-no-kingpawn-theorem-and-the-bound-that-replaces-it-does-not-pay)
 - [78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone](#78-level-skipping-is-correct-fires-zero-times-and-cannot-be-evaluated-alone)
 - [79. The Engine Faults Under AVX, And It Is Not The Engine's Fault](#79-the-engine-faults-under-avx-and-it-is-not-the-engines-fault)
+- [80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times](#80-material-knowledge-the-useful-form-is-unsound-and-the-sound-form-fires-zero-times)
 
 ## Impact-Ordered Architecture
 
@@ -5720,3 +5721,103 @@ A cosmetic item was fixed on the way past: `mate_out_of_reach` took a
 `const Search&` it never read — the prune counters are incremented by its three
 callers, not by the function — and the parameter is gone, so the shipped build
 is warning-free under `-Wall -Wextra -pedantic` again.
+
+### 80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times
+
+Section 78 rejected level skipping and named its prerequisite: material knowledge
+is what makes a disproof depth-independent, so `7.6` had to be built before `6.1`
+and `6.2` could be judged. This is that investigation, and it closes the line
+rather than opening it.
+
+#### What 7.6 asks for, bullet by bullet
+
+| bullet | status |
+| --- | --- |
+| a bare attacker king can never mate | **already implemented** — `position_is_refuted_axiomatically` |
+| two bare kings cannot stalemate | true, and worth nothing (below) |
+| bare defender king against king-plus-one: minimum-depth table | applies to **2 of 2093** positions |
+| king-and-bishops minimum-depth bound | same precondition, same problem |
+| endgame tablebase | out of scope by standing instruction |
+
+Applicability was measured before anything was written, across every mate-goal
+corpus, with the mating side chosen per goal — the side to move for a directmate,
+its opponent for a selfmate or helpmate, because in both of those the roles
+invert. The stalemate corpora are excluded on purpose: the theorem is about
+reaching a *checkmate*, and K+B cannot mate but stalemates easily.
+
+    positions (mate goals)          2093
+    bare defender king                18   (0.9%)
+    bare defender AND attacker K+1     2   (0.1%)
+
+Bullet 3 is the section's main lever and it is inapplicable. That is not a
+tuning result that might change with a better implementation; the precondition is
+simply almost never true outside composed miniatures.
+
+#### The trap
+
+There is an obvious way to make the theorem pay, and it is wrong. Drop the
+requirement that the defender be bare and test the mating side's material alone —
+"this side has only a king and a knight, so it cannot mate." That fires on **96**
+positions instead of 2, thirty-three of which are selfmates the engine currently
+loses to the clock. It is very attractive and it is unsound:
+
+    6rk/5Npp/8/8/8/8/8/3K4 b - -      White has K+N. It is checkmate.
+
+A smothered mate. The classical insufficient-material rule is a statement about
+K+N against a **bare** king; against a king with men of its own to be entombed
+by, a lone knight mates perfectly well. Every one of those 33 selfmates has a
+piece-laden attacker, and in a selfmate the attacker *wants* to be mated and will
+self-block deliberately — the single worst place to assume mates are impossible.
+
+Shipping it would have produced 33 false refutations: positions reported as
+having no solution when they have one. That is the one error class this project
+treats as unrecoverable, and it is the fourth time this session that a rule true
+of the common case has been false in general. The other three — the pawn model
+that omitted diagonal captures, the promotion that considered only queens, the
+retrograde generator that never checked legality — all shared the shape, and all
+three understated what a piece can do. This one overstates what material cannot
+do. The lesson generalises past the direction: **a chess rule quoted from
+memory is a rule about the position it was learned on.**
+
+#### What is actually true, checked by exhaustion
+
+Since the arguments are cheap to settle by machine, they were, over every legal
+placement rather than by reasoning:
+
+| claim | positions examined | result |
+| --- | --- | --- |
+| two bare kings, any stalemate? | 7,224 | none — holds |
+| K+B vs bare K, any checkmate? | 417,228 | none — holds |
+| K+N vs bare K, any checkmate? | 429,440 | none — holds |
+
+So the spec is correct on all three counts. The sound theorem is exactly "the
+mating side's material is insufficient **and** the mated side is a bare king",
+and its applicability across the same 2093 positions is:
+
+> **0.**
+
+Not small. None.
+
+#### Disposition, and what it settles
+
+Nothing implemented, on the same reasoning as 78: a mechanism that fires zero
+times is dead code no test can exercise, and dead code is worse than a documented
+absence. Bullet 2 is a fair illustration — the claim is true, but the search
+already answers a two-bare-kings stalemate request in 7,591 nodes and no corpus
+contains one, so a theorem for it would be pure surface area.
+
+The consequence for 78 is the point of this section. Level skipping needed a
+source of over-proof, and the two candidates the spec offers are `7.1` anti-mate
+and `7.6` material knowledge. `7.6` is now measured: it cannot supply over-proof
+here because it cannot fire here. **The `6.1`/`6.2` line is closed, not
+deferred** — there is no longer a pending prerequisite that might unlock it, and
+it should not be revisited on the strength of the spec's ordering alone.
+
+Four clean-room items have now been implemented or measured and four have come
+back negative: the preconditioner gate at 68, the selfmate reach bound at 77,
+level skipping at 78, and material knowledge here. In every case the reason was
+visible in the derivation before the measurement, and in every case the spec's
+ordering assumed a codebase this one is not. The remaining gap with Chest is 15
+selfmate positions with no structural class between them, and the honest next
+step is a differential investigation of what Chest actually does on those, not a
+fifth item read off the list.

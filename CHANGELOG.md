@@ -10,6 +10,23 @@ without one.
 
 ## Unreleased
 
+**Material knowledge is rejected, and the attractive form of it is unsound.**
+Section 78 named material knowledge as the prerequisite for level skipping, so
+it was measured before being built. Its main lever — a minimum-depth table for a
+bare defender king against king-plus-one — applies to 2 positions out of 2093.
+Dropping the bare-king requirement and testing the mating side's material alone
+would fire on 96, but it is wrong: `6rk/5Npp/8/8/8/8/8/3K4 b - -` is checkmate
+with White holding only king and knight, and a smothered mate needs the mated
+side to have men to be entombed by. Shipping it would have produced 33 false
+refutations, all selfmates, where the attacker is piece-laden and *wants* to be
+mated. Exhaustive checks confirm the spec's underlying claims — no stalemate
+exists between two bare kings (7,224 positions), and neither K+B nor K+N mates a
+bare king (417,228 and 429,440) — but the sound theorem's applicability across
+the corpora is zero. Nothing implemented; see `docs/ARCHITECTURE.md` section 80.
+
+This closes the level-skipping line from section 78 rather than deferring it:
+the prerequisite exists, was measured, and cannot fire here.
+
 **Fixed: the engine faulted in move generation when built with AVX enabled.**
 `g++ -O3 -march=native` produced a binary that segfaulted before perft reached
 depth 3. GCC copies the board struct through `ymm` registers and spills it with
