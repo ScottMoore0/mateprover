@@ -220,6 +220,22 @@ void print_usage() {
 "                                taken is the one proving the most. Cannot\n"
 "                                change a verdict; the off switch is the\n"
 "                                differential test\n"
+"  --depth2-scorer | --no-depth2-scorer\n"
+"                                default: off. At remaining depth 2, order\n"
+"                                replies with an additive scorer -- checks,\n"
+"                                material, own-king room -- instead of the width\n"
+"                                estimator. A different shape, not a cheaper\n"
+"                                approximation, and its constants are derived\n"
+"                                here rather than adopted. Measured a tie with\n"
+"                                the estimator on coverage, so it is off\n"
+"  --exact-tt | --no-exact-tt    default: on. Off disables the exact proof table\n"
+"                                entirely. A diagnostic, not a tuning knob: the\n"
+"                                table is keyed by position with no depth, so it\n"
+"                                is sound only because a disproof bounds every\n"
+"                                smaller depth and a proof depth is minimal.\n"
+"                                Running a corpus both ways and comparing the\n"
+"                                reported depths is the only check of those two\n"
+"                                properties\n"
 "  --answer-order-min-depth N    remaining depth at or above which replies are\n"
 "                                ordered (default 2). Below it the lazy scan\n"
 "                                runs instead. Swept, not assumed: on 200\n"
@@ -439,6 +455,14 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--depth2-scorer") {
+            config.depth2_scorer = true;
+        } else if (arg == "--no-depth2-scorer") {
+            config.depth2_scorer = false;
+        } else if (arg == "--no-exact-tt") {
+            config.exact_tt = false;
+        } else if (arg == "--exact-tt") {
+            config.exact_tt = true;
         } else if (arg == "--answer-order-min-depth" && i + 1 < argc) {
             config.answer_order_min_depth = std::atoi(argv[++i]);
         } else if (arg == "--answer-order") {

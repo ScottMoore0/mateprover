@@ -16,6 +16,16 @@ namespace mateprover {
 // Probe for a verdict at `depth`. The key excludes depth; the entry's bounds
 // decide whether what is stored answers this particular question.
 bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out) {
+    // The off switch exists for one test: that verdicts and reported depths are
+    // identical with the table on and off, over the whole corpus. The table is
+    // keyed by position with no depth in the key, so its correctness rests
+    // entirely on two properties of the search -- a disproof is a bound over
+    // every smaller depth, and a proof depth is minimal. Nothing else in the
+    // suite can detect a violation of either; it would surface as a non-minimal
+    // mate on some position nobody happened to test.
+    if (!s.exact_tt) {
+        return false;
+    }
     ++s.stats.tt_probes;
     TTEntry entry;
     if (s.shared_table != nullptr) {
@@ -62,6 +72,9 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
 }
 
 void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof& proof) {
+    if (!s.exact_tt) {
+        return;
+    }
     // An aborted subtree produced no verdict. Storing its empty result would
     // cache a false disproof, so nothing is written once the search unwinds.
     if (s.aborted) {

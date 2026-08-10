@@ -10,6 +10,34 @@ without one.
 
 ## Unreleased
 
+**The exact proof table's soundness is now testable, and tested.** The table is
+keyed by position with no depth in the key, which is sound only because a
+disproof bounds every smaller depth and a proof depth is minimal. Nothing in the
+suite could detect a violation of either -- it would surface as a non-minimal
+mate on some untested position. `--no-exact-tt` exists for that one check:
+running four corpora with the table on and off and comparing reported DEPTHS
+gives 275 positions solved both ways and **zero mismatches**. Both preconditions
+hold on every goal. The same run prices the table at 35 solved against 18 on
+directmate.
+
+**The 28 remaining Chest-only selfmates are two classes, and mostly not
+disproof-bound.** Fourteen miniatures of 6-8 men with a single-unit mating force,
+fourteen heavy positions of 13-25 men. Given `--direct-depth`, which skips the
+shallow root disproofs entirely, coverage goes from 2 of 28 to 5 -- so the whole
+graded-failure-depth line has a ceiling of about three positions here. Section 81
+was right that the cost concentrates in disproof; it does not follow that the
+residue is unlocked by cheapening it.
+
+**Answer ordering has no headroom left.** The depth-2 additive scorer was ported
+with re-derived constants -- 1.73x fewer nodes on a hard disproof -- and ties the
+width estimator on the corpus: 205 against 205, with ordering off at 202 and zero
+depth disagreements between any pair. Any ordering is worth three positions;
+sophistication is worth none of it. Kept behind `--depth2-scorer`, default off.
+That closes the specification's check refinement, which was explicitly
+conditional on this port leaving room, and its sole-attacker tracking, which
+would need incremental per-square attack sets this board does not have. See
+`docs/ARCHITECTURE.md` section 84.
+
 **Selfmate against Chest 3.19, re-measured over all 903 positions at 10 s each:
 626 to 416.** 238 positions only MateProver solves, 28 only Chest; on the 388
 both solve, 2.24x in total time and a 6.14x median per position. Section 81's

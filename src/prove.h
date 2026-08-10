@@ -497,6 +497,142 @@ inline int attacker_width_estimate(const Board& rb, Color attacker) {
     return width < 1 ? 1 : width;
 }
 
+
+// Does the piece standing on `from` attack `target` on this board? Geometry plus
+// occupancy; used by the depth-2 scorer to identify checking pieces and to ask
+// whether a checker can be taken.
+inline bool piece_attacks_square(const Board& b, int from, int target) {
+    if (from == target) return false;
+    const std::uint64_t bit = 1ull << from;
+    int pt = PT_NONE;
+    for (int i = 0; i < 6; ++i) {
+        if (b.by_type[i] & bit) { pt = i; break; }
+    }
+    if (pt == PT_NONE) return false;
+    if (pt == PT_KNIGHT || pt == PT_KING) {
+        const SquareList& l = (pt == PT_KNIGHT) ? knight_table()[from] : king_table()[from];
+        for (int i = 0; i < l.count; ++i) if (l.sq[i] == target) return true;
+        return false;
+    }
+    if (pt == PT_PAWN) {
+        const Color us = (b.by_color[WHITE] & bit) ? WHITE : BLACK;
+        const int f = file_of(from), r = rank_of(from);
+        const int dr = (us == WHITE) ? 1 : -1;
+        for (int df = -1; df <= 1; df += 2) {
+            if (on_board(f + df, r + dr) && square_of(f + df, r + dr) == target) return true;
+        }
+        return false;
+    }
+    const int first = (pt == PT_BISHOP) ? 4 : 0;
+    const int last = (pt == PT_ROOK) ? 4 : 8;
+    const auto& rays = ray_table();
+    for (int dir = first; dir < last; ++dir) {
+        const SquareList& ray = rays[dir][from];
+        for (int i = 0; i < ray.count; ++i) {
+            const int sq = ray.sq[i];
+            if (sq == target) return true;
+            if (b.occ & (1ull << sq)) break;
+        }
+    }
+    return false;
+}
+
+inline bool squares_adjacent(int a, int c) {
+    const int df = file_of(a) - file_of(c);
+    const int dr = rank_of(a) - rank_of(c);
+    return a != c && df >= -1 && df <= 1 && dr >= -1 && dr <= 1;
+}
+
+// How many of a king's eight neighbours are neither self-occupied nor attacked.
+inline int safe_neighbour_count(const Board& b, int king_sq, Color us) {
+    if (king_sq < 0) return 0;
+    int n = 0;
+    const SquareList& l = king_table()[king_sq];
+    for (int i = 0; i < l.count; ++i) {
+        const int to = l.sq[i];
+        if (b.by_color[us] & (1ull << to)) continue;
+        if (!is_attacked(b, to, other(us))) ++n;
+    }
+    return n;
+}
+
+// The depth-2 answer scorer: additive, higher is better for the defender, no
+// product and no subtree model. A different shape from the width estimator, not
+// a cheaper approximation of it.
+//
+// EVERY constant here is mine. The specification records that the original's
+// author marks his own values as underived, fitted empirically against 1990s
+// search behaviour; adopting them would import a fit to a different engine. The
+// relative ORDERING of the check bonuses is the specified part and is preserved:
+// double-and-near > double > single-and-near > single. Magnitudes are set
+// commensurate with the material scale, so that a double check outweighs winning
+// a queen and a bare single check does not.
+inline int depth2_answer_score(const Board& b, const Board& rb, const Move& r,
+                               Color attacker, int defender_in_check_safe_origin) {
+    static constexpr int kValue[6] = {100, 320, 330, 500, 900, 0};   // P N B R Q K
+    int score = 0;
+
+    const int aking = rb.king_sq[attacker];
+    if (aking >= 0 && is_attacked(rb, aking, other(attacker))) {
+        int checkers = 0;
+        int checker_sq = -1;
+        std::uint64_t men = rb.by_color[other(attacker)];
+        while (men) {
+            const int sq = lsb_index(men);
+            men &= men - 1;
+            if (piece_attacks_square(rb, sq, aking)) {
+                ++checkers;
+                checker_sq = sq;
+            }
+        }
+        const bool near = checker_sq >= 0 && squares_adjacent(checker_sq, aking);
+        if (checkers >= 2) {
+            score += near ? 900 : 700;
+        } else {
+            score += near ? 400 : 250;
+        }
+        // A checker the attacker can simply take with something other than his
+        // king is worth much less. The king's own capture is excluded because it
+        // is already priced by the escape count.
+        if (checkers == 1 && checker_sq >= 0) {
+            std::uint64_t theirs = rb.by_color[attacker];
+            while (theirs) {
+                const int sq = lsb_index(theirs);
+                theirs &= theirs - 1;
+                if (sq == aking) continue;
+                if (piece_attacks_square(rb, sq, checker_sq)) {
+                    score -= 200;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Material the reply removes.
+    const std::uint64_t tobit = 1ull << r.to;
+    if (b.by_color[attacker] & tobit) {
+        for (int i = 0; i < 6; ++i) {
+            if (b.by_type[i] & tobit) { score += kValue[i]; break; }
+        }
+    }
+
+    // When the defender is himself in check, how the reply changes his own
+    // king's room. The origin count is invariant across replies and is passed in
+    // rather than recomputed.
+    if (defender_in_check_safe_origin >= 0) {
+        const Color defender = other(attacker);
+        const int dking = rb.king_sq[defender];
+        if (r.from == b.king_sq[defender]) {
+            score += 60 * (safe_neighbour_count(rb, dking, defender) -
+                           defender_in_check_safe_origin);
+        } else {
+            if (dking >= 0 && squares_adjacent(r.to, dking)) score += 40;
+            if (dking >= 0 && squares_adjacent(r.from, dking)) score -= 40;
+        }
+    }
+    return score;
+}
+
 Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -609,13 +745,25 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         gen_pseudo(b, pseudo);
         std::vector<std::pair<int, Move>> scored;
         scored.reserve(pseudo.size());
+        // At remaining depth exactly 2 an additive scorer may run instead of the
+        // width estimator -- a different shape, not a cheaper approximation, and
+        // what the original dispatches to in that band. Scores there are "higher
+        // is better", so they are negated to keep one ascending selection below.
+        const bool use_depth2 = s.depth2_scorer && depth == 2;
+        int safe_origin = -1;
+        if (use_depth2 && in_check(b, b.stm)) {
+            safe_origin = safe_neighbour_count(b, b.king_sq[b.stm], b.stm);
+        }
         for (const Move& r : pseudo) {
             ++s.stats.defender_legality_tests;
             if (!move_is_legal(b, r)) {
                 continue;
             }
             const Board rb = make_move(b, r);
-            scored.emplace_back(attacker_width_estimate(rb, s.attacker), r);
+            scored.emplace_back(
+                use_depth2 ? -depth2_answer_score(b, rb, r, s.attacker, safe_origin)
+                           : attacker_width_estimate(rb, s.attacker),
+                r);
         }
         if (scored.size() >= 2) {
             ++s.stats.answer_orderings;

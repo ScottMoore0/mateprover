@@ -160,6 +160,7 @@ did. If you are reading it for the first time:
 - [81. The Selfmate Gap Is A Disproof Gap, And The Solution Search Was Never The Problem](#81-the-selfmate-gap-is-a-disproof-gap-and-the-solution-search-was-never-the-problem)
 - [82. Answer Ordering: A Real Win Through The Wrong Mechanism](#82-answer-ordering-a-real-win-through-the-wrong-mechanism)
 - [83. Three Follow-Ups, Two Measured Out Before They Were Built](#83-three-follow-ups-two-measured-out-before-they-were-built)
+- [84. The Cache Is Provably Sound, The Residue Is Two Classes, And Ordering Has No Headroom Left](#84-the-cache-is-provably-sound-the-residue-is-two-classes-and-ordering-has-no-headroom-left)
 
 ## Impact-Ordered Architecture
 
@@ -6226,3 +6227,122 @@ comes next.
 Chest also returned a definitive "no solution" on 15 positions. That is evidence
 about the CORPUS rather than about either engine, and those entries want the
 same two-prover adjudication that produced the 71 in `KNOWN_BAD.jsonl`.
+
+### 84. The Cache Is Provably Sound, The Residue Is Two Classes, And Ordering Has No Headroom Left
+
+Four items from a clean-room specification on estimator refinements and the
+deepening-cache interlock. The specification's most useful contribution was not a
+feature to build: it was stating, as requirements rather than description, the two
+properties the existing cache design silently depends on.
+
+#### The cache's preconditions, now checked
+
+MateProver's exact proof table is keyed by position with **no depth in the key**;
+the entry carries `min_proved` and `max_disproved` bounds and `absorb()` keeps the
+strongest of each. That is sound only because of two properties of the search:
+
+1. a disproof at depth *d* is a bound over every depth **at or below** *d*, and
+2. a reported proof depth is **minimal**.
+
+Break either and the table answers questions it was never asked. The failure mode
+is not a crash: it is a non-minimal mate reported months later on a position
+nobody tested. **Nothing in the 414 checks could detect it**, because every one of
+them runs a single configuration.
+
+`--no-exact-tt` exists for exactly one test, and it is not a tuning knob. Running
+each corpus with the table on and off and comparing reported DEPTHS rather than
+coverage:
+
+| corpus | solved both ways | depth mismatches |
+| --- | --- | --- |
+| matetrack d8 | 18 | **0** |
+| stalemate union | 119 | **0** |
+| selfmate deep | 58 | **0** |
+| helpmate | 80 | **0** |
+| | **275** | **0** |
+
+Single-threaded and unrestricted throughout, because a restricted lane is
+permitted to report a non-minimal depth -- it is marked `via` -- and would have
+produced false positives.
+
+Both preconditions hold across every goal. That is an assurance this engine could
+not previously make about the design its whole table rests on, and it is worth
+more than any of the three optimisations below.
+
+The run also prices the table: 35 solved against 18 on directmate, 63 against 58
+on selfmate.
+
+#### The residue is two classes, and mostly not what was assumed
+
+The 28 positions Chest solves and MateProver does not, characterised:
+
+| | men | count | mating force |
+| --- | --- | --- | --- |
+| miniatures | 6-8 | 14 | K+P (7), K+Q (5), K+R (2) |
+| heavy | 13-25 | 14 | large mixed |
+
+Stipulated depths run 5 to 10. **These are not one population**, and half of them
+are deep sparse endgames whose natural instrument is a tablebase -- excluded here
+by standing instruction.
+
+More usefully, the assumption that they are disproof-bound is largely wrong.
+Given `--direct-depth`, which skips the shallow root disproofs entirely:
+
+    iterative      2 of 28      miniature 0/14   heavy 2/14
+    direct depth   5 of 28      miniature 2/14   heavy 3/14
+
+**Removing every shallow disproof converts three positions.** So the whole
+graded-failure-depth line -- 78, 82, and the per-move array of 83 -- has a ceiling
+of about three positions on this residue. 81 was right that the *cost* is
+concentrated in disproof; it does not follow that the *residue* is unlocked by
+cheapening it, and this section is the measurement that separates those two
+claims.
+
+#### Ordering: any is worth three, sophistication is worth nothing
+
+The specification corrected a plan before it was built: at remaining depth exactly
+2 the original does not run its width estimator at all, but dispatches to a cheap
+additive scorer sharing no machinery with it. So aiming the two refinements at
+depth 2, as the band sweep of 83 suggested, would have ported depth-3 machinery
+into a band the original deliberately handles differently.
+
+It was ported instead, with every constant re-derived -- the specification records
+that the original's author annotates his own values as underived, fitted against
+1990s search behaviour, which is the strongest available argument for not adopting
+them. Only the relative ordering of the check bonuses is inherited, that being the
+specified part.
+
+On the hard depth-5 disproof it looks decisive: 11,074,634 nodes and 2.89 s become
+6,395,922 and 2.08 s. On 250 selfmates at a 4 s budget it is a tie:
+
+| | solved |
+| --- | --- |
+| width estimator | 205 |
+| depth-2 additive scorer | 205 |
+| ordering off | 202 |
+
+Zero depth disagreements between any pair. That answers the question the
+specification posed for this port -- how much of the band's gap is explained by
+*any* ordering versus by *sophisticated* ordering -- and the answer is that any
+ordering is worth three positions and sophistication is worth none of it.
+
+Kept, gated, default off, with the numbers: the same disposition as the DFPN gate
+at 68 and the selfmate reach bound at 77.
+
+#### What this rules out
+
+The specification ranks sole-attacker tracking second and the check refinement
+fourth, the latter being its largest piece of work, with the explicit condition
+that the check refinement should be built only if the additive scorer leaves room.
+**It leaves none.** Two orderings of completely different shape score identically,
+three positions above no ordering at all, so the band's headroom above "order the
+replies somehow" is zero on this corpus.
+
+Sole-attacker tracking is separately blocked by cost rather than by value: it
+requires per-square attacker sets maintained incrementally, which this board does
+not have and which is a representation change substantially larger than the
+refinement it would enable. With the band's measured headroom at zero, it cannot
+earn that from here.
+
+Both are therefore not-built, on measurement, and the estimator work is closed
+unless something outside this band gives it a reason to reopen.

@@ -67,7 +67,13 @@ struct SearchConfig {
     bool selfmate_bound = false;
     // Order the selfmate defender's replies by how little room they leave the
     // attacker. On by default; the off switch is the differential test.
+    // The exact proof table. On always, except for the equivalence test that
+    // is the only way to check the depthless key's preconditions.
+    bool exact_tt = true;
     bool answer_order = true;
+    // Use the additive scorer at remaining depth 2 rather than the width
+    // estimator. Off until measured.
+    bool depth2_scorer = false;
     // Remaining depth at or above which replies are ordered. Below it the
     // lazy scan runs instead, since there is no subtree left to shape and
     // materialising the list to sort it would be pure cost.
