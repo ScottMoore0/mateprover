@@ -30,7 +30,7 @@ did. If you are reading it for the first time:
   portfolio) and 29 (promoting DFPN), which between them account for most of
   the reach.
 - **What is measured out and will not repay more work** -- 16, 17, 30 to 32,
-  and 41 to 47.
+  41 to 47, and the later rejections 68, 71, 77 and 78.
 - **How a change is allowed to ship** -- the Promotion Rule at the end.
 
 - [1. Exact Proof Kernel](#1-exact-proof-kernel)
@@ -154,6 +154,7 @@ did. If you are reading it for the first time:
 - [75. The Flight-Square Bound, And A Mate Delivered By Underpromotion](#75-the-flight-square-bound-and-a-mate-delivered-by-underpromotion)
 - [76. Characterising The Cooperative Residue: There Is No Class](#76-characterising-the-cooperative-residue-there-is-no-class)
 - [77. There Is No King+Pawn Theorem, And The Bound That Replaces It Does Not Pay](#77-there-is-no-kingpawn-theorem-and-the-bound-that-replaces-it-does-not-pay)
+- [78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone](#78-level-skipping-is-correct-fires-zero-times-and-cannot-be-evaluated-alone)
 
 ## Impact-Ordered Architecture
 
@@ -5469,3 +5470,134 @@ problem. GAP-2 covered the queen case and converted nothing; this covers the paw
 case and converts nothing. Both were the classes the analysis named. Whatever
 Chest is doing on these, it is not something either theorem describes, and the
 next honest step is to find out what — not to write a third one.
+
+### 78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone
+
+The clean-room search spec orders its items by expected value and puts §6.2 level
+skipping near the top: *"Pure win, no risk."* It is neither, here — not because
+the idea is wrong, but because its value is not a property of the idea.
+
+#### What was built
+
+Both halves of the spec's proposal, in full:
+
+- **§6.1, the graded failure depth.** A failed search stops reporting a bare
+  "no", and reports instead the largest depth for which absence is *proven*.
+  `Proof.fail_depth` carried it, and it propagated through both node pairs with
+  the arithmetic each one needs — a directmate OR node takes
+  `min(reply.fail_depth + 1)` over all replies, its AND node takes
+  `max(depth, child.fail_depth)`; the selfmate pair inverts the `+1` between them
+  because in a selfmate the roles invert. The proof table stored the stronger of
+  `depth` and `fail_depth` on a miss, so a bound survived eviction and reuse.
+- **§6.2, level skipping.** The three iterative-deepening route loops stopped
+  doing `++depth` and advanced to `fail_depth + 1` instead — past everything the
+  failed depth actually disproved rather than one step past what it was asked.
+  Bounded below by `depth + 1`, so it can only move forwards, and an abandoned or
+  split depth leaves `fail_depth` at zero and the loop simply steps.
+
+414 checks pass. A `levels_skipped` counter was added to say how much it bought.
+
+#### It bought nothing, and "nothing" here is exact
+
+On the target position — `1bR5/rPPPPPPP/n7/8/8/8/2pP4/KRqr3k w - -`, `sfm 6`,
+which Chest answers in 0.06 s — the counter read **zero**, with any-depth
+refutations both off and on.
+
+One position is a sample, and this project has been reversed by sample-vs-corpus
+seven times, so the counter was summed across four corpora and both goal
+families:
+
+| corpus | n | solved | nodes | `levels_skipped` |
+| --- | --- | --- | --- | --- |
+| matetrack d8 | 120 | 89 | 71,796,022 | **0** |
+| matetrack d10 | 60 | 45 | 54,432,901 | **0** |
+| stalemate union | 120 | 119 | 45,783 | **0** |
+| selfmate deep | 120 | 94 | 429,091,197 | **0** |
+| | **420** | | **555,365,903** | **0** |
+
+Not "rarely". Not "less than the overhead". Zero, over half a billion nodes.
+
+#### Why, and why it was predictable
+
+Level skipping consumes over-proof: it pays exactly when a search proves *more*
+than it was asked to. **MateProver never over-proves.** Every one of its
+disproofs is a disproof of the question it was handed, because every one comes
+from exhausting the move tree at that depth — and exhausting depth *d* says
+nothing whatever about *d+1*, where the extra ply supplies moves that did not
+exist.
+
+The spec's own sources of over-proof are the reason it works there, and
+MateProver has neither:
+
+- **§7.6, material and endgame knowledge** — "this material cannot mate in *any*
+  number of moves" is a statement about all depths at once. Absent here.
+- **§7.1, anti-mate failing at the sentinel** — returns a disproof carrying a
+  depth larger than the one asked. Absent here.
+
+The one mechanism that *could* have been a source is the reachability bound of
+75 and 77, and it is not: it proves "no mate within *d* plies" for the specific
+*d* it was given, and more plies mean more reach, so it says nothing about *d+1*
+either. The refutation lattice of GAP-1 does prove something depth-independent —
+but that already short-circuits the whole root loop, which is strictly stronger
+than skipping a level of it.
+
+**So §6.2's value is not a property of §6.2.** It is a property of §7.1 and §7.6,
+metered through §6.2. Ordering it as an early "pure win" is correct only in a
+codebase that already has them. Read as a dependency rather than a ranking, the
+spec's ordering is inverted for this engine.
+
+#### The defender table, which is a real gap and still does not pay
+
+The same work exposed something genuinely missing, and worth recording
+separately: **`prove_selfmate_defender` had no transposition table at all.** Its
+directmate counterpart has always memoised. That is not a tuning difference, it
+is an absent mechanism, and adding it did what an absent mechanism should:
+
+    sfm 6 nodes  85,100,000 -> 74,620,775     -12%
+
+And it is *slower*. The paired corpus run — 903 unique selfmates, 5 s cap,
+committed engine against the new build, chunk-resumable because this measure had
+already been lost once to a killed job — ran 24 of 40 chunks before the trend
+stopped being in question:
+
+| chunk | 1 | 7 | 14 | 20 | 24 |
+| --- | --- | --- | --- | --- | --- |
+| committed | 21 | 136 | 251 | 345 | 401 |
+| defender TT | 20 | 134 | 249 | 343 | 399 |
+
+Dead flat at **-2** for twenty-four consecutive chunks, through s#5 to s#8. The
+run was stopped there: a difference that has not moved across 400 positions and
+four depth bands is not going to be decided by the remaining 500.
+
+Twelve percent fewer nodes and two fewer solutions is the same shape as
+`--dfpn-min-men` at 68 and the selfmate reach bound at 77 — a mechanism that is
+sound, does what it claims, and converts none of it. The nodes it saves are
+cheap ones; the cost is paid at every defender node including the ones that were
+never going to repeat.
+
+#### Disposition
+
+Both reverted. Not gated-and-defaulted-off like 68 and 77, because neither has
+the property that made gating worthwhile there — those two fire constantly and
+might pay under a different budget, whereas level skipping fires *never* under
+any budget this engine can currently produce, and the defender table's loss is
+flat across every depth band measured. Dead code that no test can exercise is
+worse than a documented absence. The patch is small and mechanical, and this
+section is the specification for rebuilding it.
+
+**The condition for revisiting is explicit: build §7.6 first.** Material and
+endgame knowledge is the thing that makes a disproof depth-independent, and until
+something in the engine can say "not in any number of moves", the graded failure
+depth has nothing to grade and level skipping has nothing to skip. If §7.6 lands,
+this comes back with it — and should be measured with it, never alone.
+
+#### What this leaves
+
+An eighth entry in the measured-and-rejected column, and the most useful thing in
+it is not the result but the shape: **the spec's items are not independent, and
+its ordering is by value-in-Chest, not value-in-isolation.** Two of the three
+clean-room items evaluated so far (68's preconditioner gate, and this) have come
+back negative for reasons that were visible in the derivation beforehand. That is
+now the expected outcome for any spec item adopted without first checking which
+of its neighbours it depends on, and future items should be read for their
+dependencies before their rank.

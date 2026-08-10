@@ -10,6 +10,27 @@ without one.
 
 ## Unreleased
 
+**Level skipping and the graded failure depth are rejected on measurement, and
+the reason is that they cannot be measured alone.** Both were implemented in
+full: a failed search reporting the largest depth it actually disproved, that
+bound propagating through both node pairs and surviving in the proof table, and
+the three iterative-deepening loops advancing past it rather than by one. The
+counter says how often it fired across 420 positions, four corpora, both goal
+families and 555 million nodes: **zero times.** Level skipping consumes
+over-proof, and MateProver never over-proves — every disproof it makes comes from
+exhausting a move tree at one depth, which says nothing about the next. The
+mechanisms that would supply over-proof (material knowledge that holds for all
+depths at once; an anti-mate test failing at the sentinel) are not present, so
+the feature's value belongs to them and not to itself. Reverted, with the
+condition for revisiting stated: build the material knowledge first. See
+`docs/ARCHITECTURE.md` section 78.
+
+The same work found that **`prove_selfmate_defender` had no transposition table**
+while its directmate counterpart has always had one. Adding it cut a hard `sfm 6`
+by 12% of nodes and still lost two positions across 400 selfmates at a 5 s cap,
+flat across four depth bands — the third mechanism in this project that is sound,
+fires constantly, and converts nothing. Also reverted, also documented.
+
 **The cooperative split now runs two plies deep.** Splitting on the root move
 alone made as many parallel tasks as there were root moves — around thirty — and
 cooperative subtrees are wildly uneven, so one task held most of the work and the
