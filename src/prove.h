@@ -199,6 +199,11 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
 // be unsound rather than merely unhelpful.
 Proof prove_selfmate_defender(Search& s, const Board& b, int depth);
 
+// A failure that holds at every depth, not merely the one requested. Large
+// enough that no real stipulation reaches it, small enough that the repeated
+// +1 as it propagates upward cannot overflow an int.
+constexpr int kFailAnyDepth = 1 << 20;
+
 Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -208,6 +213,10 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     if (position_is_refuted_axiomatically(s, b)) {
         Proof out;
         out.refuted = true;
+        // A refutation holds at EVERY depth, so it is the strongest failure
+        // there is. Reporting it as an ordinary depth-limited failure -- which
+        // is what a zero here means -- discards that at the first parent.
+        out.fail_depth = kFailAnyDepth;
         return out;
     }
     if (b.stm != s.attacker) {
@@ -229,7 +238,17 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
             }
             return Proof{true, {}, cert};
         }
-        return {};
+        // The attacker has no legal move and the position is not the goal, so
+        // this line is OVER -- not merely out of depth. Nothing follows it at any
+        // depth, which makes this one of the two places in the selfmate
+        // recursion where a failure is genuinely unbounded. Both reported zero,
+        // and because the attacker node takes the MINIMUM over its moves, a
+        // single zero at the bottom pins every ancestor to exactly the depth it
+        // was asked for. That is why the disproof-excess histogram sat at 100%
+        // in bucket zero while the propagation above it was already correct.
+        Proof dead;
+        dead.fail_depth = kFailAnyDepth;
+        return dead;
     }
     // See docs/SELFMATE_REACH_DERIVATION.md. The roles invert here: the side
     // that must DELIVER mate is the defender, and the side mated is the
@@ -242,6 +261,12 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
     }
+    // Proven disproof depth for this node: the MINIMUM over the attacker's
+    // moves, since the attacker needs only one of them to work and the node
+    // survives to whatever depth its best move does. The selfmate recursion
+    // decrements across the DEFENDER edge, not this one, so no increment
+    // belongs here -- the defender node it reaches carries the same depth.
+    int sm_node_fail = 1 << 29;
     if (depth <= 0) {
         return {};
     }
@@ -277,6 +302,9 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         ++s.stats.attacker_candidates;
         const Board nb = make_move(b, amove);
         Proof replies = prove_selfmate_defender(s, nb, depth);
+        if (!replies.ok && replies.fail_depth > 0 && replies.fail_depth < sm_node_fail) {
+            sm_node_fail = replies.fail_depth;
+        }
         if (s.aborted) {
             return {};
         }
@@ -296,8 +324,10 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
             return proof;
         }
     }
-    store_exact_proof_table(s, key, depth, {});
-    return {};
+    Proof failed;
+    failed.fail_depth = (sm_node_fail >= (1 << 29)) ? depth : std::max(depth, sm_node_fail);
+    store_exact_proof_table(s, key, depth, failed);
+    return failed;
 }
 
 // GAP-2: perpetual check by a lone queen. See docs/GAP2_DERIVATION.md.
@@ -403,6 +433,70 @@ inline bool selfmate_perpetual_check(Search& s, const Board& root) {
     return true;
 }
 
+
+// Two-ply attacker-width estimate, used to order the defender's replies.
+//
+// The defender prefers the reply leaving the ATTACKER least room. That is not
+// about refuting sooner -- profiling showed the first reply already refutes at
+// essentially every node -- but about WHICH refutation is taken. A reply that
+// walks into a position hopeless for the attacker several levels shallower
+// returns a much larger proven failure depth, and that surplus is what level
+// skipping and the levels above consume. Two replies that both refute at the
+// current depth are not equally valuable, and nothing in the old node
+// distinguished them.
+//
+// This is a heuristic and nothing else depends on it: it changes the order
+// replies are tried, never which of them refutes. The differential test is that
+// verdicts are identical with it on and off while node counts are not, which is
+// what `--no-answer-order` exists for.
+//
+// Deliberately NOT special-cased for checking replies. A check narrows the
+// attacker's next level so sharply that a naive width would rank every check as
+// excellent, and many checks are bad. Counting all surviving attacker units,
+// without asking which are pinned by the check, over-estimates the width of a
+// checking reply -- the conservative direction, and the one that avoids the
+// failure mode.
+inline int attacker_width_estimate(const Board& rb, Color attacker) {
+    // A mobility proxy per surviving unit. Exact move counts would cost a
+    // generation per reply, which is the expense this path exists to avoid; the
+    // weights only have to rank, not to measure.
+    static constexpr int kWeight[5] = {2, 5, 6, 7, 9};   // P N B R Q
+    int width = 0;
+    std::uint64_t men = rb.by_color[attacker];
+    while (men) {
+        const int sq = lsb_index(men);
+        men &= men - 1;
+        const std::uint64_t bit = 1ull << sq;
+        for (int t = 0; t < 5; ++t) {
+            if (rb.by_type[t] & bit) {
+                width += kWeight[t];
+                break;
+            }
+        }
+    }
+    // King escapes, counted exactly rather than proxied. This is the term that
+    // decides whether the attacker is close to having no choice at all, which is
+    // exactly the state a selfmate attacker is trying to reach and a defender is
+    // trying to avoid, so it is worth eight attack queries.
+    const int k = rb.king_sq[attacker];
+    if (k >= 0) {
+        const int kf = k % 8;
+        const int kr = k / 8;
+        for (int df = -1; df <= 1; ++df) {
+            for (int dr = -1; dr <= 1; ++dr) {
+                if (df == 0 && dr == 0) continue;
+                const int nf = kf + df;
+                const int nr = kr + dr;
+                if (nf < 0 || nf > 7 || nr < 0 || nr > 7) continue;
+                const int to = nf + nr * 8;
+                if (rb.by_color[attacker] & (1ull << to)) continue;   // self-blocked
+                if (!is_attacked(rb, to, other(attacker))) width += 3;
+            }
+        }
+    }
+    return width < 1 ? 1 : width;
+}
+
 Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -440,15 +534,23 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         }
     }
 
-    std::vector<Move> replies = legal_moves(b, s.move_reserve, s.move_reserve_capacity,
-                                            s.static_pseudo);
+    // LAZY REPLY SCAN. This used to build a fully legality-filtered reply list
+    // and then, on a disproof, consume exactly one entry of it. Profiled on a
+    // depth-5 selfmate disproof: 31.0 legal replies generated per node against
+    // 1.00 searched -- 809 million generations to use 26 million. Legality is a
+    // make-move plus an in-check test, so that discarded filter was the largest
+    // single cost in the search.
+    //
+    // The scan below interleaves instead: test one pseudo-legal move for
+    // legality, search it, stop the moment it refutes. Legal replies are still
+    // visited in gen_pseudo order with illegal ones skipped, which is exactly
+    // the sequence the filtered list produced, so this cannot change which reply
+    // refutes first, the PV, or any verdict. It is a pure cost change.
     ++s.stats.defender_move_lists;
-    s.stats.defender_moves += replies.size();
-    if (replies.empty()) {
-        // The defender is mated or stalemated. Either way he has not mated the
-        // attacker, so this line fails.
-        return {};
-    }
+
+    bool any_legal = false;
+    bool defence_survives = false;
+    int survived_to = depth;
 
     // The reported depth must be the WORST line, not the first one. Taking the
     // first reply's variation understated it whenever another defence held out
@@ -457,24 +559,111 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     // defence, so the PV has to be the longest of them.
     std::vector<Move> pv;
     std::vector<std::string> branch_certs;
-    for (const Move& r : replies) {
-        ++s.stats.defender_replies_tried;
-        const Board rb = make_move(b, r);
-        Proof child = prove_selfmate_attacker(s, rb, depth - 1);
-        if (s.aborted) {
-            return {};
+
+    auto scan = [&](auto& pseudo, bool prefiltered) {
+        for (const Move& r : pseudo) {
+            if (!prefiltered) {
+                ++s.stats.defender_legality_tests;
+                if (!move_is_legal(b, r)) {
+                    continue;
+                }
+            }
+            any_legal = true;
+            ++s.stats.defender_moves;
+            ++s.stats.defender_replies_tried;
+            const Board rb = make_move(b, r);
+            Proof child = prove_selfmate_attacker(s, rb, depth - 1);
+            if (s.aborted || !child.ok) {
+                // The decrement lives on this edge, so the increment does too:
+                // the subtree sat at depth-1 and reaching it cost this move.
+                defence_survives = true;   // one surviving defence refutes the line
+                survived_to = std::max(depth, child.fail_depth + 1);
+                return;
+            }
+            if (child.pv.size() + 1 > pv.size()) {
+                pv.clear();
+                pv.push_back(r);
+                pv.insert(pv.end(), child.pv.begin(), child.pv.end());
+            }
+            if (s.emit_proof) {
+                branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
+            }
         }
-        if (!child.ok) {
-            return {};            // one surviving defence refutes the whole line
+    };
+
+    // Ordering needs the whole list, and the lazy scan exists precisely to avoid
+    // building it, so the two are banded rather than combined: below remaining
+    // depth 2 there is no subtree left for ordering to shape and the lazy scan
+    // runs, at 2 and above the list is materialised and sorted. That band is
+    // also where the lazy scan was worth least, so little is given up.
+    if (s.answer_order && depth >= 2) {
+        std::vector<Move> pseudo;
+        if (s.move_reserve) pseudo.reserve(s.move_reserve_capacity);
+        gen_pseudo(b, pseudo);
+        std::vector<std::pair<int, Move>> scored;
+        scored.reserve(pseudo.size());
+        for (const Move& r : pseudo) {
+            ++s.stats.defender_legality_tests;
+            if (!move_is_legal(b, r)) {
+                continue;
+            }
+            const Board rb = make_move(b, r);
+            scored.emplace_back(attacker_width_estimate(rb, s.attacker), r);
         }
-        if (child.pv.size() + 1 > pv.size()) {
-            pv.clear();
-            pv.push_back(r);
-            pv.insert(pv.end(), child.pv.begin(), child.pv.end());
+        if (scored.size() >= 2) {
+            // Stable, so ties keep generation order and the search stays
+            // deterministic -- a property this engine states and tests for.
+            std::stable_sort(scored.begin(), scored.end(),
+                             [](const std::pair<int, Move>& x,
+                                const std::pair<int, Move>& y) {
+                                 return x.first < y.first;
+                             });
+            ++s.stats.answer_orderings;
         }
-        if (s.emit_proof) {
-            branch_certs.push_back("{\"r\":" + json_quote(move_uci(r)) + ",\"p\":" + child.cert + "}");
+        std::vector<Move> ordered;
+        ordered.reserve(scored.size());
+        for (const auto& entry : scored) {
+            ordered.push_back(entry.second);
         }
+        scan(ordered, true);
+    } else if (s.static_pseudo) {
+        MoveList fixed;
+        gen_pseudo(b, fixed);
+        if (!fixed.overflow) {
+            scan(fixed, false);
+        } else {
+            std::vector<Move> spill;
+            if (s.move_reserve) spill.reserve(s.move_reserve_capacity);
+            gen_pseudo(b, spill);
+            scan(spill, false);
+        }
+    } else {
+        std::vector<Move> pseudo;
+        if (s.move_reserve) pseudo.reserve(s.move_reserve_capacity);
+        gen_pseudo(b, pseudo);
+        scan(pseudo, false);
+    }
+
+    if (defence_survives) {
+        // The diagnostic the selfmate answer specification asks for first: how
+        // much MORE than the request this refutation proved. Bucket 0 dominating
+        // means every refutation is worth exactly what was asked for, which is
+        // the signature of an AND node with no preference among refutations.
+        const int excess = survived_to - depth;
+        if (excess <= 0)      ++s.stats.disproof_excess_0;
+        else if (excess == 1) ++s.stats.disproof_excess_1;
+        else if (excess == 2) ++s.stats.disproof_excess_2;
+        else if (excess == 3) ++s.stats.disproof_excess_3;
+        else if (excess == 4) ++s.stats.disproof_excess_4;
+        else                  ++s.stats.disproof_excess_5plus;
+        Proof out;
+        out.fail_depth = survived_to;
+        return out;
+    }
+    if (!any_legal) {
+        // The defender is mated or stalemated. Either way he has not mated the
+        // attacker, so this line fails.
+        return {};
     }
     std::string cert;
     if (s.emit_proof) {

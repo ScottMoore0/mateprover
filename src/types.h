@@ -145,6 +145,18 @@ struct Proof {
     // that carry it. Running out of depth, nodes or clock must never set it --
     // those are `ok == false && !refuted`, which is "unknown", not "impossible".
     bool refuted = false;
+    // How much this failure actually PROVED, which is often more than was asked.
+    // A disproof at depth d that composed from children carrying deeper failures
+    // establishes absence for every depth up to fail_depth, and a caller may
+    // start its next iteration past all of it. Zero means "nothing beyond the
+    // depth requested"; it is never a claim, only ever extra strength.
+    //
+    // Unlike `refuted` this cannot produce a wrong answer on its own -- it is a
+    // bound on a NEGATIVE result, so overstating it skips work that would have
+    // failed anyway. It can produce one indirectly, by causing a level that
+    // contains the real solution to be skipped, so it is composed only from
+    // children that genuinely reported it.
+    int fail_depth = 0;
 };
 
 struct RouteResult {
@@ -201,6 +213,23 @@ struct Stats {
     std::uint64_t defender_move_lists = 0;
     std::uint64_t defender_moves = 0;
     std::uint64_t defender_replies_tried = 0;
+    // Legality tests performed at defender nodes. `defender_moves` counts the
+    // legal replies the lazy scan actually reached; this counts what it cost to
+    // reach them, and the ratio is what the scan was written to reduce.
+    std::uint64_t defender_legality_tests = 0;
+    // Disproof-depth histogram, bucketed by how far the proven failure depth
+    // exceeded the requested depth at a defender node. Bucket 0 is "proved
+    // exactly what was asked", which is the signature of a search with no
+    // ordering preference among refutations; the higher buckets are the
+    // over-proof that level skipping and the per-move disproof array consume.
+    std::uint64_t disproof_excess_0 = 0;
+    std::uint64_t disproof_excess_1 = 0;
+    std::uint64_t disproof_excess_2 = 0;
+    std::uint64_t disproof_excess_3 = 0;
+    std::uint64_t disproof_excess_4 = 0;
+    std::uint64_t disproof_excess_5plus = 0;
+    std::uint64_t levels_skipped = 0;
+    std::uint64_t answer_orderings = 0;
     std::uint64_t defender_pseudo_moves = 0;
     std::uint64_t defender_lazy_skipped = 0;
     std::uint64_t dfpn_nodes = 0;
@@ -260,6 +289,15 @@ struct Stats {
         defender_move_lists += o.defender_move_lists;
         defender_moves += o.defender_moves;
         defender_replies_tried += o.defender_replies_tried;
+        defender_legality_tests += o.defender_legality_tests;
+        disproof_excess_0 += o.disproof_excess_0;
+        disproof_excess_1 += o.disproof_excess_1;
+        disproof_excess_2 += o.disproof_excess_2;
+        disproof_excess_3 += o.disproof_excess_3;
+        disproof_excess_4 += o.disproof_excess_4;
+        disproof_excess_5plus += o.disproof_excess_5plus;
+        levels_skipped += o.levels_skipped;
+        answer_orderings += o.answer_orderings;
         defender_pseudo_moves += o.defender_pseudo_moves;
         defender_lazy_skipped += o.defender_lazy_skipped;
         dfpn_nodes += o.dfpn_nodes;
@@ -297,7 +335,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 50 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 59 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

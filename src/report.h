@@ -199,6 +199,15 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"defender_move_lists\":" << st.defender_move_lists
               << ",\"defender_moves\":" << st.defender_moves
               << ",\"defender_replies_tried\":" << st.defender_replies_tried
+              << ",\"defender_legality_tests\":" << st.defender_legality_tests
+              << ",\"disproof_excess_0\":" << st.disproof_excess_0
+              << ",\"disproof_excess_1\":" << st.disproof_excess_1
+              << ",\"disproof_excess_2\":" << st.disproof_excess_2
+              << ",\"disproof_excess_3\":" << st.disproof_excess_3
+              << ",\"disproof_excess_4\":" << st.disproof_excess_4
+              << ",\"disproof_excess_5plus\":" << st.disproof_excess_5plus
+              << ",\"levels_skipped\":" << st.levels_skipped
+              << ",\"answer_orderings\":" << st.answer_orderings
               << ",\"defender_refutations\":" << st.defender_refutations
               << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
               << ",\"refutation_hint_hits\":" << st.refutation_hint_hits

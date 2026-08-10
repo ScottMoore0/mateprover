@@ -47,6 +47,9 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
         ++s.stats.tt_hits;
         ++s.stats.exact_tt_disproof_hits;
         out = {};
+        // Hand back the FULL strength of the stored disproof, not the depth that
+        // happened to be asked for. This is what lets a caller skip levels.
+        out.fail_depth = entry.max_disproved;
         return true;
     }
     // The position is known, but not at a bound that settles this depth.
@@ -65,10 +68,15 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
     } else {
         ++s.stats.exact_tt_disproof_stores;
     }
+    // Store the STRONGEST bound proven, not the depth that was asked for. For a
+    // proof `depth` is the length of the mate; for a disproof it is a bound, and
+    // the search often proves more than it was asked because a child's disproof
+    // propagates upward. Recording only the request throws that away.
+    const int bound = proof.ok ? depth : std::max(depth, proof.fail_depth);
     if (s.shared_table != nullptr) {
-        s.shared_table->merge(key, depth, proof.ok, proof.pv, proof.cert, proof.refuted);
+        s.shared_table->merge(key, bound, proof.ok, proof.pv, proof.cert, proof.refuted);
     } else {
-        s.tt.merge(key, depth, proof.ok, proof.pv, proof.cert, proof.refuted);
+        s.tt.merge(key, bound, proof.ok, proof.pv, proof.cert, proof.refuted);
     }
 }
 

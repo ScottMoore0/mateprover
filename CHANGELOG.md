@@ -10,6 +10,31 @@ without one.
 
 ## Unreleased
 
+**The selfmate defender now orders its replies, and scans them lazily.** Two
+independent changes to the same node, together worth +3 positions on 250
+selfmates at a 4 s budget (198 to 201) and 4.6x on a hard depth-5 disproof.
+
+The lazy scan stops building a fully legality-filtered reply list it then
+consumed one entry of: 809 million legality tests become 60.3 million, worth
+1.35x. The ordering heuristic estimates how much room each reply leaves the
+attacker and tries the narrowest first, taking a depth-5 disproof from 52.3M
+nodes and 14.55 s to 11.1M and 3.18 s while returning a byte-identical best move
+and principal variation. Neither can change a verdict; `--no-answer-order` is the
+differential test and is retained for it.
+
+Also fixes two leaves of the selfmate recursion that reported a depth-limited
+failure where the failure was in fact unbounded -- an axiomatic refutation, and
+an attacker with no legal move in a position that is not the goal. Both are
+any-depth results and both reported zero.
+
+The disproof-depth histogram added here explains section 78's zero conclusively:
+99.98% of defender disproofs prove exactly what was asked, so level skipping
+never had a ply to skip. It still does not fire, and section 82 now gives the
+structural reason -- an OR node's failure depth is the minimum over its moves, so
+over-proof requires every one of ~41 moves to over-prove. The per-move disproof
+array is therefore not an addition to level skipping but the only workable
+consumer of graded failure depth. See `docs/ARCHITECTURE.md` section 82.
+
 **The remaining selfmate gap is a disproof gap, not a search-quality gap.** A
 differential investigation against Chest, run as a black box, locates all 15
 remaining misses precisely: MateProver's search for a *solution* is within 3x of

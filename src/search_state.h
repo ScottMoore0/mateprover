@@ -65,6 +65,9 @@ struct SearchConfig {
     // makes the handled set enormous and the prune rare, while the test still
     // costs at every node. See docs/SELFMATE_REACH_DERIVATION.md and section 77.
     bool selfmate_bound = false;
+    // Order the selfmate defender's replies by how little room they leave the
+    // attacker. On by default; the off switch is the differential test.
+    bool answer_order = true;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

@@ -158,6 +158,7 @@ did. If you are reading it for the first time:
 - [79. The Engine Faults Under AVX, And It Is Not The Engine's Fault](#79-the-engine-faults-under-avx-and-it-is-not-the-engines-fault)
 - [80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times](#80-material-knowledge-the-useful-form-is-unsound-and-the-sound-form-fires-zero-times)
 - [81. The Selfmate Gap Is A Disproof Gap, And The Solution Search Was Never The Problem](#81-the-selfmate-gap-is-a-disproof-gap-and-the-solution-search-was-never-the-problem)
+- [82. Answer Ordering: A Real Win Through The Wrong Mechanism](#82-answer-ordering-a-real-win-through-the-wrong-mechanism)
 
 ## Impact-Ordered Architecture
 
@@ -5948,3 +5949,148 @@ selfmate variant wants a defender holding exactly two pieces, which none of thes
 positions has. Whatever Chest is doing here, the specification in hand does not
 describe it, and the next honest step is a black-box characterisation of its
 disproof behaviour rather than a sixth item read off the list.
+
+### 82. Answer Ordering: A Real Win Through The Wrong Mechanism
+
+Section 81 located the selfmate gap in disproof. A clean-room specification of the
+defender answer heuristic then inverted the premise this project had been working
+from, and it was right to. This section implements it, measures it, and reports
+one win and two findings that the specification did not predict.
+
+#### The premise that was wrong
+
+81 measured 1.00 replies searched per defender node and concluded AND-node
+ordering was already optimal with nothing to win. The rebuttal is exact: that
+metric cannot distinguish *found a refutation* from *found a refutation that
+proves failure three levels deeper*. Both terminate the loop, both cost one
+subanalysis, both read as 1.00. Only the second collapses the parent's list.
+
+#### The lazy reply scan
+
+Independent of everything else, and the first thing 81's profile made obvious:
+the node built a fully legality-filtered reply list and consumed one entry of it.
+Interleaving instead -- test one pseudo-legal move for legality, search it, stop
+when it refutes -- takes the depth-5 disproof from **809 million legality tests
+to 60.3 million**, a factor of 13 in that work for **1.35x** overall. So the
+filter was about a quarter of the runtime rather than most of it, which is worth
+knowing: the estimate before measuring was closer to ten.
+
+Legal replies are still visited in generation order with illegal ones skipped,
+which is exactly the sequence the filtered list produced, so no verdict can move.
+
+#### The diagnostic, which confirmed the diagnosis and then refused to move
+
+The specification asks for a disproof-depth histogram before anything else:
+record, at each AND node returning a disproof, how far the proven failure depth
+exceeds the depth requested. A search with no preference among refutations should
+spike at zero. On the depth-5 disproof, with the graded failure depth of 78
+restored and propagating correctly:
+
+| excess | count | share |
+| --- | --- | --- |
+| 0 | 25,913,581 | **99.98%** |
+| 1 | 3,794 | 0.01% |
+| 2 | 119 | 0.00% |
+| 3+ | 0 | 0.00% |
+
+That is the predicted signature, and it retro-explains 78 completely: level
+skipping counted zero across 420 positions because there was never a single ply
+of over-proof to consume.
+
+**Two of the leaves were lying.** The attacker node returns a bare failure both
+when GAP-1's axioms refute the position and when the attacker has no legal move
+and the position is not the goal. Both are failures at *every* depth -- the first
+by the axiom, the second because the line is simply over -- and both were
+reporting a failure depth of zero. Since an OR node takes the MINIMUM over its
+moves, one zero at the bottom pins every ancestor to exactly what it was asked
+for. Both are now wired to an any-depth sentinel.
+
+It changed nothing. The histogram stayed at 99.99% in bucket zero and
+`levels_skipped` stayed at zero, and the reason is structural rather than a
+missing source:
+
+> An OR node's failure depth is the **minimum** over its moves, because the
+> attacker needs only one move to work. For the node to over-prove, *every* one
+> of its ~41 moves must over-prove. A single move refuted at exactly the depth
+> asked for pins the node, and at least one always is.
+
+So level skipping cannot fire at an OR node in any position that is not nearly
+terminal, no matter what feeds it. **The per-move disproof array is not an
+optimisation layered on top of level skipping; it is the only consumer of graded
+failure depth that can work at all**, because it records the bound per move
+instead of collapsing it to a minimum. That is the piece still missing, and it
+needs per-move bounds carried with the position rather than a single node-level
+bound in the table.
+
+#### The estimator, and what it actually bought
+
+Implemented as specified in shape: estimate how much room each reply leaves the
+ATTACKER, try the narrowest first. Deliberately not special-cased for checking
+replies -- counting all surviving attacker units without asking which are pinned
+over-estimates a checking reply's width, which is the conservative direction and
+avoids the failure the specification warns about, where a naive width ranks every
+check as excellent.
+
+One observation on the specified form: with a damping factor constant across
+replies, the two-ply *product* is monotone in the one-ply estimate, so sorting by
+the product and sorting by the first estimate give the same order. The product
+only earns its place once checking replies get a different second-ply estimate.
+
+On the depth-5 disproof, ordering off against on:
+
+| | nodes | time |
+| --- | --- | --- |
+| off | 52,263,840 | 14.55 s |
+| on | 11,069,176 | 3.18 s |
+
+**4.7x fewer nodes, 4.6x faster**, and the depth-6 iterative solve returns a
+byte-identical best move and principal variation. Not the 160x the specification
+measures for Chest, which is unsurprising -- this estimator has none of the
+per-piece exact counts, coverage tables, sole-attacker tracking or check
+refinement that one has.
+
+**And it is not working through the specified mechanism.** The histogram does not
+move. The gain is entirely that a narrower attacker subtree is cheaper to refute
+-- category 3 in 81's taxonomy, making each refutation cheaper -- not category 1,
+destroying the parent's move list through propagated depth. The heuristic is
+worth having on its own terms and the mechanism claimed for it is still not
+reachable here without the per-move array.
+
+#### Coverage, and a differential result worth reading carefully
+
+250 selfmates at a 4 s budget:
+
+| | solved |
+| --- | --- |
+| committed | 198 |
+| lazy scan only | 199 |
+| lazy scan + ordering | **201** |
+
+On the 15 positions of 81 at 30 s: committed 9, lazy 11, ordered 10 -- ordering
+costs one there, which is the familiar shape of a node reduction that does not
+pay for its own cost on every position, and n=15 cannot settle it against +3 on
+the corpus.
+
+The identity check reported one depth disagreement, and it is not one.
+`r2b2RK/4p1PP/1P2Q3/4n1Rp/4kp1P/1P1N1p2/p2P1B2/1B6 w - -` is a selfmate in 4 --
+both builds find it at `-z 4`, neither finds anything at 3, and both agree
+unrestricted. Asked for 6 with the portfolio running, the committed build reports
+`sfm 6; via K2`: a restricted lane won the race, and a restricted lane's answer
+is documented at 627 as possibly not the shortest, which is exactly what the
+`via` marker exists to say. The new build is fast enough that the unrestricted
+lane wins and returns the true minimum. The comparison was across lane types and
+the check should have excluded results carrying a restriction marker; the answer
+that changed changed for the better. Directmate identity over 80 positions: zero
+disagreements.
+
+#### Disposition
+
+Promoted, both parts, default on, with `--no-answer-order` retained as the
+differential test. 414 checks pass.
+
+The honest summary is that three of the four things done here were worth doing
+and none of them was the thing the specification identified as worth 160x. The
+lazy scan is a constant factor nobody had noticed. The estimator is a real 4.7x
+through a mechanism its author did not claim for it. The graded failure depth is
+correct, now honestly sourced at the leaves, and still inert -- and 82 can at
+least say why in one sentence where 78 could only say that it was.

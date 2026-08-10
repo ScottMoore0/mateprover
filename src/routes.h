@@ -677,7 +677,7 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
     };
 
     const int start = s.direct_depth ? max_depth : 1;
-    for (int depth = std::max(1, start); depth <= max_depth; ++depth) {
+    for (int depth = std::max(1, start); depth <= max_depth; ) {
         // Precondition with the selfmate walker, on the same terms as the
         // directmate route: it only warms the tables and the ordering hints,
         // and the verdict below is still the exact prover's.
@@ -721,6 +721,16 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             result.proved_depth = static_cast<int>((p.pv.size() + 1) / 2);
             return result;
         }
+        // LEVEL SKIPPING. A failed depth reports how much of the space it
+        // actually disproved, which can exceed what was asked once the defender
+        // prefers refutations that prove more; the next iteration then starts
+        // past all of it rather than at depth+1. Bounded below by depth+1 so it
+        // can only move forwards, and fail_depth stays at the requested depth
+        // unless something genuinely established more.
+        if (p.fail_depth > depth) {
+            s.stats.levels_skipped += p.fail_depth - depth;
+        }
+        depth = (p.fail_depth > depth) ? p.fail_depth + 1 : depth + 1;
     }
     return result;
 }

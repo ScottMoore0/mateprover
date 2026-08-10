@@ -213,6 +213,13 @@ void print_usage() {
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
 "                                default: --no-refutation-hints (measured harmful)\n"
+"  --answer-order | --no-answer-order\n"
+"                                default: --answer-order. Orders the selfmate\n"
+"                                defender's replies by how little room they\n"
+"                                leave the attacker, so that the refutation\n"
+"                                taken is the one proving the most. Cannot\n"
+"                                change a verdict; the off switch is the\n"
+"                                differential test\n"
 "  --selfmate-bound | --no-selfmate-bound\n"
 "                                default: OFF. The same bound on a selfmate,\n"
 "                                where the roles invert and the DEFENDER is the\n"
@@ -427,6 +434,10 @@ int main(int argc, char** argv) {
             config.proof_hints = true;
         } else if (arg == "--no-proof-hints") {
             config.proof_hints = false;
+        } else if (arg == "--answer-order") {
+            config.answer_order = true;
+        } else if (arg == "--no-answer-order") {
+            config.answer_order = false;
         } else if (arg == "--selfmate-bound") {
             config.selfmate_bound = true;
         } else if (arg == "--no-selfmate-bound") {
