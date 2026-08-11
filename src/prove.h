@@ -1384,6 +1384,26 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // terminal and the goal decides it, not composition.
     bool all_moves_refuted = s.any_depth_refutations && !moves.empty();
     for (const Move& amove : moves) {
+        // RESTRICTED MATING GENERATOR, in its cheapest sound form. A checkmate
+        // is a check, so at depth 1 a move that gives no check cannot be a
+        // solution -- which is chess, not a borrowed heuristic, and trivially
+        // satisfies the superset guarantee the idea rests on.
+        //
+        // The check bit was already computed by the ordering pass and already
+        // consulted below; it was just consulted AFTER the move was made. Moving
+        // the test in front of make_move turns a skipped mate test into a
+        // skipped move execution, and when no move passes, the node fails with
+        // no executions at all -- the whole-node disproof that is the larger of
+        // this idea's two payoffs.
+        //
+        // Guarded on all_moves_refuted because the GAP-1 composition below needs
+        // the child board; with any-depth refutations off, which is the default,
+        // nothing else at depth 1 does.
+        if (depth == 1 && can_use_ordered_check_shortcut && !all_moves_refuted &&
+            !move_can_reach_goal(amove.score, s.goal)) {
+            ++s.stats.mate1_generator_skips;
+            continue;
+        }
         ++s.stats.attacker_candidates;
         Board nb = make_move(b, amove);
         ++s.stats.immediate_mate_tests;
