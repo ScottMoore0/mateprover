@@ -343,6 +343,50 @@ std::optional<RouteKind> parse_route_kind(const std::string& name) {
 // that just moved is left in check.
 bool in_check(const Board& b, Color c);
 
+// The optional fifth Forsyth field, carrying the x-check state.
+//
+// Two spellings, told apart by the leading '+':
+//
+//   3+3     checks REMAINING for white and black. The primary spelling, because
+//           it states the position rather than its history and it expresses an
+//           asymmetric allowance -- 5+2 -- without needing a limit alongside.
+//   +1+2    checks DELIVERED, the Lichess spelling. Only well defined against a
+//           limit, and Lichess only ever uses three, so it is read as three.
+//
+// Returns false for anything else, INCLUDING plain junk, because a fifth token
+// is not necessarily a check field: corpora here routinely carry annotations
+// after the four Forsyth fields, and tests/smoke.epd puts `bm #1` exactly there.
+// A parser that claimed those would break every existing corpus, so an
+// unrecognised token is ignored precisely as it is today.
+inline bool parse_check_field(const std::string& token,
+                              std::array<std::uint8_t, 2>& out) {
+    const bool delivered = !token.empty() && token[0] == '+';
+    const std::string body = delivered ? token.substr(1) : token;
+    const std::size_t plus = body.find('+');
+    if (plus == std::string::npos || plus == 0 || plus + 1 >= body.size()) {
+        return false;
+    }
+    const std::string left = body.substr(0, plus), right = body.substr(plus + 1);
+    for (const std::string& part : {left, right}) {
+        if (part.empty() || part.size() > 3) return false;
+        for (char ch : part) {
+            if (!std::isdigit(static_cast<unsigned char>(ch))) return false;
+        }
+    }
+    const int a = std::atoi(left.c_str()), c = std::atoi(right.c_str());
+    if (delivered) {
+        const int limit = 3;                 // the only limit the spelling has
+        if (a > limit || c > limit) return false;
+        out[WHITE] = static_cast<std::uint8_t>(limit - a);
+        out[BLACK] = static_cast<std::uint8_t>(limit - c);
+        return true;
+    }
+    if (a > kMaxCheckLimit || c > kMaxCheckLimit) return false;
+    out[WHITE] = static_cast<std::uint8_t>(a);
+    out[BLACK] = static_cast<std::uint8_t>(c);
+    return true;
+}
+
 std::optional<Board> parse_fen4(const std::string& line) {
     auto tokens = split_ws(line);
     if (tokens.size() < 4) {
@@ -446,6 +490,12 @@ std::optional<Board> parse_fen4(const std::string& line) {
     if (in_check(b, other(b.stm))) {
         return std::nullopt;
     }
+    if (tokens.size() >= 5) {
+        std::array<std::uint8_t, 2> checks{};
+        if (parse_check_field(tokens[4], checks)) {
+            b.checks_left = checks;
+        }
+    }
     return b;
 }
 
@@ -476,6 +526,13 @@ std::string fen4(const Board& b) {
     if (b.castling & 8) c.push_back('q');
     out << (c.empty() ? "-" : c) << ' ';
     out << (b.ep >= 0 ? sq_name(b.ep) : "-");
+    // Emitted ONLY when the rule is in force, so every standard-chess result
+    // line stays byte-identical. The corpora, the suite's differentials and the
+    // harness's strict parser all compare these strings.
+    if (check_limit_active(b)) {
+        out << ' ' << static_cast<int>(b.checks_left[WHITE])
+            << '+' << static_cast<int>(b.checks_left[BLACK]);
+    }
     return out.str();
 }
 

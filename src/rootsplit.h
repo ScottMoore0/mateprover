@@ -436,7 +436,8 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                     mate = !has_legal_move(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
                 }
             } else {
-                mate = is_goal(nb, probe.goal, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
+                mate = is_goal(nb, probe.goal, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo) ||
+                       check_win_reached(nb, probe.goal, probe.attacker, probe.check_win);
             }
 
             Proof found;
@@ -511,7 +512,8 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                     mate = !has_legal_move(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
                 }
             } else {
-                mate = is_goal(nb, ws.goal, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
+                mate = is_goal(nb, ws.goal, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo) ||
+                       check_win_reached(nb, ws.goal, ws.attacker, ws.check_win);
             }
 
             Proof found;

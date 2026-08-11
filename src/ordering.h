@@ -185,7 +185,15 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
         // have been a verdict proved under one goal returned as another: a
         // false proof with nothing wrong in the output to see. ep occupies bits
         // 39-45, so 47-49 are free.
-        | (static_cast<std::uint64_t>(goal) << 47);
+        | (static_cast<std::uint64_t>(goal) << 47)
+        // x-check state, seven bits a side, filling the word exactly. Two
+        // positions identical on the board but differing in checks remaining
+        // are DIFFERENT positions, and a key that cannot tell them apart
+        // returns a verdict proved under one state as though it held under
+        // another -- the same class of false proof the goal bits above were
+        // widened to prevent, and just as invisible in the output.
+        | (static_cast<std::uint64_t>(b.checks_left[WHITE] & 0x7fu) << 50)
+        | (static_cast<std::uint64_t>(b.checks_left[BLACK] & 0x7fu) << 57);
     return k;
 }
 

@@ -10,6 +10,37 @@ without one.
 
 ## Unreleased
 
+**x-check chess, as a variant orthogonal to all six goals** (`--checks N` or
+`--checks W:B`). A side wins outright on giving its Nth check. It is a variant
+rather than a seventh goal because a way for the game to END is not the same as a
+thing to force: every stipulation still names what must be forced, so 3-check
+selfmate and 3-check helpmate are ordinary jobs. Allowances are per side and
+independent, so 5+2 is as ordinary as 3+3. A fifth Forsyth field states checks
+remaining (`3+3`) or, Lichess-style, checks already given (`+1+0`), and overrides
+the flag.
+
+The rule ends the game; the goal decides what that means. Under `--goal mate` the
+final check IS the win being forced, and `--no-check-win` demands checkmate
+specifically. Under every other goal the stipulation names a terminal POSITION, so
+a game that ended by check count did not reach it and the line is dead at any
+depth. A move that is checkmate and the final check at once counts as mate: the
+stipulated terminal wins the tie, or a real solution is lost silently on exactly
+the positions where both rules bite.
+
+The allowance is part of the transposition key -- two positions identical on the
+board but differing in checks remaining are different positions -- and it fit in
+fifteen bits the context word already had spare. The limit is capped at 126 and
+refused above it rather than clamped.
+
+Certificates carry a `checkwin` leaf and `tools/verify_proof.py` checks it,
+tracking the allowance itself because python-chess has no notion of one. It
+rejects a claimed check win that gives no check, one with the allowance unspent,
+and one with no allowance stated.
+
+Standard chess is untouched byte for byte: no fifth field is emitted unless the
+rule is in force, and a corpus annotation sitting where that field would go is
+not mistaken for one.
+
 **The measurement harness is now verified, and it was the least-verified thing
 here.** Four measurement defects arrived in one session and none was in the
 engine, which carried 414 checks of its own against `tools/paired_corpus.py`'s
@@ -431,7 +462,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 452 automated checks cover perft against
+sharing no code with the engine. 483 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

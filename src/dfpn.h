@@ -439,7 +439,8 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         }
         ++s.stats.dfpn_mate_tests;
         const Board nb = make_move(b, m);
-        if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+        if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo) ||
+            check_win_reached(nb, s.goal, s.attacker, s.check_win)) {
             const PnDn v{0, DFPN_INF};
             dfpn_store(s, key, v);
             ++s.stats.dfpn_proved;

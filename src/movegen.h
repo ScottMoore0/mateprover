@@ -173,6 +173,15 @@ Board make_move(Board b, const Move& m) {
     if (std::tolower(static_cast<unsigned char>(p)) == 'p' && std::abs(m.to - m.from) == 16) {
         b.ep = (m.from + m.to) / 2;
     }
+    // x-check: a check spends one of the mover's allowance, and spending the
+    // last one ends the game in the mover's favour. The guard is what lets this
+    // sit in the hottest function in the engine -- under standard rules it is a
+    // comparison against a constant that never passes, and the extra attack
+    // query is never issued.
+    if (b.checks_left[b.stm] != kNoCheckLimit && b.checks_left[b.stm] > 0 &&
+        in_check(b, other(b.stm))) {
+        --b.checks_left[b.stm];
+    }
     b.stm = other(b.stm);
     return b;
 }
@@ -266,6 +275,25 @@ bool is_stalemate(const Board& b, bool move_reserve = false, std::size_t move_re
 // mated -- the opposite of what a selfmate wants, and worth a +1000000 ordering
 // bonus under --score-mates. Dormant, since that flag is off by default, but it
 // would have scored exactly the wrong moves first.
+// Has the mover just won by check count?
+//
+// `is_goal` answers the POSITION question -- is the side to move mated, or
+// stalemated, as the stipulation demands. Under x-check there is a second way to
+// end the game, and it is a win only under a mate goal, only with --check-win in
+// force, and only for the attacker.
+//
+// It exists as a named predicate because FIVE places in this engine
+// independently decide "this move reaches the goal immediately" -- the two node
+// routines, the DFPN expander, the root-split probe and its worker, and the
+// depth-first root. The first implementation of x-check taught the obvious
+// lesson by fixing one of them: mate in one worked at every depth except the one
+// where -z 1 took a different path to the same question.
+inline bool check_win_reached(const Board& nb, Goal goal, Color attacker,
+                              bool check_win) {
+    return check_win && goal == Goal::Mate && check_limit_active(nb) &&
+           nb.checks_left[attacker] == 0;
+}
+
 bool is_goal(const Board& b, Goal goal, bool move_reserve = false, std::size_t move_reserve_capacity = 64, bool static_pseudo = false) {
     switch (goal) {
         case Goal::Stalemate:

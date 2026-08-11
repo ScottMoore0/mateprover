@@ -179,6 +179,19 @@ inline PieceType type_of(char p) {
     }
 }
 
+// x-check: how many checks a side must still DELIVER to win outright. 127 means
+// no limit, which is standard chess, which is the default -- so every query
+// against this is a comparison that standard play never fails.
+//
+// SEVEN BITS, because that is what was spare in the transposition key's context
+// word (bits 50-63, with the goal at 47-49 and en passant at 39-45). The limit
+// is therefore capped at 126 and the cap is checked at parse time rather than
+// clamped: two distinct states sharing a key is the one failure this engine
+// exists to prevent, and silently folding 200 checks into 126 would do exactly
+// that.
+constexpr std::uint8_t kNoCheckLimit = 127;
+constexpr int kMaxCheckLimit = 126;
+
 struct Board {
     std::array<char, 64> sq{};
     std::array<std::uint64_t, 4> packed{};
@@ -191,7 +204,24 @@ struct Board {
     Color stm = WHITE;
     unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
     int ep = -1;
+    // Index by Color. Defaulted to "no limit" so a Board built anywhere in the
+    // engine -- and several are, as scratch probes -- is a standard-chess board.
+    std::array<std::uint8_t, 2> checks_left{{kNoCheckLimit, kNoCheckLimit}};
 };
+
+// Is the x-check rule in force for either side?
+inline bool check_limit_active(const Board& b) {
+    return b.checks_left[WHITE] != kNoCheckLimit ||
+           b.checks_left[BLACK] != kNoCheckLimit;
+}
+
+// Which side, if any, has already won by exhausting its check allowance?
+// Returns -1 when nobody has. Both cannot be zero: the game ends on the first.
+inline int check_winner(const Board& b) {
+    if (b.checks_left[WHITE] == 0) return WHITE;
+    if (b.checks_left[BLACK] == 0) return BLACK;
+    return -1;
+}
 
 struct Stats {
     std::uint64_t nodes = 0;

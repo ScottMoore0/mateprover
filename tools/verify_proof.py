@@ -64,8 +64,31 @@ class Failure(Exception):
     pass
 
 
+def split_check_allowance(fen: str) -> tuple[str, list[int] | None]:
+    """('<four Forsyth fields>', [white_remaining, black_remaining] or None).
+
+    python-chess has no notion of an x-check allowance, so the verifier tracks it
+    itself -- which is the right division anyway: a proof that ends "and this was
+    my third check" must be checked against the counter the ENGINE claimed, not
+    against one the verifier inferred.
+    """
+    fields = fen.split()
+    if len(fields) < 5:
+        return " ".join(fields[:4]), None
+    token = fields[4]
+    body = token[1:] if token.startswith("+") else token
+    if body.count("+") != 1:
+        return " ".join(fields[:4]), None
+    left, _, right = body.partition("+")
+    if not (left.isdigit() and right.isdigit()):
+        return " ".join(fields[:4]), None
+    if token.startswith("+"):        # Lichess spelling: checks already given
+        return " ".join(fields[:4]), [3 - int(left), 3 - int(right)]
+    return " ".join(fields[:4]), [int(left), int(right)]
+
+
 def verify_node(board: chess.Board, node: dict, path: list[str],
-                goal: str = "mate") -> int:
+                goal: str = "mate", checks: list[int] | None = None) -> int:
     """Verify one attacker node. Returns the depth in attacker moves."""
     where = " ".join(path) if path else "<root>"
 
@@ -79,11 +102,38 @@ def verify_node(board: chess.Board, node: dict, path: list[str],
     if move not in board.legal_moves:
         raise Failure(f"after {where}: illegal attacker move {move_uci}")
 
+    # The allowance is spent going down and restored coming back up, exactly as
+    # the board is. A leaf's claim is only meaningful against the counter as it
+    # stands AT that leaf, not as it stood at the root.
+    mover = int(board.turn == chess.BLACK)
     board.push(move)
+    spent = bool(checks is not None and board.is_check())
+    if spent:
+        checks[mover] -= 1
     try:
         # A leaf must claim the goal that was asked for, and be it. A stalemate
         # leaf in a mate proof -- or the reverse -- is exactly the confusion the
         # two goals make possible, so the claim and the test are both checked.
+        # An x-check leaf: the mover's final check ended the game. Checked, not
+        # taken on trust -- the move must actually give check, and the allowance
+        # must actually reach zero on it. A certificate that claims a check win
+        # without one is exactly as wrong as a forged mate leaf, and until this
+        # existed it would have been accepted without being looked at.
+        if node.get("checkwin"):
+            if checks is None:
+                raise Failure(f"after {where} {move_uci}: leaf claims a check win "
+                              f"but the position states no check allowance")
+            if goal != "mate":
+                raise Failure(f"after {where} {move_uci}: a check win cannot "
+                              f"satisfy a {goal} stipulation")
+            if not board.is_check():
+                raise Failure(f"after {where} {move_uci}: leaf claims a check win "
+                              f"but the move gives no check")
+            if checks[mover] != 0:
+                raise Failure(f"after {where} {move_uci}: leaf claims a check win "
+                              f"with {checks[mover]} still owed")
+            return 1
+
         if node.get("mate") or node.get("stalemate"):
             if goal == "stalemate":
                 if not node.get("stalemate"):
@@ -137,15 +187,24 @@ def verify_node(board: chess.Board, node: dict, path: list[str],
         worst = 0
         for branch in branches:
             reply = branch["r"]
+            reply_mover = int(board.turn == chess.BLACK)
             board.push(chess.Move.from_uci(reply))
+            reply_spent = bool(checks is not None and board.is_check())
+            if reply_spent:
+                checks[reply_mover] -= 1
             try:
                 worst = max(worst, verify_node(board, branch["p"],
-                                               path + [move_uci, reply], goal))
+                                               path + [move_uci, reply], goal,
+                                               checks))
             finally:
                 board.pop()
+                if reply_spent:
+                    checks[reply_mover] += 1
         return worst + 1
     finally:
         board.pop()
+        if spent:
+            checks[mover] += 1
 
 
 def verify_help_node(board: chess.Board, node: dict, path: list[str], goal: str) -> int:
@@ -272,7 +331,7 @@ def verify_selfmate_node(board: chess.Board, node: dict, path: list[str],
 
 
 def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int,
-              goal: str = "mate") -> None:
+              goal: str = "mate", allowance: list[int] | None = None) -> None:
     replay = board.copy()
     for token in pv:
         try:
@@ -288,7 +347,23 @@ def verify_pv(board: chess.Board, pv: list[str], claimed_depth: int,
         if not replay.is_stalemate():
             raise Failure(f"pv does not end in stalemate ({goal})")
     elif not replay.is_checkmate():
-        raise Failure(f"pv does not end in checkmate ({goal})")
+        # Under x-check a won line may end on the final CHECK rather than on
+        # mate. Accepted only when the position actually carried an allowance and
+        # the line actually spends it -- so an ordinary directmate proof that
+        # simply fails to mate is still rejected, which is the case this branch
+        # must not become a hole for.
+        if allowance is None:
+            raise Failure(f"pv does not end in checkmate ({goal})")
+        spent = [0, 0]
+        walk = board.copy()
+        for token in pv:
+            mover = int(walk.turn == chess.BLACK)
+            walk.push(chess.Move.from_uci(token))
+            if walk.is_check():
+                spent[mover] += 1
+        if not (allowance[0] - spent[0] <= 0 or allowance[1] - spent[1] <= 0):
+            raise Failure(f"pv ends in neither checkmate nor an exhausted check "
+                          f"allowance ({goal})")
     # Ply counts differ by goal and are load-bearing, not bookkeeping: a line of
     # the wrong length answers a different stipulation even when every move in
     # it is legal and the terminal is real.
@@ -359,6 +434,9 @@ def main() -> int:
             continue
 
         depth = int(depth_match.group(1))
+        # python-chess parses four Forsyth fields and would reject a fifth, so
+        # the allowance is taken off here and carried alongside.
+        fen, allowance = split_check_allowance(fen)
         try:
             board = chess.Board(fen + " 0 1")
         except ValueError as exc:
@@ -369,7 +447,7 @@ def main() -> int:
             pv_match = PV_RE.search(line)
             if not pv_match:
                 raise Failure("solved position has no pv")
-            verify_pv(board, pv_match.group(1).split(), depth, goal)
+            verify_pv(board, pv_match.group(1).split(), depth, goal, allowance)
 
             proof_match = PROOF_RE.search(line)
             if proof_match:
@@ -385,7 +463,8 @@ def main() -> int:
                                       f"which is not a whole number of moves")
                     proved = plies // 2
                 else:
-                    proved = verify_node(board.copy(), node, [], goal)
+                    proved = verify_node(board.copy(), node, [], goal,
+                                         list(allowance) if allowance else None)
                 if proved != depth:
                     raise Failure(f"certificate proves {goal} in {proved}, "
                                   f"reported {depth}")

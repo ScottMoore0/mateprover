@@ -1307,6 +1307,157 @@ def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
               run(engine, ["--time-limit", "10", "-"], "﻿\n").strip() == "")
 
 
+def test_check_variant(engine: Path, res: Results) -> None:
+    """x-check chess: a VARIANT, orthogonal to all six goals.
+
+    The design claim being tested is that adding a way for the game to END is
+    not the same as adding a goal. Every stipulation still names what must be
+    forced; x-check changes what the board can do underneath all of them. So the
+    checks below fall into three groups:
+
+      inertness   standard chess must be untouched, byte for byte, because every
+                  corpus, every differential and the harness's strict parser
+                  compare those strings.
+      composition each goal must still answer with the rule in force.
+      the tie     a move can be checkmate AND the final check at once. The
+                  stipulated terminal has to win that tie, or a legitimate
+                  solution is lost silently on exactly the positions where both
+                  rules bite.
+    """
+    print("\n[xcheck] the check-count variant, across every goal")
+
+    def line(args: list[str], fen: str) -> str:
+        return run(engine, [*args, "-"], fen + "\n").strip()
+
+    # Inertness. A standard position must not grow a fifth field, and a corpus
+    # annotation sitting where that field would go must not be read as one.
+    plain = line(["-z", "1", "--time-limit", "60"], "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - -")
+    res.check("standard chess emits no check field",
+              plain.split(";")[0].strip() == "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - -", plain[:80])
+    annotated = line(["-z", "2", "--time-limit", "60"],
+                     "8/2Q5/R7/8/1k4K1/8/8/8 w - - ; dm 2")
+    res.check("a trailing annotation is not read as a check field",
+              DM_RE.search(annotated) is not None and "+" not in annotated.split(";")[0],
+              annotated[:80])
+
+    # The field round-trips, in both accepted spellings.
+    got = line(["-z", "1", "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - 3+2")
+    res.check("the checks-remaining spelling round-trips",
+              got.startswith("4k3/8/8/8/8/8/8/R3K3 w - - 3+2;"), got[:80])
+    got = line(["-z", "1", "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - +1+0")
+    res.check("the Lichess checks-given spelling reads as three minus given",
+              got.startswith("4k3/8/8/8/8/8/8/R3K3 w - - 2+3;"), got[:80])
+
+    # The win itself, at every depth -- and at -z 1, which reaches the same
+    # question by a different path. Fixing only the node routines left mate in
+    # one working everywhere except there.
+    for depth in ("1", "2", "3"):
+        got = line(["-z", depth, "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - 1+3")
+        res.check(f"the final check wins at -z {depth}",
+                  DM_RE.search(got) is not None and " dm 1;" in got, got[:80])
+        got = line(["-z", depth, "--time-limit", "60", "--no-check-win"],
+                   "4k3/8/8/8/8/8/8/R3K3 w - - 1+3")
+        res.check(f"--no-check-win demands checkmate at -z {depth}",
+                  DM_RE.search(got) is None, got[:80])
+
+    # Two checks, forced, with the defender free to run.
+    got = line(["-z", "3", "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - 2+3")
+    res.check("two forced checks are found as a win in two",
+              " dm 2;" in got, got[:100])
+
+    # The allowance is per side and genuinely independent.
+    got = line(["-z", "1", "--time-limit", "60"], "4k3/7q/8/8/8/8/8/R3K3 b - - 3+1")
+    res.check("the defender's own allowance can win it for him",
+              " dm 1;" in got, got[:80])
+    got = line(["-z", "3", "--time-limit", "60"], "4k3/7q/8/8/8/8/8/R3K3 w - - 9+1")
+    res.check("an allowance out of reach is refused",
+              DM_RE.search(got) is None, got[:80])
+
+    # The transposition key. Two positions identical on the board but differing
+    # in checks remaining are DIFFERENT positions; a key that cannot tell them
+    # apart returns one's verdict for the other, and nothing in the output shows
+    # it. Behaviourally: same board, different answer.
+    won = line(["-z", "1", "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - 1+3")
+    lost = line(["-z", "1", "--time-limit", "60"], "4k3/8/8/8/8/8/8/R3K3 w - - 3+3")
+    res.check("the allowance is part of the position, not decoration",
+              (" dm 1;" in won) and (DM_RE.search(lost) is None),
+              f"{won[:50]} vs {lost[:50]}")
+
+    # The tie. This move is checkmate and would also be a final check.
+    tie = line(["-z", "1", "--time-limit", "60", "--emit-proof"],
+               "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 1+3")
+    res.check("a move that is both mate and the last check is certified as mate",
+              '"mate":true' in tie and '"checkwin"' not in tie, tie[:110])
+    res.check("and --no-check-win still solves it, because it really is mate",
+              DM_RE.search(line(["-z", "1", "--time-limit", "60", "--no-check-win"],
+                                "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 1+3")) is not None)
+
+    # Composition: every other goal still answers with the rule in force, and a
+    # cooperative mate whose mating move is also a final check is not lost.
+    for flag, pattern, fen, depth in (
+            # A real selfmate, with an allowance wide enough that the line
+            # survives. Narrow it to 3+3 and this position stops solving, which
+            # is the variant behaving: the solution delivers three checks on the
+            # way, so under 3-check rules the game ends before the attacker is
+            # mated, and a selfmate stipulation is not satisfied by a check win.
+            ("selfmate", SFM_RE, "8/8/8/4B3/p7/8/1R1R4/k1KB4 w - - 5+2", "7"),
+            ("helpmate", HM_RE, "8/8/8/q7/2K5/k7/8/7R b - - 1+3", "1"),
+            ("helpmate", HM_RE, "8/8/8/q7/2K5/k7/8/7R b - - 3+3", "1"),
+    ):
+        got = line(["--goal", flag, "-z", depth, "--direct-depth",
+                    "--time-limit", "120"], fen)
+        res.check(f"--goal {flag} composes with the variant: {fen[:24]}",
+                  pattern.search(got) is not None, got[:90])
+
+    # Range. The allowance occupies seven bits of the transposition key, so the
+    # limit is refused rather than clamped -- folding two states onto one key is
+    # the failure this engine exists to prevent.
+    for bad in ("0", "127", "abc", "3:0"):
+        proc = subprocess.run([str(engine), "--checks", bad, "-z", "1", "-"],
+                              input=b"", capture_output=True, timeout=120)
+        res.check(f"--checks {bad} is refused",
+                  proc.returncode != 0, proc.stdout.decode()[:70])
+    for good in ("3", "126", "5:2"):
+        proc = subprocess.run([str(engine), "--checks", good, "-z", "1", "-"],
+                              input=b"4k3/8/8/8/8/8/8/R3K3 w - -\n",
+                              capture_output=True, timeout=120)
+        res.check(f"--checks {good} is accepted", proc.returncode == 0,
+                  proc.stderr.decode()[:70])
+
+    # The certificate. A check win is a claim like any other and must be
+    # checkable; the verifier tracks the allowance itself, because python-chess
+    # has no notion of one.
+    if not HAVE_CHESS:
+        res.skip("check-win certificates verify", "python-chess not installed")
+        return
+    proof = line(["-z", "1", "--time-limit", "60", "--emit-proof"],
+                 "4k3/7q/8/8/8/8/8/R3K3 b - - 3+1")
+    res.check("a check win is certified as one", '"checkwin":true' in proof, proof[:100])
+    tmp = HERE.parent / "build" / "xcheck_cert.txt"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+
+    def verify(text: str) -> tuple[int, str]:
+        tmp.write_text(text + "\n")
+        proc = subprocess.run([sys.executable,
+                               str(HERE.parent / "tools" / "verify_proof.py"),
+                               "--require-proof", str(tmp)],
+                              capture_output=True, timeout=300)
+        return proc.returncode, proc.stdout.decode() + proc.stderr.decode()
+
+    code, out = verify(proof)
+    res.check("the verifier accepts a genuine check win", code == 0, out[-160:])
+    # Three forgeries, one per way the claim can be false.
+    code, out = verify(proof.replace("h7e7", "h7h6"))
+    res.check("the verifier rejects a check win that gives no check", code != 0, out[-120:])
+    code, out = verify(proof.replace("3+1", "3+3"))
+    res.check("the verifier rejects a check win with the allowance unspent",
+              code != 0, out[-120:])
+    code, out = verify(proof.replace(" 3+1;", ";"))
+    res.check("the verifier rejects a check win with no allowance stated",
+              code != 0, out[-120:])
+    tmp.unlink()
+
+
 def test_king_escape_analysis(engine: Path, res: Results) -> None:
     """The escape analysis, and the two mechanisms standing on it.
 
@@ -2832,6 +2983,7 @@ def main() -> int:
     test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)
     test_output_format_conformance(args.engine, res)
+    test_check_variant(args.engine, res)
     test_king_escape_analysis(args.engine, res)
     test_measurement_harness(res)
     test_docs_reference_shipped_files(args.engine, res)

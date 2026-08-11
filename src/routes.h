@@ -296,9 +296,18 @@ Proof prove_shallow_mate2(Search& s, const Board& b) {
     return {};
 }
 
+// NOT available under x-check. Both shallow provers decide a position by
+// testing for mate in one and mate in two directly, and neither knows that a
+// final check also ends the game -- so under the variant they would answer "no"
+// to a position that is won. The caller falls back to the general route, which
+// is slower and correct.
 RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
     ++s.stats.shallow_fast_attempts;
     RouteResult result;
+    if (check_limit_active(b)) {
+        ++s.stats.shallow_fast_fallbacks;
+        return result;
+    }
     if (max_depth >= 1) {
         result.proof = prove_shallow_mate1(s, b);
         if (result.proof.ok) {
@@ -445,7 +454,8 @@ std::vector<RootSolution> run_all_root_solutions(Search& s, const Board& b, int 
             // The self- goals test their terminal at an attacker node, so the
             // root move hands straight to the defender at the SAME depth.
             sub = prove_selfmate_defender(s, nb, depth);
-        } else if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+        } else if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo) ||
+                   check_win_reached(nb, s.goal, s.attacker, s.check_win)) {
             sub = Proof{true, {}, s.emit_proof
                 ? (s.goal == Goal::Stalemate ? std::string("{\"stalemate\":true}")
                                              : std::string("{\"mate\":true}"))

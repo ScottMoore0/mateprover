@@ -115,6 +115,17 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         return;
     }
     Board b = *parsed;
+    // x-check: --checks supplies the allowance for lines that do not carry a
+    // fifth Forsyth field. The line wins when it has one, on the same principle
+    // as -Z against a line's own depth token: what the position states about
+    // itself beats what the invocation assumed about it.
+    if (!check_limit_active(b)) {
+        for (int c = 0; c < 2; ++c) {
+            if (config.check_limit[c] >= 0) {
+                b.checks_left[c] = static_cast<std::uint8_t>(config.check_limit[c]);
+            }
+        }
+    }
     int max_depth = requested_depth > 0 ? requested_depth : infer_mate_depth(line);
     if (max_depth <= 0) {
         // -Z supplies a depth for lines that carry none, which is distinct from

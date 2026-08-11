@@ -91,6 +91,13 @@ struct SearchConfig {
     // Measures what a fatal-anti-check test could still save, given the reply
     // ordering already in place. A measurement aid, not a tuning knob.
     bool fac_observer = false;
+    // x-check. `check_limit` is the allowance the CLI supplies for each side;
+    // -1 leaves standard chess in force, and a fifth Forsyth field on the input
+    // line overrides it either way. `check_win` decides what reaching the
+    // allowance MEANS under a mate goal: a win in the variant's own terms, or --
+    // switched off -- nothing, for the problemist who stipulated checkmate.
+    std::array<int, 2> check_limit{{-1, -1}};
+    bool check_win = true;
     // Act on the rejection test rather than merely counting it.
     bool attacker_reject = true;
     // Remaining depth at or above which replies are ordered. Below it the

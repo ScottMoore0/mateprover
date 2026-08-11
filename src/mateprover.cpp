@@ -106,6 +106,21 @@ void print_usage() {
 "                                the root is the one that gets mated, and h#N\n"
 "                                is N moves by EACH side\n"
 "  --helpstalemate               shorthand for --goal helpstalemate ('hsm N')\n"
+"  --checks N | W:B              x-check chess: a side wins outright on giving\n"
+"                                its Nth check. A VARIANT, not a goal -- it\n"
+"                                composes with every --goal, so 3-check selfmate\n"
+"                                and 3-check helpmate are ordinary jobs. W:B\n"
+"                                gives the two sides different allowances. A\n"
+"                                fifth Forsyth field on the input line states\n"
+"                                the checks REMAINING ('3+3') or, Lichess-style,\n"
+"                                those already given ('+1+0'), and overrides\n"
+"                                this. Range 1..126\n"
+"  --check-win | --no-check-win  default: on. Under --goal mate, whether\n"
+"                                reaching the allowance counts as forcing the\n"
+"                                win. Off demands checkmate specifically. Only\n"
+"                                the mate goal has the choice: the other goals\n"
+"                                each name a terminal position, and a game that\n"
+"                                ended by check count did not reach it\n"
 "  --route NAME                  dfpn (default) | depth-first | shallow-fast\n"
 "  --direct-depth                prove \"a mate within N\" by searching at N\n"
 "                                directly; better solve rate at a fixed\n"
@@ -729,6 +744,36 @@ int main(int argc, char** argv) {
             config.dfpn_final_depth_only = true;
         } else if (arg == "--dfpn-every-depth") {
             config.dfpn_final_depth_only = false;
+        } else if (arg == "--checks") {
+            const char* v = need_value(i);
+            if (v == nullptr) return usage_error("option " + arg + " requires a value");
+            // "N" for both sides, "W:B" for an asymmetric allowance. The two
+            // counters are wholly independent, so the asymmetric form costs
+            // nothing beyond parsing it.
+            std::string text(v);
+            const std::size_t colon = text.find(':');
+            const std::string left = text.substr(0, colon);
+            const std::string right = colon == std::string::npos ? left
+                                                                 : text.substr(colon + 1);
+            for (const std::string* part : {&left, &right}) {
+                if (part->empty() || part->find_first_not_of("0123456789") != std::string::npos) {
+                    return usage_error("option " + arg + " wants N or W:B");
+                }
+            }
+            const int w = std::atoi(left.c_str()), bl = std::atoi(right.c_str());
+            // Capped rather than clamped: the allowance occupies seven bits of
+            // the transposition key, and folding two distinct states onto one
+            // key is the single failure this engine exists to prevent.
+            if (w < 1 || w > kMaxCheckLimit || bl < 1 || bl > kMaxCheckLimit) {
+                return usage_error("option " + arg + " wants 1.." +
+                                   std::to_string(kMaxCheckLimit) + " a side");
+            }
+            config.check_limit[WHITE] = w;
+            config.check_limit[BLACK] = bl;
+        } else if (arg == "--check-win") {
+            config.check_win = true;
+        } else if (arg == "--no-check-win") {
+            config.check_win = false;
         } else if (arg == "--goal") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--goal' requires mate or stalemate");

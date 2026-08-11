@@ -172,6 +172,7 @@ did. If you are reading it for the first time:
 - [93. The Selfmate Node Exit, Rejected; And Where Selfmate Time Actually Goes](#93-the-selfmate-node-exit-rejected-and-where-selfmate-time-actually-goes)
 - [94. The Fatal-Anti-Check Family, Measured Against The Ordering It Would Replace](#94-the-fatal-anti-check-family-measured-against-the-ordering-it-would-replace)
 - [95. The First Auditable Table, And What A Re-Run Costs You](#95-the-first-auditable-table-and-what-a-re-run-costs-you)
+- [96. x-check As A Variant, Not A Seventh Goal](#96-x-check-as-a-variant-not-a-seventh-goal)
 
 ## Impact-Ordered Architecture
 
@@ -7197,3 +7198,82 @@ the path and checks both binaries exist before the first position.
 Twenty-nine unit checks did not catch it, and no reasonable number of them would
 have. A smoke run on twelve positions caught it in four seconds. Both kinds of
 test earn their place, and the cheap one earns it first.
+
+### 96. x-check As A Variant, Not A Seventh Goal
+
+The design decision is the whole feature: **a way for the game to END is not the
+same as a thing to force.** `Goal` stays at six and the check allowance is board
+state, so "3-check selfmate" and "3-check helpmate" are ordinary jobs rather than
+new modes. Adding it as a seventh goal would have meant six more the moment
+anyone wanted the variant composed with the goals it already has.
+
+`--checks N` or `--checks W:B`; a fifth Forsyth field on the input line states
+checks REMAINING (`3+3`) or, Lichess-style, checks already given (`+1+0`), and
+overrides the flag on the same principle as `-Z` against a line's own depth token.
+
+#### The rule ends the game; the goal decides what that means
+
+| goal | a check-count ending is |
+|---|---|
+| mate | **the win being forced** — a win in the variant's own terms. `--no-check-win` demands checkmate instead, for the problemist who meant mate |
+| stalemate, selfmate, selfstalemate, helpmate, helpstalemate | a game that ended without reaching the named terminal. The line is **dead at any depth**, since nothing follows a finished game |
+
+That table is why this is a variant. Every stipulation still names what must be
+forced; x-check only changes what the board can do underneath all of them.
+
+#### Where it was nearly free, and where it was not
+
+The transposition key's context word had **fifteen spare bits** — the goal at
+47-49, en passant at 39-45, and 50-63 unused. Two seven-bit counters fill it
+exactly, which is the whole cost of the soundness-critical part: two positions
+identical on the board but differing in checks remaining are DIFFERENT positions,
+and a key that cannot tell them apart returns one's verdict for the other with
+nothing wrong in the output to see. The limit is capped at 126 and refused above
+it rather than clamped, because folding two states onto one key is precisely the
+failure the goal bits were widened to prevent in section 22.
+
+Four things cost more than expected.
+
+**Five places decide "this move ends it now."** The two node routines, the DFPN
+expander, the root-split probe, and its worker. Fixing the node routines first
+produced a mechanism that worked at every depth except `-z 1`, which reaches the
+same question by a different path. It is now one named predicate,
+`check_win_reached`, and the five sites call it.
+
+**The stipulated terminal must win the tie.** A move can be checkmate AND the
+final check at once. Firing the check-count terminal first calls that line dead
+and loses a real solution — silently, and only on the positions where both rules
+bite. `check_limit_terminal` therefore defers whenever the side to move has no
+legal move: every stipulated terminal here is "no legal move, and in check or
+not", so deferring hands the decision to the routine that owns the goal. The test
+is paid only when an allowance has already been exhausted.
+
+**Shortcuts assuming mate is the only ending had to stand down.** The coverage
+exit of section 92 proves "no mate in one exists here", which is not "no WIN in
+one exists here" — the node it would discard can hold one. Likewise the
+mate-reachability bounds and the shallow-fast route, whose two provers test for
+mate in one and mate in two directly and know nothing of a check ending.
+
+**The verifier needed teaching, and that was not optional.** A `checkwin` leaf it
+could not check would have been a hole straight through the product's central
+claim. python-chess has no notion of an allowance, so the verifier now tracks one
+itself, spending it going down the tree and restoring it coming back up exactly
+as it does the board. It rejects a claimed check win that gives no check, one
+with the allowance unspent, and one with no allowance stated at all.
+
+#### Inertness
+
+Standard chess is untouched byte for byte: no fifth field is emitted unless the
+rule is in force, the extra attack query in `make_move` sits behind a comparison
+that standard play never passes, and a corpus annotation occupying exactly the
+position the field would take — `tests/smoke.epd` puts `bm #1` there — is not
+mistaken for one. That last is not fastidiousness: every corpus, every
+differential in the suite and the harness's strict parser compare those strings.
+
+#### What it is for
+
+The variant changes answers in ways that are the point rather than a side effect.
+`8/8/8/4B3/p7/8/1R1R4/k1KB4 w - -` is a selfmate in seven; at `5+2` it still is,
+and at `3+3` it is not, because the solution delivers three checks on the way and
+under those rules the game ends before the attacker can be mated. A selfmate
+stipulation is not satisfied by a check win, and the engine says so.
