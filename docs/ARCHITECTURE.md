@@ -166,6 +166,11 @@ did. If you are reading it for the first time:
 - [87. The Residue After The Rejection Test: Nine Positions, No Instrument](#87-the-residue-after-the-rejection-test-nine-positions-no-instrument)
 - [88. Counter Evidence On The Direct-Mate Residue, And A Skip That Fires Constantly For Nothing](#88-counter-evidence-on-the-direct-mate-residue-and-a-skip-that-fires-constantly-for-nothing)
 - [89. The Coverage-Table Early Exit, Measured Both Ways Before Building](#89-the-coverage-table-early-exit-measured-both-ways-before-building)
+- [90. The Harness Becomes The Least-Verified Component, And Stops Being One](#90-the-harness-becomes-the-least-verified-component-and-stops-being-one)
+- [91. The King-Escape Module: One Analysis, Costed Against Two Residue Classes](#91-the-king-escape-module-one-analysis-costed-against-two-residue-classes)
+- [92. The Coverage Exit, Built Sound: Three Over-Estimates Removed](#92-the-coverage-exit-built-sound-three-over-estimates-removed)
+- [93. The Selfmate Node Exit, Rejected; And Where Selfmate Time Actually Goes](#93-the-selfmate-node-exit-rejected-and-where-selfmate-time-actually-goes)
+- [94. The Fatal-Anti-Check Family, Measured Against The Ordering It Would Replace](#94-the-fatal-anti-check-family-measured-against-the-ordering-it-would-replace)
 
 ## Impact-Ordered Architecture
 
@@ -6757,3 +6762,353 @@ Two soundness requirements are load-bearing and silent when violated: the table
 must never claim inability where a piece can cover, and the exit must use the
 unconditional escape set. Both produce correct answers on most positions and lose
 mates on the ones that matter.
+
+### 90. The Harness Becomes The Least-Verified Component, And Stops Being One
+
+Four measurement defects arrived in one session. None was in the engine. At the
+time the engine carried 414 automated checks and `tools/paired_corpus.py`, the
+file every published number passes through, carried none.
+
+The asymmetry is itself the finding. Verification had accumulated where it was
+easy to add and where it kept coming back clean, and none of it had gone to the
+component that was actually producing wrong numbers.
+
+All four defects were the same bug -- a value attached to the wrong thing:
+
+| Defect | Identity confused |
+|---|---|
+| `-M` handicap | a per-lane budget passed as a total budget |
+| `sm` / `sfm` token | a stalemate line parsed as a selfmate result |
+| swallowed output | a truncated stream, rows shifted against their results |
+| state keyed by goal | two corpora sharing one resume file, so mate-in-10 reported mate-in-8's numbers under its own heading |
+
+#### What changed
+
+**Records are self-describing.** Every result carries a position digest, goal,
+requested depth, engine, engine digest, memory budget, time budget, corpus
+digest, harness commit, and schema version. A record is interpretable with no
+reference to the file it came from or the loop variable that produced it.
+Nothing is positional any more.
+
+**State is keyed by the whole measurement.** The resume key is a hash over the
+entire definition -- corpus digest, goal, depth bound, budget, both engine
+digests, chunk size. Reopening a state file under a different definition is a
+hard error with both definitions printed. The d8/d10 collision is now impossible
+by construction rather than unlikely.
+
+**Invariants are asserted at load, not discovered at analysis.** No position
+twice; every reported depth inside the requested bound; every record inside the
+corpus; a complete run holding exactly two records per row. And a ledger of
+result fingerprints, because *two distinct measurements producing byte-identical
+results* is the signature of defect four and of nothing else. That check is the
+one that was previously performed by noticing, by eye, that two reports looked
+the same.
+
+**Parsing is strict and fails loudly.** The result line is split into fields and
+matched on its own FEN and on an exact goal token; a foreign goal token is an
+error, and so is a line that does not parse. Defect two was a permissive regex,
+and a permissive regex is a silent-wrong-answer generator. Note what this buys
+beyond the original bug: because each line must identify its own position, a
+truncated stream can no longer shift rows against results either. One
+requirement, two defects.
+
+**The harness never invents a tuning parameter.** `--mateprover-mb` now defaults
+to unset, meaning the engine's own default, and reaches the engine only when the
+measurement definition says so -- in which case it is recorded in every record.
+
+#### The checks
+
+Twenty-nine of them, in the same suite and the same gate as the engine's, each
+one a defect turned into an assertion. Three of the four original defects are
+directly reproduced as failing inputs; the fourth, the `-M` handicap, is checked
+structurally against the source, because "does not pass a flag" is not
+observable from a parsed line.
+
+The reason they live in `tests/run_tests.py` rather than in a file of their own
+is the check-count gate: the suite counts its own checks and three documents
+must agree on the number. A separate harness suite would have been a second
+place to forget.
+
+### 91. The King-Escape Module: One Analysis, Costed Against Two Residue Classes
+
+`src/kingescape.h`. The reason it is one module and not two is the whole
+argument for building it at all.
+
+Two mechanisms wanted the same analysis, and each looked unaffordable while it
+was paying for the analysis alone. Section 84 priced the attacker-set
+infrastructure against the selfmate residue and rejected it. Section 89 priced
+the same infrastructure against the direct-mate residue and could only produce
+an upper bound. Costed against both together -- 36 of the 38 residue positions,
+two of the three classes -- it is the cheapest remaining work rather than the
+most expensive.
+
+#### The five sets
+
+For one king, against the other side's men:
+
+- `flights` -- the directions it may legally step to
+- `unconditional` -- the flights no single enemy move can close except by
+  covering or occupying the square
+- `closeable` -- the rest, with `closers`, the pieces whose indirect attacks
+  could shut them
+- `openable` -- directions denied right now by exactly one attacker with nothing
+  behind it, with `openers`, those sole deniers
+
+`flights` is EXACT and everything else is conservative. That split is the design.
+
+#### The direction of error, which is not the intuitive one
+
+Every consumer uses these sets to DISCARD work, so the safe direction is
+*under*-estimating what the enemy king can do -- and the escape set is the one
+place where under-estimating is safe and over-estimating is fatal. Claiming a
+flight the king does not have makes a mate look impossible, and the node is
+thrown away with the answer still in it. Silent, and only on positions nobody
+thinks to test.
+
+This runs opposite to the usual instinct that an over-approximating filter is
+the safe one. It is worth stating in those terms because the instinct is right
+almost everywhere else in this engine.
+
+Two ways to get `flights` wrong, both of which have been made here before:
+
+- **X-ray through the king.** A king stepping directly away from a checking
+  slider is still on the line, and the square looks unattacked precisely because
+  the king itself is blocking the ray. So every query runs against an occupancy
+  with the king lifted off, which is why this module reaches for
+  `attacked_on_planes` rather than `is_attacked`.
+- **Capture of the attacker.** A neighbouring square holding an undefended enemy
+  man is a flight, by capture. Treating occupancy as denial overstates the mate.
+
+#### How it is checked
+
+`--self-check` reads positions and compares the flight mask, square by square,
+against `move_is_legal` -- the only authority there is. Over every position in
+every corpus, 4,571 of them, **zero mismatches**. The same mode cross-checks the
+256-entry coverage table against a second, naive computation of the same
+answers, because a table checked only against itself is not checked.
+
+### 92. The Coverage Exit, Built Sound: Three Over-Estimates Removed
+
+Section 89 measured this at 15.2% fire rate and 60.9% of attacker candidates
+saved, and called both upper bounds. It was right to, and the bound was loose in
+three separate places, all in the same direction:
+
+1. It used the **full** escape set rather than the unconditional one, so it
+   counted squares a discovered attack could close.
+2. It **excluded kings** from the coverage table. An attacker king two files
+   from the defender king covers squares beside it, and a discovered-check mate
+   delivered by the king itself is exactly the case that argument misses.
+3. It ignored **occupation**. A piece standing on an escape square denies it
+   without attacking it.
+
+(2) and (3) were unsound as a mechanism, not merely loose as a measurement: both
+would have made the table answer "no piece can cover this" where one can, and
+that answer throws a node away. They were harmless only because the observer
+ignored its own verdict. Building the mechanism is what forced them out.
+
+The shipped predicate refuses castling and en passant outright, because both
+break the premise the whole argument rests on -- one move, one piece. Castling
+moves two men; en passant vacates two squares, and a one-blocker x-ray test
+cannot see the second. Promotion needs no exception: the table enumerates every
+piece type at every offset, so the promoted piece is already in it.
+
+The mechanism sits **before** move generation, which is position 4 of section
+88's ladder and the reason it can pay at all. Section 88's filter moved from
+position 1 to position 2, fired on 87.1% of candidates, and converted none of
+it, because `ordered_check_shortcut` had already reduced the work behind it to a
+bit read. Nothing in this engine has a node-level "could a mate in one exist here
+at all" predicate, so nothing has harvested this one.
+
+The observer remains, sited after generation, because the mechanism must run
+before generation to save anything and the observer must run after it to count
+what was saved. Two flags, one predicate, two different questions.
+
+#### The differential, and what it cost to run
+
+260 positions of the mate-in-8 corpora at 20 s, the exit on and off, comparing
+`bm`, `dm` and the full principal variation:
+
+```
+  with the exit    : 230 of 260 solved
+  without          : 228 of 260 solved
+  solved only WITH the exit    : 2
+  solved only WITHOUT          : 0     <- must be zero
+  disagreeing answers          : 0     <- must be zero
+```
+
+Every other line is byte-identical apart from the `via` field, which names the
+portfolio lane that got there first and is a race between concurrent lanes rather
+than a property of the search.
+
+Two extra positions is a modest headline and the right one to quote: this is a
+constant-factor mechanism, and the corpus is mostly positions decided long before
+the budget runs out. What the differential establishes is the part that matters
+more -- **no position moved the other way**. A pruning mechanism whose failure
+mode is a silently lost solution is only as good as the evidence that it has not
+lost one.
+
+### 93. The Selfmate Node Exit, Rejected; And Where Selfmate Time Actually Goes
+
+The same analysis read the other way round. Where the shipped per-move rejection
+test asks "does THIS move leave the defender king a quiet step", the node
+version asks "does EVERY move leave it one" -- and when that holds, the node is
+finished before a move exists.
+
+It holds almost never. Over sixty selfmate positions:
+
+```
+  selfmate depth-1 nodes      : 10,240,552
+  node refutations      (Q1)  : 11,016      (0.1%)
+  moves never generated (Q2)  : 245,546     (0.1% of attacker moves)
+```
+
+**Rejected.** Both questions answered, both negative, and the reason is
+structural rather than incidental: requiring the condition to hold for every
+move is a far stronger demand than requiring it for one, and the strengthening
+costs three orders of magnitude. The predicate stays in the tree behind
+`--selfmate-node-exit`, default off, with the number recorded here so nobody
+re-derives it.
+
+#### What the same run found instead
+
+```
+  rejection test calls        : 319,961,526
+  rejected                    : 271,646,533  (84.9%)
+```
+
+320 million calls across sixty positions, answering yes 84.9% of the time -- and
+still implemented the way it was first written as an observer, by making each
+king move and looking.
+
+So the fast path answers the same question with attack queries instead of board
+copies:
+
+- **no legal king move** -- exact, answer is no. One attack query per neighbour,
+  no move executed.
+- **no discovery available** -- lifting the defender king off the board leaves
+  the attacker king unattacked, so no king move can give check, so any legal one
+  is a witness. Exact, one further query.
+- **otherwise** -- a discovery is possible for some king move, though not
+  necessarily the one we would use, since a move ALONG the discovered line
+  discovers nothing. Defer to the exact form.
+
+The fallback is what keeps it honest. Guessing in the yes direction rejects an
+attacker move that might be a solution, and that failure is silent. This is the
+same asymmetry as section 91, in a different mechanism.
+
+#### And what it is actually worth, which is less than the call count suggests
+
+Sixty selfmate positions at 8 s, the 55 both configurations solve:
+
+```
+  calls to the test           : 347,188,892
+  answered by the fast path   : 343,249,723   (98.9%)
+  fell back to the exact form :   3,939,169   (1.1%)
+
+  total time, fast            : 67.00 s
+  total time, exact           : 70.31 s
+  speedup                     : 1.049x total, 1.013x median
+```
+
+Identical verdicts on all sixty.
+
+**5% total and 1.3% median, from removing 98.9% of 347 million board copies.**
+That is a real gain and a free one -- the path is exact and the differential is
+clean -- but it is an order of magnitude smaller than the call count implied, and
+the reason is worth naming, because it is this document's own recurring lesson
+turned on a change made here rather than a change considered here.
+
+The 320-million figure answered Q1: how often is the predicate consulted. It did
+not answer Q2: what share of the search's time those consultations are. They
+turn out to be a small one. The old implementation exits at the first witness it
+finds, and with a witness present 84.9% of the time it usually found one on the
+first or second neighbour -- so the average call was already one or two board
+copies, not eight. The saving per call was small, and 347 million times a small
+number is still a small number next to the rest of the search.
+
+Kept on by default, because 5% for no risk is worth having and the switch exists
+to prove it changes nothing. But recorded here at its true size: **a call count
+is a Q1 measurement wearing a Q2 costume,** and this is the third time in six
+sections that the distinction has decided the answer.
+
+Note the shape of this result: the measurement built to evaluate a candidate
+mechanism rejected that mechanism and found a better target in the same numbers.
+That is the second time instrumenting for one question has answered a different
+one, and it is an argument for instrumenting more.
+
+### 94. The Fatal-Anti-Check Family, Measured Against The Ordering It Would Replace
+
+Three variants of one idea, all with real volume in Chest's counters: a defender
+reply that checks the attacker in a way that leaves no mate-in-one available
+refutes the attacker's move outright. Variant 3 searches for one within the reply
+list (26-85% success in Chest), variant 2 tests for existence after the attacker
+move is executed (35-77%), variant 1 precomputes king directions and prunes
+before execution.
+
+The earlier plan put variant 1 first, on the grounds that it is the only
+pre-execution one. Section 88 falsified that reasoning about itself: position on
+the filter ladder caps what a mechanism can save, it does not establish that
+anything is there to save. So all three were measured first, and the measurement
+was designed around the term section 88 missed.
+
+#### The right question
+
+What a fatal-anti-check test can save at a defender node is whatever the search
+spends **before** it reaches the refuting reply. This engine already orders
+replies to put refutations first -- answer ordering, and the refutation-hint
+table. So the useful measurement is not the fire rate. It is:
+
+- how many replies the search actually tries before it finds its refutation, and
+- whether that refutation is a check anyway, since a quiet refutation is outside
+  the mechanism's reach however early it arrives.
+
+Both are counted at every defender node under `--fac-observer`.
+
+#### The result
+
+260 positions of the mate-in-8 corpora:
+
+```
+  defender nodes that refuted   : 69,055,404
+  refuted on the FIRST reply    : 68,186,917   (98.7%)
+  replies tried before refuting : 2,860,459    (mean 0.04)
+  refutation was a check   (Q1) : 28,449,012   (41.2%)
+  defender replies tried, total : 73,107,114
+  Q2 ceiling, share of replies  : 3.9%
+```
+
+**98.7% of refutations arrive on the very first reply tried.** The mean number of
+replies preceding a refutation is 0.04. The entire pool of work a
+fatal-anti-check test could remove is 3.9% of defender replies, and that figure
+is a ceiling twice over: it assumes the test itself is free, and it assumes the
+test finds the refuter every time it exists -- where in fact only 41.2% of
+refutations are checks at all.
+
+**Variants 3 and 2 are rejected.** They target the same pool, and the pool is
+already harvested. This is the saving equation from the specification with its
+third term dominating:
+
+```
+saving = (replies not searched)          <=  3.9%
+       - (cost of the fatal-check test)
+       - (work answer ordering already avoids)   ~= 96% of the first term
+```
+
+**Variant 1 stays unbuilt, and last.** It sits at a different filter point -- it
+rejects attacker KING moves before execution, at the attacker loop, rather than
+shortening a defender reply list -- so this measurement does not settle it. But it
+is the fiddliest geometry in six specifications, and the two variants aimed at
+the larger pool have just been measured to nothing. It is now the least
+attractive item on the list rather than the first.
+
+#### What this is worth beyond the verdict
+
+Section 88 measured Q1 at 87.1%, built the mechanism, and discovered the trap
+afterwards. This one cost a counter and an afternoon and rejected two mechanisms
+before either was written. The difference between the two is not care or
+scepticism; it is that the second measurement was pointed at the existing engine
+rather than at the candidate.
+
+The general form, worth keeping: **when a candidate mechanism finds something
+faster, measure how fast the engine already finds it, not how often the candidate
+would fire.**

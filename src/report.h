@@ -85,6 +85,99 @@ void perft_line(const std::string& raw, int depth) {
     }
 }
 
+// Cross-check the escape-coverage table against a direct computation.
+//
+// The shipped table is built by enumerating the subsets of each placement's
+// coverage, which is fast and slightly clever; this recomputes every one of the
+// 256 answers the obvious way, by testing each mask against each placement.
+// Agreement between a clever construction and a naive one is the whole point --
+// a table that is only checked against itself is not checked.
+//
+// Returns the number of disagreements, which must be zero. A table entry that
+// wrongly reads "no piece can cover this" makes the early exit throw away a node
+// with a mate in it, and nothing downstream would ever notice.
+inline int verify_escape_coverage_table() {
+    const int ksq = square_of(4, 4);
+    const std::array<int, kEscapeDirs>& neighbours = escape_square_table()[ksq];
+    std::array<bool, 256> naive{};
+    naive.fill(false);
+    for (unsigned mask = 0; mask < 256; ++mask) {
+        for (int pt = 0; pt < 6 && !naive[mask]; ++pt) {
+            for (int from = 0; from < 64 && !naive[mask]; ++from) {
+                if (from == ksq) continue;
+                Board probe;
+                probe.by_type[pt] |= 1ull << from;
+                probe.by_color[WHITE] |= 1ull << from;
+                probe.occ = 1ull << from;
+                bool all = true;
+                for (int dir = 0; dir < kEscapeDirs && all; ++dir) {
+                    if (!(mask & (1u << dir))) continue;
+                    const int to = neighbours[dir];
+                    if (to < 0) { all = false; break; }
+                    all = (from == to) || piece_attacks_square(probe, from, to);
+                }
+                if (all) naive[mask] = true;
+            }
+        }
+    }
+    int wrong = 0;
+    for (unsigned mask = 0; mask < 256; ++mask) {
+        if (escape_coverage_table()[mask] != naive[mask]) ++wrong;
+    }
+    return wrong;
+}
+
+// Check `king_escape`'s flight set against move generation, exactly.
+//
+// `flights` is the one set in kingescape.h that must be EXACT rather than
+// conservative: every mechanism built on it reasons about what the enemy king
+// can do, and inventing a flight makes a mate look impossible. So it is checked
+// against the only authority there is -- generating the king's moves and
+// filtering them for legality. Slow, and correct by construction, which is what
+// a reference implementation is for.
+inline void self_check_line(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty()) {
+        return;
+    }
+    auto parsed = parse_fen4(line);
+    if (!parsed) {
+        std::cout << line << "; selfcheck error input;\n" << std::flush;
+        return;
+    }
+    const Board b = *parsed;
+    int mismatches = 0;
+    for (int side = 0; side < 2; ++side) {
+        const Color us = static_cast<Color>(side);
+        const int king = b.king_sq[us];
+        if (king < 0) continue;
+        const KingEscape escape = king_escape(b, us);
+        const std::array<int, kEscapeDirs>& neighbours = escape_square_table()[king];
+        // A king's move is legal regardless of whose turn it is claimed to be,
+        // so the reference walks the board with the side of the king in hand.
+        Board probe = b;
+        probe.stm = us;
+        for (int dir = 0; dir < kEscapeDirs; ++dir) {
+            const int to = neighbours[dir];
+            const bool claimed = (escape.flights >> dir) & 1u;
+            bool actual = false;
+            if (to >= 0 && !(b.by_color[us] & (1ull << to))) {
+                Move m;
+                m.from = king;
+                m.to = to;
+                actual = move_is_legal(probe, m);
+            }
+            if (claimed != actual) ++mismatches;
+        }
+        // The three derived sets must partition the flights exactly as claimed.
+        if ((escape.unconditional | escape.closeable) != escape.flights) ++mismatches;
+        if (escape.unconditional & escape.closeable) ++mismatches;
+        if (escape.openable & escape.flights) ++mismatches;
+    }
+    std::cout << fen4(b) << "; selfcheck " << (mismatches == 0 ? "ok" : "FAIL")
+              << "; mismatches " << mismatches << ";\n" << std::flush;
+}
+
 // Read a mate depth out of an annotated input line.
 //
 // Two spellings are accepted. `#N` is the matetrack/EPD convention. `dm N` is
@@ -213,8 +306,17 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"coverage_nodes\":" << st.coverage_nodes
               << ",\"coverage_exits\":" << st.coverage_exits
               << ",\"coverage_moves_saved\":" << st.coverage_moves_saved
+              << ",\"selfmate_node_probes\":" << st.selfmate_node_probes
+              << ",\"selfmate_node_exits\":" << st.selfmate_node_exits
+              << ",\"selfmate_node_moves_saved\":" << st.selfmate_node_moves_saved
               << ",\"d1_attacker_moves\":" << st.d1_attacker_moves
               << ",\"d1_would_reject\":" << st.d1_would_reject
+              << ",\"d1_reject_fast\":" << st.d1_reject_fast
+              << ",\"d1_reject_slow\":" << st.d1_reject_slow
+              << ",\"fac_refuted_nodes\":" << st.fac_refuted_nodes
+              << ",\"fac_replies_before\":" << st.fac_replies_before
+              << ",\"fac_first_reply_refutes\":" << st.fac_first_reply_refutes
+              << ",\"fac_refutation_is_check\":" << st.fac_refutation_is_check
               << ",\"defender_refutations\":" << st.defender_refutations
               << ",\"refutation_hint_probes\":" << st.refutation_hint_probes
               << ",\"refutation_hint_hits\":" << st.refutation_hint_hits

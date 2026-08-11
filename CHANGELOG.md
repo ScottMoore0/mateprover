@@ -10,6 +10,83 @@ without one.
 
 ## Unreleased
 
+**The measurement harness is now verified, and it was the least-verified thing
+here.** Four measurement defects arrived in one session and none was in the
+engine, which carried 414 checks of its own against `tools/paired_corpus.py`'s
+zero -- and every published number passes through that file. All four were the
+same bug, a value attached to the wrong thing: a per-lane budget passed as a
+total, a stalemate line parsed as a selfmate result, a truncated stream shifting
+rows against results, and a resume file keyed by goal alone so mate-in-10
+reported mate-in-8's numbers under its own heading.
+
+Records are now self-describing -- position digest, goal, requested depth,
+engine, engine digest, both budgets, corpus digest, harness commit, schema --
+so nothing is positional. Resume state is keyed by a hash of the entire
+measurement definition, and reopening it under a different one is a hard error.
+Invariants are asserted at load: no position twice, every depth inside its
+requested bound, every record inside the corpus, and a ledger that refuses a
+result set some *different* measurement already produced, which is the signature
+of the shared-state-file defect and of nothing else. Parsing is strict -- result
+lines are split into fields and matched on their own FEN and an exact goal
+token, so a foreign token and a shifted row are both errors rather than quiet
+non-solutions. And the harness no longer invents tuning parameters: a flag
+reaches an engine only if the definition names it, and then it is recorded.
+
+Twenty-nine checks, in the same suite and gate as the engine's.
+
+**`src/kingescape.h`: one analysis, costed against two residue classes.** The
+per-square attacker sets around a king were rejected twice when priced against
+one residue class at a time. The same five sets feed the direct-mate coverage
+exit and the selfmate rejection test -- 36 of the 38 residue positions -- and
+that is what makes them worth building.
+
+`flights` is exact; everything derived from it is conservative. The direction of
+error is the opposite of the usual instinct: *over*-estimating what a king can do
+makes a mate look impossible and throws the node away with the answer still in
+it. `--self-check` compares the flight mask square by square against move
+generation over every position in every corpus, 4,571 of them, with zero
+mismatches, and cross-checks the 256-entry coverage table against a second,
+naive computation of the same answers.
+
+**The direct-mate coverage exit, built sound (`--coverage-exit`, default on).**
+At depth 1 the whole node fails before a move is generated when no single piece
+could deny the enemy king every escape square it unconditionally has. The
+observed 15.2% fire rate reported earlier was an upper bound in three separate
+places -- it used the full escape set rather than the unconditional one, excluded
+kings from the coverage table, and ignored occupation. The last two were unsound
+as a mechanism rather than merely loose as a measurement, and building the thing
+is what forced them out. Castling and en passant are refused outright: both break
+the premise that one move moves one piece.
+
+**The selfmate node exit is rejected, and named the real target instead**
+(`--selfmate-node-exit`, default off). Requiring a quiet king step to survive
+*every* attacker move rather than one fires on 0.1% of selfmate depth-1 nodes and
+saves 0.1% of moves -- three orders of magnitude weaker than the per-move test.
+The same run found the per-move test being called 320 million times across sixty
+positions and answering yes 84.9% of the time, which is not a heuristic but an
+inner loop. It now answers with attack queries instead of board copies
+(`--fast-reject`, default on), falling back to the exact form whenever a
+discovered check might be available: 98.9% of 347 million calls resolved without
+a board copy, identical verdicts on all sixty positions, **1.049x total and
+1.013x median**. Recorded at that size deliberately -- the call count answered
+how often the predicate runs, not what share of the search it is, and the honest
+answer to the second question is an order of magnitude smaller than the first
+implied.
+On the mate-in-8 corpora at 20 s the exit solves 230 of 260 against 228 without
+it, with **zero positions lost and zero answers changed** -- the direction that
+matters for a mechanism whose failure mode is a silently missing mate.
+
+**Two more mechanisms measured out before being written.** The fatal-anti-check
+family was the next candidate, and the useful question about it turned out not to
+be its fire rate. What it can save at a defender node is whatever the search
+spends *before* reaching the refuting reply, and this engine already orders
+replies to put refutations first. Over 260 positions, **98.7% of refutations
+arrive on the very first reply tried**, mean 0.04 replies before one; the entire
+pool such a test could remove is 3.9% of defender replies, and only 41.2% of
+refutations are checks at all. Variants 3 and 2 rejected; variant 1 sits at a
+different filter point and is now last rather than first, on the same evidence
+that made it look attractive being about placement rather than payoff.
+
 **All seven corpora re-measured against Chest 3.19 under one protocol** -- 5 s and
 2 GB a position for each engine, same machine, same session. Previous figures came
 from separate runs at unrecorded budgets against different builds and were not
@@ -346,7 +423,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 414 automated checks cover perft against
+sharing no code with the engine. 452 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

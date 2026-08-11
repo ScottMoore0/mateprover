@@ -44,6 +44,7 @@
 #include "search_state.h"
 #include "board.h"
 #include "movegen.h"
+#include "kingescape.h"
 #include "ordering.h"
 #include "prooftable.h"
 #include "prove.h"
@@ -204,6 +205,9 @@ void print_usage() {
 "  --profile                     emit per-position counters to stderr\n"
 "  --no-profile                  default; no counters\n"
 "  --debug                       verbose search diagnostics on stderr\n"
+"  --self-check                  check the king-escape analysis against move\n"
+"                                generation on each position, and the escape\n"
+"                                coverage table against a second computation\n"
 "  --list-legal                  list legal moves instead of solving\n"
 "  --perft N                     perft counts for depths 1..N\n"
 "  --perft-divide N              per-root-move perft breakdown at depth N\n"
@@ -228,6 +232,38 @@ void print_usage() {
 "                                one quiet king move refutes it. Exact, so it\n"
 "                                cannot change a verdict; the off switch is the\n"
 "                                differential test\n"
+"  --coverage-exit | --no-coverage-exit\n"
+"                                default: on. At direct-mate depth 1, fail the\n"
+"                                whole node before generating a move when no\n"
+"                                single piece could deny the enemy king every\n"
+"                                escape square it unconditionally has. Exact, so\n"
+"                                it cannot change a verdict; the off switch is\n"
+"                                the differential test\n"
+"  --fac-observer                count, at every defender node, how many replies\n"
+"                                the search tries before the one that refutes,\n"
+"                                and whether that refutation is a check. What a\n"
+"                                fatal-anti-check test could save is exactly what\n"
+"                                precedes the refutation, so this measures the\n"
+"                                mechanism against the ordering already in place.\n"
+"                                A measurement aid, not a tuning knob\n"
+"  --fast-reject | --no-fast-reject\n"
+"                                default: on. Answer the selfmate rejection\n"
+"                                test with attack queries instead of board\n"
+"                                copies, deferring to the exact form whenever a\n"
+"                                discovered check might be available. Cannot\n"
+"                                change a verdict; the off switch is the\n"
+"                                differential test\n"
+"  --selfmate-node-exit | --no-selfmate-node-exit\n"
+"                                default: off. At selfmate depth 1, refute the\n"
+"                                whole node before generating a move when no\n"
+"                                single piece could deny the defender king every\n"
+"                                escape square it unconditionally has and no\n"
+"                                king move could discover a check. Exact, so it\n"
+"                                cannot change a verdict; the off switch is the\n"
+"                                differential test\n"
+"  --selfmate-node-observer      count what that node exit would refute, and how\n"
+"                                many moves it would save, without acting on it.\n"
+"                                A measurement aid, not a tuning knob\n"
 "  --coverage-observer           count how often a mate in one is provably\n"
 "                                impossible at a direct-mate depth-1 node, and\n"
 "                                how many moves that would save, without acting\n"
@@ -363,6 +399,7 @@ int main(int argc, char** argv) {
     bool list_legal = false;
     bool list_san = false;
     bool list_unmoves = false;
+    bool self_check = false;
 
     // Pre-scan: this flag must work regardless of where it appears, otherwise
     // it only takes effect when written before the option it excuses.
@@ -429,6 +466,14 @@ int main(int argc, char** argv) {
             read_stdin = true;
         } else if (arg == "--debug") {
             config.debug = true;
+        } else if (arg == "--self-check") {
+            self_check = true;
+            // Once, before any position: a table checked only against itself is
+            // not checked, and this one decides whether nodes get thrown away.
+            const int wrong = verify_escape_coverage_table();
+            std::cout << "coverage-table; selfcheck "
+                      << (wrong == 0 ? "ok" : "FAIL") << "; mismatches "
+                      << wrong << ";\n";
         } else if (arg == "--list-legal") {
             list_legal = true;
         } else if (arg == "--list-san") {
@@ -473,6 +518,22 @@ int main(int argc, char** argv) {
             config.attacker_reject = true;
         } else if (arg == "--no-attacker-reject") {
             config.attacker_reject = false;
+        } else if (arg == "--fac-observer") {
+            config.fac_observer = true;
+        } else if (arg == "--fast-reject") {
+            config.fast_reject = true;
+        } else if (arg == "--no-fast-reject") {
+            config.fast_reject = false;
+        } else if (arg == "--selfmate-node-exit") {
+            config.selfmate_node_exit = true;
+        } else if (arg == "--no-selfmate-node-exit") {
+            config.selfmate_node_exit = false;
+        } else if (arg == "--selfmate-node-observer") {
+            config.selfmate_node_observer = true;
+        } else if (arg == "--coverage-exit") {
+            config.coverage_exit = true;
+        } else if (arg == "--no-coverage-exit") {
+            config.coverage_exit = false;
         } else if (arg == "--coverage-observer") {
             config.coverage_observer = true;
         } else if (arg == "--reject-observer") {
@@ -954,6 +1015,8 @@ int main(int argc, char** argv) {
             }
             if (perft_depth > 0) {
                 if (perft_divide) perft_divide_line(line, perft_depth); else perft_line(line, perft_depth);
+            } else if (self_check) {
+                self_check_line(line);
             } else if (list_legal) {
                 list_legal_line(line);
             } else if (list_san) {
@@ -978,6 +1041,8 @@ int main(int argc, char** argv) {
         buffer << std::cin.rdbuf();
         if (perft_depth > 0) {
             if (perft_divide) perft_divide_line(buffer.str(), perft_depth); else perft_line(buffer.str(), perft_depth);
+        } else if (self_check) {
+            self_check_line(buffer.str());
         } else if (list_legal) {
             list_legal_line(buffer.str());
         } else if (list_san) {

@@ -35,6 +35,7 @@ add_executable(mateprover
     src/search_state.h
     src/board.h
     src/movegen.h
+    src/kingescape.h
     src/ordering.h
     src/prooftable.h
     src/prove.h

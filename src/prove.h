@@ -207,20 +207,39 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth);
 constexpr int kFailAnyDepth = 1 << 20;
 
 
-// OBSERVER for the selfmate attacker-rejection test. Computes the verdict,
-// counts it, and does nothing with it.
+// The selfmate attacker-rejection test.
 //
-// The test's claim: an attacker move at selfmate depth 1 is refuted if, after
-// it, the defender KING has a legal move that does not give check -- a king move
-// is never itself a check, so such a move is a legal non-mating reply and the
+// The claim: an attacker move at selfmate depth 1 is refuted if, after it, the
+// defender KING has a legal move that does not give check -- a king move is
+// never itself a check, so such a move is a legal non-mating reply and the
 // "every defender move mates" requirement fails immediately.
 //
-// Computed EXACTLY here, by making the move and looking, rather than by the
-// specification's board-free geometry. Far too slow to ship and exactly right
-// for a measurement: it cannot be wrong, so the rate it reports is the true
-// applicability of the test rather than the applicability of my approximation of
-// it. High rate justifies porting the geometry; low rate owes nothing further.
-inline bool defender_has_quiet_king_move(const Board& nb, Color attacker) {
+// Two implementations of one predicate, and they must agree exactly.
+//
+// The reference below makes each king move and looks. It was written as an
+// observer, where being obviously right mattered more than being fast, and it
+// shipped in that form because it won six positions in that form. Then the
+// counters said what it costs: 320 MILLION calls across sixty selfmate
+// positions, rejecting 84.9% of them. A predicate consulted that often and
+// answering yes that often is not a heuristic any more, it is the inner loop.
+//
+// So the fast path answers the same question with attack queries instead of
+// board copies, and falls back to the reference whenever it cannot be certain:
+//
+//   no legal king move        exact, and the answer is no. One attack query per
+//                             neighbour, no move executed.
+//   no discovery available    lifting the defender king off the board leaves the
+//                             attacker king unattacked, so NO king move can give
+//                             check, so any legal one is a witness. Exact, and
+//                             one further attack query.
+//   otherwise                 a discovery is possible for some king move but not
+//                             necessarily for the one we would use -- a move
+//                             ALONG the discovered line discovers nothing -- so
+//                             defer to the reference rather than guess.
+//
+// The fallback is what keeps this honest. Guessing in the yes direction rejects
+// an attacker move that may be a solution, and that failure is silent.
+inline bool defender_has_quiet_king_move_reference(const Board& nb, Color attacker) {
     const Color defender = other(attacker);
     const int dk = nb.king_sq[defender];
     if (dk < 0) return false;
@@ -240,59 +259,24 @@ inline bool defender_has_quiet_king_move(const Board& nb, Color attacker) {
     return false;
 }
 
-
-// Coverage table for the mate-in-one early exit, derived rather than
-// transcribed: for each of the 256 escape-direction masks, can ANY piece type,
-// standing on ANY square relative to the king, attack every direction in the
-// mask at once? If not, no single move can cover those escapes, so no mate in
-// one exists and the whole node fails before a move is generated.
-//
-// Pure enumeration over the movement rules -- nothing empirical, nothing to
-// tune. Soundness direction: the table must never claim "no piece can cover
-// this" when one can, so anything uncertain is marked capable. Over-claiming
-// capability only declines the early exit.
-const std::array<bool, 256>& mate1_coverage_table() {
-    static const std::array<bool, 256> table = [] {
-        std::array<bool, 256> out{};
-        out.fill(false);
-        // King at a central square so every relative offset is representable.
-        const int ksq = square_of(4, 4);
-        for (int pt = 0; pt < 5; ++pt) {              // P N B R Q, never a king
-            for (int from = 0; from < 64; ++from) {
-                if (from == ksq) continue;
-                unsigned covered = 0;
-                int bit = 0;
-                for (int df = -1; df <= 1; ++df) {
-                    for (int dr = -1; dr <= 1; ++dr) {
-                        if (df == 0 && dr == 0) continue;
-                        const int nf = file_of(ksq) + df, nr = rank_of(ksq) + dr;
-                        if (on_board(nf, nr)) {
-                            Board probe;
-                            // Empty board: the most generous coverage a piece of
-                            // this type can have, which is the safe direction.
-                            probe.by_type[pt] |= 1ull << from;
-                            probe.by_color[WHITE] |= 1ull << from;
-                            probe.occ = 1ull << from;
-                            if (piece_attacks_square(probe, from, square_of(nf, nr))) {
-                                covered |= 1u << bit;
-                            }
-                        }
-                        ++bit;
-                    }
-                }
-                // Every mask that is a subset of what this piece covers is
-                // coverable. Enumerating subsets directly is cheaper than
-                // testing all 256 against every placement.
-                for (unsigned m = covered; ; m = (m - 1) & covered) {
-                    out[m] = true;
-                    if (m == 0) break;
-                }
-            }
+inline bool defender_has_quiet_king_move(const Board& nb, Color attacker,
+                                         Stats& stats, bool fast) {
+    const Color defender = other(attacker);
+    if (nb.king_sq[defender] < 0) return false;
+    if (fast) {
+        if (!king_has_legal_move(nb, defender)) {
+            ++stats.d1_reject_fast;
+            return false;
         }
-        return out;
-    }();
-    return table;
+        if (!king_move_could_discover_check(nb, defender)) {
+            ++stats.d1_reject_fast;
+            return true;
+        }
+        ++stats.d1_reject_slow;
+    }
+    return defender_has_quiet_king_move_reference(nb, attacker);
 }
+
 
 Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
@@ -367,8 +351,36 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         return cached;
     }
 
+    // THE SELFMATE NODE EXIT, the same analysis as the direct-mate coverage
+    // exit read the other way round. Where the per-move rejection test below
+    // asks "does THIS move leave the defender king a quiet step" once per move
+    // and pays a board copy to answer, this asks "does EVERY move leave it one"
+    // once per node and pays nothing per move. When it holds, the node is
+    // finished before a move exists.
+    // Stood down while its observer runs, for the same reason as the coverage
+    // exit above: an exit that consumes the nodes its observer counts makes the
+    // observer report zero.
+    if (s.selfmate_node_exit && !s.selfmate_node_observer && depth == 1 &&
+        s.goal == Goal::Selfmate) {
+        ++s.stats.selfmate_node_probes;
+        if (selfmate_node_refuted_by_escape(b, s.attacker)) {
+            ++s.stats.selfmate_node_exits;
+            return {};
+        }
+    }
+
     bool scored = false;
     auto moves = generate_ordered_moves(s, b, scored);
+    // OBSERVER for the exit above, sited after generation so it can report the
+    // moves that would never have been produced. Q1 without Q2 is what section
+    // 88 measured, and section 88 is why both are counted here.
+    if (s.selfmate_node_observer && depth == 1 && s.goal == Goal::Selfmate) {
+        ++s.stats.selfmate_node_probes;
+        if (selfmate_node_refuted_by_escape(b, s.attacker)) {
+            ++s.stats.selfmate_node_exits;
+            s.stats.selfmate_node_moves_saved += moves.size();
+        }
+    }
     restrict_attacker_moves(s, b, moves);
     ++s.stats.attacker_move_lists;
     s.stats.attacker_moves += moves.size();
@@ -414,7 +426,8 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         if ((s.reject_observer || s.attacker_reject) && depth == 1 &&
             s.goal == Goal::Selfmate) {
             ++s.stats.d1_attacker_moves;
-            const bool witness = defender_has_quiet_king_move(nb, s.attacker);
+            const bool witness = defender_has_quiet_king_move(
+                nb, s.attacker, s.stats, s.fast_reject);
             if (witness) {
                 ++s.stats.d1_would_reject;
                 if (s.attacker_reject) {
@@ -1257,6 +1270,23 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         branch_certs.reserve(replies.size());
     }
     bool any_legal = false;
+    // OBSERVER for the fatal-anti-check family, and specifically for the term
+    // that killed section 88: work an existing mechanism already avoids.
+    //
+    // Variant 3 finds a refuting reply by scanning the reply list for a CHECK
+    // the attacker cannot answer, instead of searching replies one by one. What
+    // it can save is whatever the search spends BEFORE it reaches the refuting
+    // reply -- and this engine already orders replies to put refutations first,
+    // via answer ordering and the refutation-hint table. So the question is not
+    // "how often does a fatal check exist" but "how many replies does the search
+    // actually try before it finds its refutation, and is that refutation a
+    // check anyway". Both are counted here, at no cost when the flag is off.
+    //
+    // Counting the position of the refuting reply is the whole measurement. If
+    // it is almost always the first, the mechanism has nothing left to harvest,
+    // whatever its fire rate -- which is section 88 stated in advance rather
+    // than discovered afterwards.
+    std::size_t tried_before_refutation = 0;
     for (const Move& dmove : replies) {
         Board nb = make_move(b, dmove);
         if (lazy) {
@@ -1274,6 +1304,19 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         }
         if (!child.ok) {
             ++s.stats.defender_refutations;
+            if (s.fac_observer) {
+                ++s.stats.fac_refuted_nodes;
+                s.stats.fac_replies_before += tried_before_refutation;
+                if (tried_before_refutation == 0) {
+                    ++s.stats.fac_first_reply_refutes;
+                }
+                // Is the refutation a check on the attacker? That is what the
+                // fatal-anti-check test looks for; a refutation that is a quiet
+                // move is outside the mechanism's reach however early it comes.
+                if (in_check(nb, other(b.stm))) {
+                    ++s.stats.fac_refutation_is_check;
+                }
+            }
             if (s.debug) {
                 std::cerr << "defender_refutes depth=" << depth << " move=" << move_uci(dmove)
                           << " fen=" << fen4(nb) << "\n";
@@ -1293,6 +1336,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
             store_exact_proof_table(s, key, depth, out);
             return out;
         }
+        ++tried_before_refutation;
         std::vector<Move> candidate;
         candidate.push_back(dmove);
         candidate.insert(candidate.end(), child.pv.begin(), child.pv.end());
@@ -1400,6 +1444,32 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return hint_key;
     };
 
+    // THE COVERAGE EARLY EXIT, at position 4 of the filter ladder: before
+    // generation, node-level, so what it saves is the entire node rather than
+    // one execution. This is the distinction section 88 got wrong -- that filter
+    // moved from position 1 to position 2, fired on 87.1% of candidates, and
+    // converted none of it, because an existing shortcut had already reduced the
+    // work behind it to a bit read. Nothing in this engine has a node-level
+    // "could a mate in one exist at all" predicate, so nothing has harvested
+    // this.
+    //
+    // Held off when any-depth refutations are on: GAP-1 composition needs to
+    // have LOOKED at the successors to conclude the node is refuted at every
+    // depth, and returning early would report a plain depth-limited failure
+    // where a refutation was available. Wrong direction for a cache.
+    //
+    // Stood down while the observer runs. Otherwise the exit consumes exactly
+    // the nodes the observer exists to count, and the observer reports zero --
+    // a measurement that describes the instrument rather than the engine.
+    if (s.coverage_exit && !s.coverage_observer && depth == 1 &&
+        s.goal == Goal::Mate && !s.any_depth_refutations) {
+        ++s.stats.coverage_nodes;
+        if (mate1_impossible_by_coverage(b)) {
+            ++s.stats.coverage_exits;
+            return {};
+        }
+    }
+
     bool moves_scored = false;
     auto moves = generate_ordered_moves(s, b, moves_scored);
     restrict_attacker_moves(s, b, moves);
@@ -1440,42 +1510,23 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // terminal and the goal decides it, not composition.
     bool all_moves_refuted = s.any_depth_refutations && !moves.empty();
 
-    // OBSERVER for the coverage-table early exit. Position 4 of the filter
-    // ladder: a node-level predicate that would suppress generation entirely.
-    // Q2 is local here -- the work it avoids is this node's own move list and
-    // mate tests -- so both questions are answerable without subtree
-    // attribution.
+    // OBSERVER for the same predicate the mechanism above uses, sited after
+    // generation so it can report Q2 -- the moves that would never have been
+    // produced -- alongside Q1. Two flags for one predicate because they answer
+    // different questions: the mechanism must run before generation to save
+    // anything, and the observer must run after it to count what was saved.
     //
-    // Uses the FULL escape set, not the unconditional one, because the
-    // indirect-attacker sets that distinguish them do not exist in this board.
-    // That over-states the escape mask, which makes covering harder and the exit
-    // fire more often, so this reports an UPPER BOUND on the fire rate -- the
-    // right direction for a go/no-go: if even the bound is small, do not build.
+    // The first cut of this observer used the FULL escape set and the fire rate
+    // it reported, 15.2%, was an upper bound three ways over: it counted squares
+    // a discovery could close, it excluded kings from the coverage table, and it
+    // ignored occupation. All three are fixed in the shipped predicate and all
+    // three moved the same way, so the honest figure is the one below and not
+    // that one.
     if (s.coverage_observer && depth == 1 && s.goal == Goal::Mate) {
-        const Color them = other(b.stm);
-        const int dk = b.king_sq[them];
-        if (dk >= 0) {
-            unsigned mask = 0;
-            int bit = 0;
-            for (int df = -1; df <= 1; ++df) {
-                for (int dr = -1; dr <= 1; ++dr) {
-                    if (df == 0 && dr == 0) continue;
-                    const int nf = file_of(dk) + df, nr = rank_of(dk) + dr;
-                    if (on_board(nf, nr)) {
-                        const int to = square_of(nf, nr);
-                        if (!(b.by_color[them] & (1ull << to)) &&
-                            !is_attacked(b, to, b.stm)) {
-                            mask |= 1u << bit;
-                        }
-                    }
-                    ++bit;
-                }
-            }
-            ++s.stats.coverage_nodes;
-            if (!mate1_coverage_table()[mask & 0xffu]) {
-                ++s.stats.coverage_exits;
-                s.stats.coverage_moves_saved += moves.size();
-            }
+        ++s.stats.coverage_nodes;
+        if (mate1_impossible_by_coverage(b)) {
+            ++s.stats.coverage_exits;
+            s.stats.coverage_moves_saved += moves.size();
         }
     }
 

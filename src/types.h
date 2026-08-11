@@ -235,8 +235,17 @@ struct Stats {
     std::uint64_t coverage_nodes = 0;
     std::uint64_t coverage_exits = 0;
     std::uint64_t coverage_moves_saved = 0;
+    std::uint64_t selfmate_node_probes = 0;
+    std::uint64_t selfmate_node_exits = 0;
+    std::uint64_t selfmate_node_moves_saved = 0;
     std::uint64_t d1_attacker_moves = 0;
     std::uint64_t d1_would_reject = 0;
+    std::uint64_t d1_reject_fast = 0;
+    std::uint64_t d1_reject_slow = 0;
+    std::uint64_t fac_refuted_nodes = 0;
+    std::uint64_t fac_replies_before = 0;
+    std::uint64_t fac_first_reply_refutes = 0;
+    std::uint64_t fac_refutation_is_check = 0;
     std::uint64_t defender_pseudo_moves = 0;
     std::uint64_t defender_lazy_skipped = 0;
     std::uint64_t dfpn_nodes = 0;
@@ -310,8 +319,17 @@ struct Stats {
         coverage_nodes += o.coverage_nodes;
         coverage_exits += o.coverage_exits;
         coverage_moves_saved += o.coverage_moves_saved;
+        selfmate_node_probes += o.selfmate_node_probes;
+        selfmate_node_exits += o.selfmate_node_exits;
+        selfmate_node_moves_saved += o.selfmate_node_moves_saved;
         d1_attacker_moves += o.d1_attacker_moves;
         d1_would_reject += o.d1_would_reject;
+        d1_reject_fast += o.d1_reject_fast;
+        d1_reject_slow += o.d1_reject_slow;
+        fac_refuted_nodes += o.fac_refuted_nodes;
+        fac_replies_before += o.fac_replies_before;
+        fac_first_reply_refutes += o.fac_first_reply_refutes;
+        fac_refutation_is_check += o.fac_refutation_is_check;
         defender_pseudo_moves += o.defender_pseudo_moves;
         defender_lazy_skipped += o.defender_lazy_skipped;
         dfpn_nodes += o.dfpn_nodes;
@@ -349,7 +367,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 66 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 75 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

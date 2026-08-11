@@ -1307,6 +1307,339 @@ def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
               run(engine, ["--time-limit", "10", "-"], "﻿\n").strip() == "")
 
 
+def test_king_escape_analysis(engine: Path, res: Results) -> None:
+    """The escape analysis, and the two mechanisms standing on it.
+
+    Everything here discards work on the strength of a geometric claim, and the
+    dangerous direction is silent: a flight square invented is a mate declared
+    impossible, and the node is thrown away with the answer still in it. So the
+    claims are checked against move generation rather than against reasoning.
+
+    Three layers, because each can be wrong without the others noticing:
+
+      the table       cross-checked against a second, naive computation of the
+                      same 256 answers. A table checked only against itself is
+                      not checked.
+      the sets        the flight mask checked square by square against
+                      `move_is_legal` on every position in the corpora.
+      the mechanisms  differential -- identical verdicts and identical depths
+                      with each switch on and off, node counts free to differ.
+                      This is the only test that can catch a sound analysis
+                      wired to an unsound conclusion.
+    """
+    print("\n[escape] the king-escape analysis and what stands on it")
+
+    # The four Forsyth fields and nothing else. `load_epd` insists on a `dm N`
+    # token and smoke.epd spells its depths `#1`, but nothing here needs a
+    # depth -- the flight mask is a property of the position alone. Taking the
+    # first four whitespace fields rather than everything before the semicolon
+    # is deliberate: smoke.epd puts its annotation before the semicolon.
+    positions = []
+    for name in ("mates.epd", "smoke.epd", "nomate.epd"):
+        for line in (HERE / name).read_text().splitlines():
+            fields = line.strip().split()
+            if len(fields) >= 4 and not line.strip().startswith("#"):
+                positions.append(" ".join(fields[:4]))
+    out = run(engine, ["--self-check", "-"], "".join(f + "\n" for f in positions))
+    lines = [l for l in out.splitlines() if l.strip()]
+    res.check("the coverage table agrees with a second computation of it",
+              bool(lines) and "coverage-table; selfcheck ok" in lines[0],
+              lines[0] if lines else "no output")
+    # An illegal position is refused rather than analysed, and the corpora carry
+    # some on purpose -- smoke.epd's mate-in-one shape leaves the side NOT to
+    # move in check. Only a genuine mismatch is a failure here.
+    bad = [l for l in lines[1:] if "FAIL" in l]
+    checked = [l for l in lines[1:] if "selfcheck ok" in l]
+    res.check(f"the flight mask matches move generation on {len(checked)} positions",
+              not bad, "; ".join(bad[:3]))
+    res.check("the self-check actually analysed the corpora",
+              len(checked) >= len(positions) - 3,
+              f"{len(checked)} of {len(positions)} analysed")
+
+    # The escape analysis is only interesting where a king is hemmed in, so a
+    # handful of shapes that exercise the parts a corpus sweep under-samples.
+    edge = [
+        "7k/5Q2/6K1/8/8/8/8/8 w - -",            # king in the corner, one flight
+        "8/8/8/3k4/8/8/8/K6R w - -",             # king in the open, eight flights
+        "k7/8/8/8/8/8/8/K6R w - -",              # a rook cutting the a-file off
+        "8/8/8/8/8/2k5/8/K1R5 b - -",            # in check, denied by one piece
+        "6rk/6pp/8/8/8/8/8/K6R w - -",           # own men blocking, not the enemy
+        "7k/8/6K1/8/8/8/8/8 w - -",              # the enemy KING doing the denying
+    ]
+    out = run(engine, ["--self-check", "-"], "".join(f + "\n" for f in edge))
+    rows = [l for l in out.splitlines()[1:] if l.strip()]
+    res.check("the flight mask matches move generation on cramped-king shapes",
+              all("selfcheck ok" in l for l in rows) and len(rows) == len(edge),
+              "; ".join(l for l in rows if "selfcheck ok" not in l)[:120])
+
+    # The mate-in-one positive control. The coverage exit fires when it believes
+    # no single piece could deny the king every escape it has; if it ever fires
+    # on a position that HAS a mate in one, the mate is lost without a trace.
+    mate_in_one = [
+        "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - -",
+        "7k/6pp/8/8/8/8/8/R5RK w - -",
+        "7k/8/5K2/8/8/8/8/6Q1 w - -",            # a queen mate, not a back rank
+    ]
+    for fen in mate_in_one:
+        out = run(engine, ["-z", "1", "--time-limit", "60", "-"], fen + "\n")
+        res.check(f"a mate in one survives the coverage exit: {fen[:26]}",
+                  DM_RE.search(out) is not None, out.strip()[:90])
+
+    # The two move types that break the exit's premise, tested as an A/B on one
+    # position. Castling moves two men; en passant vacates two squares, and a
+    # one-blocker x-ray test cannot see the second. Both are refused outright, so
+    # adding the right to an otherwise identical position must suppress the exit
+    # -- and if the guard were dropped, nothing else in the suite would notice,
+    # because it only matters on positions where such a mate actually exists.
+    def coverage_exits(fen: str, depth: str) -> int:
+        proc = subprocess.run(
+            [str(engine), "-z", depth, "--time-limit", "60",
+             "--coverage-observer", "--profile", "-"],
+            input=(fen + "\n").encode(), capture_output=True, timeout=300)
+        found = re.search(r'"coverage_exits":(\d+)', proc.stderr.decode())
+        return int(found.group(1)) if found else -1
+
+    castling = "8/8/8/3k4/8/8/N7/4K2R w K -"
+    plain = "8/8/8/3k4/8/8/N7/4K2R w - -"
+    with_right, without = coverage_exits(castling, "2"), coverage_exits(plain, "2")
+    res.check("castling rights suppress the coverage exit",
+              without > 0 and with_right == 0, f"{with_right} with, {without} without")
+
+    ep = "8/8/8/3k4/4pP2/8/8/K6R w - f3"
+    no_ep = "8/8/8/3k4/4pP2/8/8/K6R w - -"
+    with_ep, without_ep = coverage_exits(ep, "3"), coverage_exits(no_ep, "3")
+    res.check("an en-passant square suppresses the coverage exit",
+              without_ep > with_ep >= 0, f"{with_ep} with, {without_ep} without")
+
+    # Differentials. A switch that cannot change a verdict is the claim; these
+    # are the only things that test it.
+    #
+    # Run single-threaded with no portfolio, so the comparison can be on the
+    # WHOLE line -- move and variation included -- rather than on the depth alone.
+    # Concurrent lanes race, and the winner supplies `via` and `bm`; a position
+    # with two mates in one legitimately reports either, which makes a full-line
+    # comparison flap for reasons that have nothing to do with the switch under
+    # test. Removing the nondeterminism beats weakening the assertion.
+    #
+    # `acn` and `acs` are still dropped: the work done is exactly what a pruning
+    # switch is meant to change.
+    def verdicts(args: list[str], stdin: str) -> list[str]:
+        text = run(engine, ["--no-portfolio", "--single-thread", *args, "-"], stdin)
+        rows = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            fields = [f.strip() for f in line.split(";")]
+            rows.append(";".join(f for f in fields
+                                 if not f.startswith(("acn ", "acs "))))
+        return rows
+
+    epd = "".join(f"{fen}\n" for fen, _ in load_epd(HERE / "mates.epd"))
+    on = verdicts(["-z", "6", "--time-limit", "60", "--coverage-exit"], epd)
+    off = verdicts(["-z", "6", "--time-limit", "60", "--no-coverage-exit"], epd)
+    res.check("the coverage exit cannot change a direct-mate verdict",
+              on == off, next((f"{a} != {b}" for a, b in zip(on, off) if a != b), "")[:120])
+
+    selfmates = [
+        "7k/6R1/5Q2/8/8/7p/8/6BK w - -",
+        "k7/4Q3/8/8/8/7q/1R6/K7 w - -",
+        "b7/8/8/6p1/6P1/1RQ3PK/k6P/8 w - -",
+        "8/8/5Q2/8/6k1/7p/B5pr/6K1 w - -",
+    ]
+    stdin = "".join(f + "\n" for f in selfmates)
+    base = ["--goal", "selfmate", "-z", "3", "--time-limit", "60"]
+    fast = verdicts(base + ["--fast-reject"], stdin)
+    slow = verdicts(base + ["--no-fast-reject"], stdin)
+    res.check("the fast rejection path agrees with the exact one",
+              fast == slow,
+              next((f"{a} != {b}" for a, b in zip(fast, slow) if a != b), "")[:120])
+    node = verdicts(base + ["--selfmate-node-exit"], stdin)
+    res.check("the selfmate node exit cannot change a selfmate verdict",
+              node == slow,
+              next((f"{a} != {b}" for a, b in zip(node, slow) if a != b), "")[:120])
+
+    # Selfstalemate is the goal the rejection argument does NOT transfer to: a
+    # quiet king move cannot be checkmate but can perfectly well be stalemate.
+    # This exact position broke the per-move test before it was gated by goal.
+    out = run(engine, ["--goal", "selfstalemate", "-z", "3", "--time-limit", "60",
+                       "--selfmate-node-exit", "-"],
+              "b7/8/8/6p1/6P1/1RQ3PK/k6P/8 w - -\n")
+    res.check("the selfmate exits leave selfstalemate alone",
+              SSM_RE.search(out) is not None, out.strip()[:90])
+
+
+def test_measurement_harness(res: Results) -> None:
+    """The harness that produces every published number, checked like the engine.
+
+    Four measurement defects arrived in one session and none was in the engine,
+    which had 414 checks against this file's zero. The asymmetry was the whole
+    finding: verification had gone to the component that kept being right. Each
+    check below is one of those four defects turned into an assertion, plus the
+    invariants that would have caught a fifth of the same kind.
+    """
+    print("\n[harness] the measurement pipeline is checked like the engine")
+    sys.path.insert(0, str(HERE.parent / "tools"))
+    try:
+        import paired_corpus as pc
+    except ImportError as exc:  # pragma: no cover - depends on layout
+        res.skip("measurement harness importable", str(exc))
+        return
+
+    def raises(fn, *a, **k) -> bool:
+        try:
+            fn(*a, **k)
+        except pc.HarnessError:
+            return True
+        except Exception:
+            return False
+        return False
+
+    fen = "1B6/6Kn/6p1/1p6/1r6/1P1p4/4p3/2Q2b1k w - -"
+
+    # Defect two. A stalemate line must not be readable as a selfmate result.
+    # The old token regex could match across goals; this one names its field.
+    stale = f"{fen}; acn 5; acs 0.1; bm c1c2; sm 3; pv c1c2;"
+    res.check("a foreign goal token is an error, not a result",
+              raises(pc.parse_mateprover_line, stale, fen, "selfmate", 8))
+    parsed = pc.parse_mateprover_line(stale, fen, "stalemate", 8)
+    res.check("the requested goal's own token parses",
+              parsed["verdict"] == "solved" and parsed["depth"] == 3,
+              f"got {parsed}")
+
+    # Defect three. A shifted stream must not attribute a result to a row that
+    # did not produce it. The line has to identify its own position.
+    other = "8/8/8/8/8/5k2/8/6K1 w - -"
+    res.check("a result line for another position is an error",
+              raises(pc.parse_mateprover_line,
+                     f"{other}; acn 5; acs 0.1; dm 2;", fen, "mate", 8))
+
+    # Presence, not equality -- but a deeper answer than was asked for means the
+    # engine was not asked the question the row states.
+    shallow = pc.parse_mateprover_line(f"{fen}; acn 5; acs 0.1; dm 3;", fen, "mate", 8)
+    res.check("a shallower proof than stipulated is a solution",
+              shallow["verdict"] == "solved" and shallow["depth"] == 3)
+    res.check("a depth past the requested bound is an error",
+              raises(pc.parse_mateprover_line,
+                     f"{fen}; acn 5; acs 0.1; dm 9;", fen, "mate", 8))
+
+    # An unsolved position and a malformed one are different events, and neither
+    # may be confused with the other.
+    quiet = pc.parse_mateprover_line(f"{fen}; acn 62; acs 0.4;", fen, "mate", 8)
+    res.check("no token and no error reads as unsolved",
+              quiet["verdict"] == "unsolved" and abs(quiet["seconds"] - 0.4) < 1e-9,
+              f"got {quiet}")
+    bad = pc.parse_mateprover_line(f"{fen}; acn 0; acs 0; error input;", fen, "mate", 8)
+    res.check("an engine error reads as an error", bad["verdict"] == "error")
+    res.check("an unparseable line raises",
+              raises(pc.parse_mateprover_line, "nonsense", fen, "mate", 8))
+
+    # A four-field FEN is the position. A three-field one is a different one.
+    res.check("a short FEN is an error rather than a tidy-up",
+              raises(pc.canonical_fen4, "8/8/8/8/8/5k2/8/6K1 w -"))
+    res.check("whitespace does not make two rows of one position",
+              pc.position_id(fen) == pc.position_id(fen.replace(" ", "  ")))
+
+    # Defect four. Identity is the whole definition, so no single field aliases.
+    base = {"corpus": "matetrack_d8.jsonl", "goal": "mate", "depth_bound": 8,
+            "seconds": 5.0, "corpus_digest": "aaaa"}
+    d10 = {**base, "corpus": "matetrack_d10.jsonl", "depth_bound": 10,
+           "corpus_digest": "bbbb"}
+    res.check("two corpora with one goal get different identities",
+              pc.measurement_identity(base) != pc.measurement_identity(d10))
+    res.check("the identity is stable across key order",
+              pc.measurement_identity(base) ==
+              pc.measurement_identity(dict(reversed(list(base.items())))))
+    res.check("a changed budget is a changed measurement",
+              pc.measurement_identity(base) !=
+              pc.measurement_identity({**base, "seconds": 10.0}))
+
+    # Invariants at load. Each of these was previously only visible at analysis,
+    # and one of them only by noticing two reports were byte-identical.
+    rows = [{"fen4": fen, "mate": 8}, {"fen4": other, "mate": 2}]
+    ident = pc.measurement_identity(base)
+
+    def record(row, engine, verdict, depth):
+        return {"schema": pc.SCHEMA, "measurement": ident,
+                "position": pc.position_id(row["fen4"]), "fen4": row["fen4"],
+                "engine": engine, "verdict": verdict, "depth": depth,
+                "elapsed": 0.1}
+
+    good = [record(rows[0], "mateprover", "solved", 8),
+            record(rows[0], "chest", "solved", None),
+            record(rows[1], "mateprover", "unsolved", None),
+            record(rows[1], "chest", "timeout", None)]
+    ok = True
+    try:
+        pc.assert_invariants(good, rows, ident, complete=True)
+    except pc.HarnessError as exc:
+        ok, detail = False, str(exc)
+    res.check("a consistent record set passes", ok, "" if ok else detail)
+    res.check("a duplicated position is an error",
+              raises(pc.assert_invariants, good + [good[0]], rows, ident, False))
+    res.check("a record from another measurement is an error",
+              raises(pc.assert_invariants,
+                     good + [{**good[0], "measurement": "other"}], rows, ident, False))
+    res.check("a record outside the corpus is an error",
+              raises(pc.assert_invariants,
+                     good + [{**good[0], "position": "0" * 16}], rows, ident, False))
+    res.check("a depth past the row's bound is an error",
+              raises(pc.assert_invariants,
+                     [{**good[2], "depth": 5}], rows, ident, False))
+    res.check("a complete run short of the corpus is an error",
+              raises(pc.assert_invariants, good[:2], rows, ident, True))
+
+    # The fingerprint must depend on WHAT was found and not on how long it took,
+    # or the check that catches a shared state file never fires.
+    slower = [{**r, "elapsed": r["elapsed"] * 10} for r in good]
+    res.check("the fingerprint ignores timing",
+              pc.results_fingerprint(good) == pc.results_fingerprint(slower))
+    res.check("the fingerprint tracks the solved set",
+              pc.results_fingerprint(good) !=
+              pc.results_fingerprint([{**good[0], "depth": 7}] + good[1:]))
+
+    ledger = HERE.parent / "build" / "harness_ledger_selftest.jsonl"
+    if ledger.exists():
+        ledger.unlink()
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    print_id = pc.results_fingerprint(good)
+    pc.ledger_check(ident, print_id, base, str(ledger))
+    replay = True
+    try:                                    # the same run resuming is fine
+        pc.ledger_check(ident, print_id, base, str(ledger))
+    except pc.HarnessError:
+        replay = False
+    res.check("re-recording the same measurement is allowed", replay)
+    res.check("a different measurement with an identical result set is refused",
+              raises(pc.ledger_check, pc.measurement_identity(d10), print_id,
+                     d10, str(ledger)))
+    ledger.unlink()
+
+    # Defect one. The harness may not invent a tuning parameter; -M reaches the
+    # engine only when the definition says so.
+    source = (HERE.parent / "tools" / "paired_corpus.py").read_text(encoding="utf-8")
+    res.check("mateprover's memory flag defaults to unset",
+              'ap.add_argument("--mateprover-mb", type=int, default=None' in source)
+    res.check("mateprover's memory flag is passed only when set",
+              'if memory_mb is not None:\n            argv += ["-M"' in source)
+
+    # The goal must be set, or Chest solves an orthodox directmate and reports a
+    # plausible wrong number.
+    job = pc.chest_job("selfmate", {"fen4": fen, "mate": 3})
+    res.check("chest's job type is set from the goal",
+              "\njs\n" in job and "z3w" in job, job.replace("\n", "|"))
+    castled = pc.chest_job("mate", {"fen4": "r3k2r/8/8/8/8/8/8/R3K2R w KQkq -",
+                                    "mate": 2})
+    res.check("castling rights survive into the chest job",
+              all(code in castled for code in ("cws", "cwl", "cbs", "cbl")))
+    res.check("an en-passant square survives into the chest job",
+              "ee6" in pc.chest_job("mate", {"fen4": "8/8/8/4pP2/8/8/8/K1k5 w - e6",
+                                             "mate": 2}))
+    res.check("chest refusal and chest timeout are different events",
+              pc.classify_chest_output("No solution") == "refused" and
+              pc.classify_chest_output("Solution 1") == "solved" and
+              pc.classify_chest_output("") == "timeout")
+
+
 def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
     """Documentation must not point at files the published tree does not contain.
 
@@ -2499,6 +2832,8 @@ def main() -> int:
     test_cooperative_split_is_thread_invariant(args.engine, res)
     test_retrograde_unmoves(args.engine, res)
     test_output_format_conformance(args.engine, res)
+    test_king_escape_analysis(args.engine, res)
+    test_measurement_harness(res)
     test_docs_reference_shipped_files(args.engine, res)
 
     # Last, because it needs the final tally. Two documents advertise how many

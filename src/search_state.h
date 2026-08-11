@@ -77,7 +77,20 @@ struct SearchConfig {
     // Measurement only: count how many depth-1 attacker moves the selfmate
     // rejection test WOULD discard, without acting on it.
     bool reject_observer = false;
+    // The node-level mate-in-one disproof. On by default: it is exact, so it
+    // cannot change a verdict, and the off switch exists to prove that.
+    bool coverage_exit = true;
     bool coverage_observer = false;
+    // The selfmate counterpart of the coverage exit. Default off until it is
+    // measured; the observer answers Q1 and Q2 before the mechanism is trusted.
+    bool selfmate_node_exit = false;
+    bool selfmate_node_observer = false;
+    // Answer the rejection test with attack queries instead of board copies,
+    // deferring to the reference whenever the cheap form cannot be certain.
+    bool fast_reject = true;
+    // Measures what a fatal-anti-check test could still save, given the reply
+    // ordering already in place. A measurement aid, not a tuning knob.
+    bool fac_observer = false;
     // Act on the rejection test rather than merely counting it.
     bool attacker_reject = true;
     // Remaining depth at or above which replies are ordered. Below it the

@@ -220,7 +220,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-414 automated checks covering:
+452 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -241,7 +241,18 @@ python tests/run_tests.py --engine build/mateprover
   `python-chess` is installed and skipped cleanly when it is not;
 - the shipped verifier itself, tested adversarially: it must accept genuine
   certificates and reject an omitted defence, a forged mate leaf, a corrupted
-  PV and an overstated depth.
+  PV and an overstated depth;
+- **the king-escape analysis**, whose flight mask is compared square by square
+  against move generation on every position in every corpus, and whose coverage
+  table is cross-checked against a second, independent computation of the same
+  256 answers — a table checked only against itself is not checked;
+- **differentials for every exact pruning switch**: the same verdicts, moves and
+  variations with each one on and off, run single-threaded so the comparison can
+  be on the whole line rather than the depth alone;
+- **the measurement harness**, which produces every published number and is
+  checked like the engine: strict result parsing, self-describing records,
+  measurement identity, and the load-time invariants that make a shared resume
+  file impossible rather than merely unlikely.
 
 The core tests have no third-party dependency.
 
