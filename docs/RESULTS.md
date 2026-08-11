@@ -545,7 +545,8 @@ budgets and are not comparable to each other; these are.
 | selfstalemate (76) | **49** | 48 | 2 | 1 | 14 |
 | helpmate (546) | **513** | 483 | 30 | 0 | 14 |
 | helpstalemate (431) | **355** | 299 | 56 | 0 | 9 |
-| **total (2,105)** | **1,884** | **1,698** | **200** | **14** | **63** |
+| selfmate (903) | **591** | 356 | 259 | 24 | 11 |
+| **total (3,008)** | **2,475** | **2,054** | **459** | **38** | **74** |
 
 Speed, on the positions both engines solve:
 
@@ -557,6 +558,7 @@ Speed, on the positions both engines solve:
 | selfstalemate | 6.57x | 5.7x |
 | helpmate | 3.71x | 8.3x |
 | helpstalemate | 5.86x | 7.5x |
+| selfmate | 2.15x | 4.9x |
 
 Ahead on coverage on all six, ahead on speed on all six, and the exclusive-win
 ratio is 200 to 14. The median exceeds the total everywhere because the totals
@@ -572,5 +574,8 @@ Two goals -- helpmate and helpstalemate -- now have **zero** positions Chest
 solves and MateProver does not. Helpmate read as *behind* until the `-M`
 harness handicap of section 70 was found; the engine had not changed.
 
-The selfmate row is measured separately and reported in section 86, because the
-attacker-rejection test landed after this run began.
+Selfmate was run last, after the attacker-rejection test of section 86 landed, so
+its row is on the same protocol as the rest. It is the widest margin of the six:
+591 to 356, with 259 exclusive wins against 24. Note that this is NOT comparable
+to the 626-to-416 quoted in section 86 -- that was a 10 s protocol, and both
+engines score lower at 5 s. Chest falls further, which is why the margin widens.

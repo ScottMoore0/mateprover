@@ -10,6 +10,34 @@ without one.
 
 ## Unreleased
 
+**All seven corpora re-measured against Chest 3.19 under one protocol** -- 5 s and
+2 GB a position for each engine, same machine, same session. Previous figures came
+from separate runs at unrecorded budgets against different builds and were not
+comparable to each other.
+
+| goal | MateProver | Chest | only MP | only Chest |
+| --- | ---: | ---: | ---: | ---: |
+| mate d8 (200) | **161** | 130 | 41 | 10 |
+| mate d10 (60) | **49** | 18 | 33 | 2 |
+| stalemate (792) | **757** | 720 | 38 | 1 |
+| selfmate (903) | **591** | 356 | 259 | 24 |
+| selfstalemate (76) | **49** | 48 | 2 | 1 |
+| helpmate (546) | **513** | 483 | 30 | 0 |
+| helpstalemate (431) | **355** | 299 | 56 | 0 |
+| **total (3,008)** | **2,475** | **2,054** | **459** | **38** |
+
+Ahead on coverage and on speed on all seven; exclusive wins 459 to 38. Median
+per-position speedups 4.9x to 104.4x, totals 2.15x to 6.57x. Helpmate and
+helpstalemate have zero positions Chest solves and MateProver does not.
+
+74 positions where Chest returns a definitive "no solution" are evidence about the
+corpora rather than either engine.
+
+Also fixes a harness defect found mid-run: the paired driver keyed its resumable
+state by GOAL, so the two directmate corpora shared a state file and the d10 run
+resumed d8's completed state instead of running, reporting d8's numbers under
+d10's heading. Re-run with its own state.
+
 **The selfmate residue is now nine positions, characterised, and two more
 mechanisms are measured out.** After the rejection test the Chest-only residue is
 12 at 30 s and **9 at 120 s** -- three fell to budget alone, so part of what has
