@@ -210,6 +210,9 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"answer_orderings\":" << st.answer_orderings
               << ",\"tt_known_weaker\":" << st.tt_known_weaker
               << ",\"mate1_generator_skips\":" << st.mate1_generator_skips
+              << ",\"coverage_nodes\":" << st.coverage_nodes
+              << ",\"coverage_exits\":" << st.coverage_exits
+              << ",\"coverage_moves_saved\":" << st.coverage_moves_saved
               << ",\"d1_attacker_moves\":" << st.d1_attacker_moves
               << ",\"d1_would_reject\":" << st.d1_would_reject
               << ",\"defender_refutations\":" << st.defender_refutations

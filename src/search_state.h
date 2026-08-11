@@ -77,6 +77,7 @@ struct SearchConfig {
     // Measurement only: count how many depth-1 attacker moves the selfmate
     // rejection test WOULD discard, without acting on it.
     bool reject_observer = false;
+    bool coverage_observer = false;
     // Act on the rejection test rather than merely counting it.
     bool attacker_reject = true;
     // Remaining depth at or above which replies are ordered. Below it the

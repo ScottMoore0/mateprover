@@ -165,6 +165,7 @@ did. If you are reading it for the first time:
 - [86. The Attacker Rejection Test: The Mechanism Six Investigations Missed](#86-the-attacker-rejection-test-the-mechanism-six-investigations-missed)
 - [87. The Residue After The Rejection Test: Nine Positions, No Instrument](#87-the-residue-after-the-rejection-test-nine-positions-no-instrument)
 - [88. Counter Evidence On The Direct-Mate Residue, And A Skip That Fires Constantly For Nothing](#88-counter-evidence-on-the-direct-mate-residue-and-a-skip-that-fires-constantly-for-nothing)
+- [89. The Coverage-Table Early Exit, Measured Both Ways Before Building](#89-the-coverage-table-early-exit-measured-both-ways-before-building)
 
 ## Impact-Ordered Architecture
 
@@ -6673,3 +6674,86 @@ prunes without executing, and is the honest next candidate for the twelve
 direct-mate positions. It is also the fiddliest geometry in any of the six
 specifications, and on this section's evidence its value should be measured with
 an observer before it is built.
+
+### 89. The Coverage-Table Early Exit, Measured Both Ways Before Building
+
+A seventh clean-room specification corrected the sixth's ordering on exactly the
+grounds 88 established, and supplied the mechanism 88 was reaching for. It also
+gives the method that would have prevented 88, which is the more durable part.
+
+#### The filter-placement ladder
+
+Any pruning mechanism sits at one of four positions, and the position caps what
+it can save:
+
+| position | filter runs | can save |
+| --- | --- | --- |
+| 1 | after execution, before evaluation | the evaluation only |
+| 2 | after generation, before execution | the execution and everything downstream |
+| 3 | during generation | also the generation of the rejected move |
+| 4 | before generation, node-level | **the entire node** |
+
+88 moved a filter from 1 to 2 and measured nothing, because `ordered_check_shortcut`
+had already collapsed the position-1 work to a bit read. Chest's largest
+direct-mate win at depth 1 sits at position 4 -- and position 4 needs no
+generator rewrite.
+
+#### The mechanism, and the two questions
+
+For a mate in one the enemy king must be checked with every escape covered, and a
+single move moves a single piece. So if the escape squares cannot be covered by
+*any* piece type from *any* square, no mate in one exists and the node fails
+before a move is generated. That is decidable from the eight-bit escape mask
+alone, which is why it precomputes into a 256-entry table -- derived here by
+enumeration over the movement rules, not transcribed, since it contains nothing
+empirical.
+
+The specification's method requires answering two questions before building
+anything, and 88 answered only the first:
+
+    saving = (downstream work prevented)
+           - (cost of the filter)
+           - (work an existing mechanism already avoids)   <- the term 88 missed
+
+Both are answerable here without subtree attribution, because at a depth-1 node
+the avoided work is entirely local. Measured over 40 mate-in-8 positions:
+
+| | |
+| --- | --- |
+| depth-1 nodes examined | 26,957,385 |
+| early exits -- **Q1** | 4,095,560 (**15.2%**) |
+| moves never generated -- **Q2** | **48,977,470** |
+| all attacker candidates | 80,456,875 |
+| Q2 as a share of them | **60.9%** |
+
+**Q1 is modest and Q2 is enormous, and Q2 is what decides it.** A 15.2% fire rate
+would look unpromising on its own, but the nodes it fires on are the ones with the
+largest move lists, so 61% of every attacker candidate in the search would never
+be generated, executed or tested. Against a cost of eight attack queries and one
+array index per depth-1 node, that is comfortably worth building -- and it is the
+opposite conclusion to 88, which fired at 87.1% and saved nothing.
+
+That contrast is the section's point. **Fire rate does not predict value; marginal
+work on the critical path does.**
+
+#### What is not yet built, and the honest caveat
+
+Only the observer. The predicate is computed and ignored.
+
+The 15.2% is an **upper bound**, and the reason matters. A sound version must use
+the *unconditional* escape set -- squares whose availability cannot be closed by
+an indirect attack -- and this board has no indirect-attacker sets, so the
+observer uses the full escape set instead. A larger mask is harder to cover, so
+the exit fires more often than a sound implementation could. The true rate is at
+most 15.2% and the true Q2 at most 60.9%.
+
+Closing that gap is the king-escape infrastructure of the specification's §3, and
+its cost should be amortised across both residue classes: the same five sets
+about the enemy king feed this exit and the selfmate rejection test of 86. Two of
+the three residue classes, 36 of the 38 positions, from one piece of
+infrastructure.
+
+Two soundness requirements are load-bearing and silent when violated: the table
+must never claim inability where a piece can cover, and the exit must use the
+unconditional escape set. Both produce correct answers on most positions and lose
+mates on the ones that matter.

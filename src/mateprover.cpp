@@ -228,6 +228,10 @@ void print_usage() {
 "                                one quiet king move refutes it. Exact, so it\n"
 "                                cannot change a verdict; the off switch is the\n"
 "                                differential test\n"
+"  --coverage-observer           count how often a mate in one is provably\n"
+"                                impossible at a direct-mate depth-1 node, and\n"
+"                                how many moves that would save, without acting\n"
+"                                on it. A measurement aid, not a tuning knob\n"
 "  --reject-observer             count what that test would reject without acting\n"
 "                                on it. A measurement aid, not a tuning knob\n"
 "  --depth2-scorer | --no-depth2-scorer\n"
@@ -469,6 +473,8 @@ int main(int argc, char** argv) {
             config.attacker_reject = true;
         } else if (arg == "--no-attacker-reject") {
             config.attacker_reject = false;
+        } else if (arg == "--coverage-observer") {
+            config.coverage_observer = true;
         } else if (arg == "--reject-observer") {
             config.reject_observer = true;
         } else if (arg == "--depth2-scorer") {

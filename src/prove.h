@@ -24,6 +24,8 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b);
 inline bool mate_out_of_reach(const Board& b, Color mating,
                               Color mated, int our_moves, int their_moves);
 
+inline bool piece_attacks_square(const Board& b, int from, int target);
+
 // Is `m` a threat move? WinChest defines one as a move after which, if the
 // defender were allowed to pass, the attacker could mate within ThreatDepth.
 //
@@ -236,6 +238,60 @@ inline bool defender_has_quiet_king_move(const Board& nb, Color attacker) {
         }
     }
     return false;
+}
+
+
+// Coverage table for the mate-in-one early exit, derived rather than
+// transcribed: for each of the 256 escape-direction masks, can ANY piece type,
+// standing on ANY square relative to the king, attack every direction in the
+// mask at once? If not, no single move can cover those escapes, so no mate in
+// one exists and the whole node fails before a move is generated.
+//
+// Pure enumeration over the movement rules -- nothing empirical, nothing to
+// tune. Soundness direction: the table must never claim "no piece can cover
+// this" when one can, so anything uncertain is marked capable. Over-claiming
+// capability only declines the early exit.
+const std::array<bool, 256>& mate1_coverage_table() {
+    static const std::array<bool, 256> table = [] {
+        std::array<bool, 256> out{};
+        out.fill(false);
+        // King at a central square so every relative offset is representable.
+        const int ksq = square_of(4, 4);
+        for (int pt = 0; pt < 5; ++pt) {              // P N B R Q, never a king
+            for (int from = 0; from < 64; ++from) {
+                if (from == ksq) continue;
+                unsigned covered = 0;
+                int bit = 0;
+                for (int df = -1; df <= 1; ++df) {
+                    for (int dr = -1; dr <= 1; ++dr) {
+                        if (df == 0 && dr == 0) continue;
+                        const int nf = file_of(ksq) + df, nr = rank_of(ksq) + dr;
+                        if (on_board(nf, nr)) {
+                            Board probe;
+                            // Empty board: the most generous coverage a piece of
+                            // this type can have, which is the safe direction.
+                            probe.by_type[pt] |= 1ull << from;
+                            probe.by_color[WHITE] |= 1ull << from;
+                            probe.occ = 1ull << from;
+                            if (piece_attacks_square(probe, from, square_of(nf, nr))) {
+                                covered |= 1u << bit;
+                            }
+                        }
+                        ++bit;
+                    }
+                }
+                // Every mask that is a subset of what this piece covers is
+                // coverable. Enumerating subsets directly is cheaper than
+                // testing all 256 against every placement.
+                for (unsigned m = covered; ; m = (m - 1) & covered) {
+                    out[m] = true;
+                    if (m == 0) break;
+                }
+            }
+        }
+        return out;
+    }();
+    return table;
 }
 
 Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
@@ -1383,6 +1439,46 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // `moves.empty()` must not count as "all refuted": a node with no moves is
     // terminal and the goal decides it, not composition.
     bool all_moves_refuted = s.any_depth_refutations && !moves.empty();
+
+    // OBSERVER for the coverage-table early exit. Position 4 of the filter
+    // ladder: a node-level predicate that would suppress generation entirely.
+    // Q2 is local here -- the work it avoids is this node's own move list and
+    // mate tests -- so both questions are answerable without subtree
+    // attribution.
+    //
+    // Uses the FULL escape set, not the unconditional one, because the
+    // indirect-attacker sets that distinguish them do not exist in this board.
+    // That over-states the escape mask, which makes covering harder and the exit
+    // fire more often, so this reports an UPPER BOUND on the fire rate -- the
+    // right direction for a go/no-go: if even the bound is small, do not build.
+    if (s.coverage_observer && depth == 1 && s.goal == Goal::Mate) {
+        const Color them = other(b.stm);
+        const int dk = b.king_sq[them];
+        if (dk >= 0) {
+            unsigned mask = 0;
+            int bit = 0;
+            for (int df = -1; df <= 1; ++df) {
+                for (int dr = -1; dr <= 1; ++dr) {
+                    if (df == 0 && dr == 0) continue;
+                    const int nf = file_of(dk) + df, nr = rank_of(dk) + dr;
+                    if (on_board(nf, nr)) {
+                        const int to = square_of(nf, nr);
+                        if (!(b.by_color[them] & (1ull << to)) &&
+                            !is_attacked(b, to, b.stm)) {
+                            mask |= 1u << bit;
+                        }
+                    }
+                    ++bit;
+                }
+            }
+            ++s.stats.coverage_nodes;
+            if (!mate1_coverage_table()[mask & 0xffu]) {
+                ++s.stats.coverage_exits;
+                s.stats.coverage_moves_saved += moves.size();
+            }
+        }
+    }
+
     for (const Move& amove : moves) {
         // RESTRICTED MATING GENERATOR, in its cheapest sound form. A checkmate
         // is a check, so at depth 1 a move that gives no check cannot be a

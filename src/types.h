@@ -232,6 +232,9 @@ struct Stats {
     std::uint64_t answer_orderings = 0;
     std::uint64_t tt_known_weaker = 0;
     std::uint64_t mate1_generator_skips = 0;
+    std::uint64_t coverage_nodes = 0;
+    std::uint64_t coverage_exits = 0;
+    std::uint64_t coverage_moves_saved = 0;
     std::uint64_t d1_attacker_moves = 0;
     std::uint64_t d1_would_reject = 0;
     std::uint64_t defender_pseudo_moves = 0;
@@ -304,6 +307,9 @@ struct Stats {
         answer_orderings += o.answer_orderings;
         tt_known_weaker += o.tt_known_weaker;
         mate1_generator_skips += o.mate1_generator_skips;
+        coverage_nodes += o.coverage_nodes;
+        coverage_exits += o.coverage_exits;
+        coverage_moves_saved += o.coverage_moves_saved;
         d1_attacker_moves += o.d1_attacker_moves;
         d1_would_reject += o.d1_would_reject;
         defender_pseudo_moves += o.defender_pseudo_moves;
@@ -343,7 +349,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 63 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 66 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
