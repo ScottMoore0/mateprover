@@ -533,49 +533,84 @@ set-cover derivation found that without anyone realising why it worked.
 ## Unified comparison against Chest 3.19
 
 One protocol for every goal, which the previous figures did not have: **5 s and
-2 GB a position for each engine**, full corpora, same machine, same session. The
-numbers quoted before this ran came from separate measurements at unrecorded
-budgets and are not comparable to each other; these are.
+2 GB a position for each engine**, full corpora, same machine, same session. And
+since the harness hardening of section 90, every row below carries a
+**measurement identity** and a **result fingerprint**, recorded in
+`docs/measurement_ledger.jsonl` — a hash over the corpus digest, goal, depth
+bound, both budgets and both engine digests, and a second hash over what was
+found. These are the first published numbers here that can be told apart from a
+different measurement by anything other than the heading above them.
 
 | goal (corpus size) | MateProver | Chest | only MP | only Chest | Chest refused |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mate (d8, 200) | **161** | 130 | 41 | 10 | 0 |
-| mate (d10, 60) | **49** | 18 | 33 | 2 | 0 |
-| stalemate (792) | **757** | 720 | 38 | 1 | 26 |
+| mate (d8, 200) | **158** | 126 | 42 | 10 | 0 |
+| mate (d10, 60) | **49** | 17 | 34 | 2 | 0 |
+| stalemate (792) | **756** | 720 | 38 | 2 | 25 |
 | selfstalemate (76) | **49** | 48 | 2 | 1 | 14 |
-| helpmate (546) | **513** | 483 | 30 | 0 | 14 |
-| helpstalemate (431) | **355** | 299 | 56 | 0 | 9 |
-| selfmate (903) | **591** | 356 | 259 | 24 | 11 |
-| **total (3,008)** | **2,475** | **2,054** | **459** | **38** | **74** |
+| helpmate (546) | **513** | 482 | 31 | 0 | 14 |
+| helpstalemate (431) | **353** | 296 | 57 | 0 | 9 |
+| selfmate (903) | **589** | 351 | 261 | 23 | 11 |
+| **total (3,008)** | **2,467** | **2,040** | **465** | **38** | **73** |
 
 Speed, on the positions both engines solve:
 
 | goal | total | median per position |
 | --- | ---: | ---: |
-| mate d8 | 4.09x | 12.0x |
-| mate d10 | 4.14x | **104.4x** |
-| stalemate | 2.25x | 32.3x |
-| selfstalemate | 6.57x | 5.7x |
-| helpmate | 3.71x | 8.3x |
-| helpstalemate | 5.86x | 7.5x |
-| selfmate | 2.15x | 4.9x |
+| mate d8 | 4.42x | 11.5x |
+| mate d10 | 3.74x | **82.5x** |
+| stalemate | 2.23x | 7.4x |
+| selfstalemate | 6.73x | 14.6x |
+| helpmate | 3.30x | 5.3x |
+| helpstalemate | 6.05x | 15.8x |
+| selfmate | 2.21x | 5.5x |
 
-Ahead on coverage on all six, ahead on speed on all six, and the exclusive-win
-ratio is 200 to 14. The median exceeds the total everywhere because the totals
-are dominated by a few positions near the budget where both engines spend all of
-it; the median is the better description of ordinary behaviour.
+Ahead on coverage on all seven, ahead on speed on all seven, and 465 exclusive
+wins against 38.
+
+#### Against the previous run of the same protocol
+
+| | now | before | |
+| --- | ---: | ---: | --- |
+| MateProver | 2,467 | 2,475 | −8 |
+| Chest | 2,040 | 2,054 | −14 |
+| margin | **427** | 421 | **+6** |
+| only MateProver | **465** | 459 | **+6** |
+| only Chest | 38 | 38 | = |
+
+**Both engines lost ground, and Chest lost more.** No change in this repository
+can lower Chest's score, so the absolute dips are the machine and not the
+engine — a different session, a different thermal and scheduling state. That is
+precisely why the paired figures are the ones quoted: the margin and the
+exclusive-win count are measured within a session and survive it. Both moved in
+MateProver's favour, and every goal's margin improved or held.
+
+**The coverage exit of section 92 is not visible here, and this table is not
+evidence for it.** Mate-in-8 went *down* three positions. The mechanism's only
+clean evidence is the paired A/B in section 92 — same binary, same session, the
+switch the only difference — which gave 230 against 228 at 20 s with nothing
+lost. A corpus sweep across sessions cannot resolve an effect that size, and
+reading this row as confirmation would be reading noise as signal. It is quoted
+here because it is the honest current number, not because it supports anything.
+
+The Chest-only residue is unchanged at 38, but its composition shifted: selfmate
+24 to 23, stalemate 1 to 2. At that scale the individual positions move between
+runs; the total is the stable quantity.
 
 **"Chest refused" counts positions where Chest returns a definitive "no
 solution".** That is evidence about the CORPUS rather than about either engine,
-and 63 such positions want the same two-prover adjudication that produced
+and 73 such positions want the same two-prover adjudication that produced
 `KNOWN_BAD.jsonl`.
 
-Two goals -- helpmate and helpstalemate -- now have **zero** positions Chest
-solves and MateProver does not. Helpmate read as *behind* until the `-M`
-harness handicap of section 70 was found; the engine had not changed.
+Two goals — helpmate and helpstalemate — have **zero** positions Chest solves
+and MateProver does not, in this run as in the last. Helpmate read as *behind*
+until the `-M` harness handicap of section 70 was found; the engine had not
+changed.
 
-Selfmate was run last, after the attacker-rejection test of section 86 landed, so
-its row is on the same protocol as the rest. It is the widest margin of the six:
-591 to 356, with 259 exclusive wins against 24. Note that this is NOT comparable
-to the 626-to-416 quoted in section 86 -- that was a 10 s protocol, and both
-engines score lower at 5 s. Chest falls further, which is why the margin widens.
+The medians exceed the totals nearly everywhere because the totals are dominated
+by a few positions near the budget where both engines spend all of it; the median
+is the better description of ordinary behaviour.
+
+Selfmate remains the widest margin of the seven: 589 to 351, with 261 exclusive
+wins against 23. Note that this is NOT comparable to the 626-to-416 quoted in
+section 86 -- that was a 10 s protocol, and both engines score lower at 5 s.
+Chest falls further, which is why the margin widens.

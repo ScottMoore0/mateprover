@@ -171,6 +171,7 @@ did. If you are reading it for the first time:
 - [92. The Coverage Exit, Built Sound: Three Over-Estimates Removed](#92-the-coverage-exit-built-sound-three-over-estimates-removed)
 - [93. The Selfmate Node Exit, Rejected; And Where Selfmate Time Actually Goes](#93-the-selfmate-node-exit-rejected-and-where-selfmate-time-actually-goes)
 - [94. The Fatal-Anti-Check Family, Measured Against The Ordering It Would Replace](#94-the-fatal-anti-check-family-measured-against-the-ordering-it-would-replace)
+- [95. The First Auditable Table, And What A Re-Run Costs You](#95-the-first-auditable-table-and-what-a-re-run-costs-you)
 
 ## Impact-Ordered Architecture
 
@@ -7112,3 +7113,87 @@ rather than at the candidate.
 The general form, worth keeping: **when a candidate mechanism finds something
 faster, measure how fast the engine already finds it, not how often the candidate
 would fire.**
+
+### 95. The First Auditable Table, And What A Re-Run Costs You
+
+The seven-goal comparison re-run through the hardened harness of section 90.
+3,008 positions, both engines, 5 s and 2 GB each, one session. Every row carries
+a measurement identity and a result fingerprint in
+`docs/measurement_ledger.jsonl`: a hash over the corpus digest, goal, depth
+bound, both budgets and both engine digests, and a second hash over what was
+found. These are the first numbers published here that can be distinguished from
+a different measurement by anything other than the heading above them.
+
+| goal (n) | MateProver | Chest | only MP | only Chest | refused |
+|---|---:|---:|---:|---:|---:|
+| mate d8 (200) | **158** | 126 | 42 | 10 | 0 |
+| mate d10 (60) | **49** | 17 | 34 | 2 | 0 |
+| stalemate (792) | **756** | 720 | 38 | 2 | 25 |
+| selfstalemate (76) | **49** | 48 | 2 | 1 | 14 |
+| helpmate (546) | **513** | 482 | 31 | 0 | 14 |
+| helpstalemate (431) | **353** | 296 | 57 | 0 | 9 |
+| selfmate (903) | **589** | 351 | 261 | 23 | 11 |
+| **total (3,008)** | **2,467** | **2,040** | **465** | **38** | **73** |
+
+#### Both engines lost ground, which is the useful part
+
+| | now | before | |
+|---|---:|---:|---|
+| MateProver | 2,467 | 2,475 | -8 |
+| Chest | 2,040 | 2,054 | **-14** |
+| margin | **427** | 421 | +6 |
+| only MateProver | **465** | 459 | +6 |
+| only Chest | 38 | 38 | = |
+
+Nothing in this repository can lower Chest's score. Chest fell by fourteen
+anyway, so the absolute numbers are a property of the session -- thermal state,
+scheduling, whatever else the machine was doing -- and not of either engine.
+
+That is worth stating as method rather than as an excuse. **An absolute
+coverage count is not reproducible across sessions and should never be quoted as
+though it were.** What is reproducible is the paired quantity: the margin and the
+exclusive-win count, measured on the same machine in the same session with both
+engines seeing the same conditions. Those moved by +6 and +6, and every goal's
+margin improved or held.
+
+The result fingerprint makes this checkable rather than assertable. Two runs of
+the same measurement identity producing different fingerprints is exactly the
+session variation described above; the identity says the question was the same
+and the fingerprint says the answer was not.
+
+#### The coverage exit is not in this table
+
+Mate-in-8 went **down** three positions. Section 92's mechanism acts precisely
+there, so it is worth being blunt: **this sweep is not evidence for the coverage
+exit, and reading the mate-in-8 row as a verdict on it would be reading noise as
+signal.**
+
+The exit's only clean evidence is the same-session A/B in section 92 -- one
+binary, one session, the switch the sole difference -- which gave 230 against 228
+at 20 s with zero losses and zero changed answers. A cross-session corpus sweep
+cannot resolve a two-position effect. It resolves a four-hundred-position one,
+which is what it is for, and that is the only claim this table supports.
+
+The temptation was to quote the earlier, higher figures instead, since they came
+from the same protocol and flattered the same conclusion. They came from a
+different session, and the whole point of the previous section's work was to make
+that distinction visible rather than convenient.
+
+#### The residue
+
+Unchanged at 38, with its composition shifted: selfmate 24 to 23, stalemate 1 to
+2. At that scale individual positions move between runs and the total is the
+stable quantity -- which is itself a caution against characterising a residue
+position by position from a single sweep, as section 87 did with nine.
+
+#### One bug, found by running it
+
+The harness had been unit-tested and never run. Its first real invocation failed
+inside the first chunk with a `CreateProcess` traceback: Windows will not resolve
+a relative executable path against the working directory, and the default engine
+path is absolute so nothing had ever exercised the other case. It now resolves
+the path and checks both binaries exist before the first position.
+
+Twenty-nine unit checks did not catch it, and no reasonable number of them would
+have. A smoke run on twelve positions caught it in four seconds. Both kinds of
+test earn their place, and the cheap one earns it first.

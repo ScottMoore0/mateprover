@@ -100,7 +100,13 @@ CHEST = os.path.join(CHEST_DIR, "dchest_original.exe")
 # under an older schema is refused rather than reinterpreted.
 SCHEMA = 2
 
-LEDGER = os.path.join(HERE, "benchmarks", "measurement_ledger.jsonl")
+# Under docs/, not benchmarks/. `benchmarks/*.jsonl` is deliberately ignored --
+# those files are subsets of a separately-licensed corpus and committing them
+# re-creates the redistribution obligation their removal eliminated. This file
+# holds digests and counts and no positions at all, so it belongs beside the
+# results it substantiates rather than behind an ignore rule it would have to be
+# force-added past. Force-adding past that rule has been done once here already.
+LEDGER = os.path.join(HERE, "docs", "measurement_ledger.jsonl")
 
 # token: the exact first word of the result field the engine emits for this goal.
 # chest_job: the job-type directive Chest needs, without which it silently solves
@@ -464,6 +470,16 @@ def main() -> int:
     ap.add_argument("--state", required=True)
     args = ap.parse_args()
 
+    # Absolute, and checked before anything else runs. Windows will not resolve
+    # a relative executable against the working directory, so `--engine
+    # build/mateprover.exe` fails inside the first chunk with a twenty-line
+    # traceback about CreateProcess -- an hour into a sweep, if the corpus is
+    # large. Resolve it here and say what is missing.
+    args.engine = os.path.abspath(args.engine)
+    for what, path in (("engine", args.engine), ("chest", CHEST)):
+        if not os.path.exists(path):
+            raise HarnessError(f"{what} not found: {path}")
+
     rows = load_corpus(args.corpus)
     chunks = [rows[i:i + args.chunk] for i in range(0, len(rows), args.chunk)]
 
@@ -479,7 +495,7 @@ def main() -> int:
         "mateprover_digest": sha256_file(args.engine)[:16],
         "mateprover_memory_mb": args.mateprover_mb,
         "chest_version": "3.19",
-        "chest_digest": sha256_file(CHEST)[:16] if os.path.exists(CHEST) else "absent",
+        "chest_digest": sha256_file(CHEST)[:16],
         "chest_memory_mb": args.chest_mb,
         "harness_commit": harness_commit(),
     }

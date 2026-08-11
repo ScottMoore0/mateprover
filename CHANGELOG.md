@@ -88,26 +88,34 @@ different filter point and is now last rather than first, on the same evidence
 that made it look attractive being about placement rather than payoff.
 
 **All seven corpora re-measured against Chest 3.19 under one protocol** -- 5 s and
-2 GB a position for each engine, same machine, same session. Previous figures came
-from separate runs at unrecorded budgets against different builds and were not
-comparable to each other.
+2 GB a position for each engine, same machine, same session -- and re-run again
+through the hardened harness, so every row now carries a measurement identity and
+a result fingerprint in `docs/measurement_ledger.jsonl`.
 
 | goal | MateProver | Chest | only MP | only Chest |
 | --- | ---: | ---: | ---: | ---: |
-| mate d8 (200) | **161** | 130 | 41 | 10 |
-| mate d10 (60) | **49** | 18 | 33 | 2 |
-| stalemate (792) | **757** | 720 | 38 | 1 |
-| selfmate (903) | **591** | 356 | 259 | 24 |
+| mate d8 (200) | **158** | 126 | 42 | 10 |
+| mate d10 (60) | **49** | 17 | 34 | 2 |
+| stalemate (792) | **756** | 720 | 38 | 2 |
+| selfmate (903) | **589** | 351 | 261 | 23 |
 | selfstalemate (76) | **49** | 48 | 2 | 1 |
-| helpmate (546) | **513** | 483 | 30 | 0 |
-| helpstalemate (431) | **355** | 299 | 56 | 0 |
-| **total (3,008)** | **2,475** | **2,054** | **459** | **38** |
+| helpmate (546) | **513** | 482 | 31 | 0 |
+| helpstalemate (431) | **353** | 296 | 57 | 0 |
+| **total (3,008)** | **2,467** | **2,040** | **465** | **38** |
 
-Ahead on coverage and on speed on all seven; exclusive wins 459 to 38. Median
-per-position speedups 4.9x to 104.4x, totals 2.15x to 6.57x. Helpmate and
+Ahead on coverage and on speed on all seven; exclusive wins 465 to 38. Median
+per-position speedups 5.3x to 82.5x, totals 2.21x to 6.73x. Helpmate and
 helpstalemate have zero positions Chest solves and MateProver does not.
 
-74 positions where Chest returns a definitive "no solution" are evidence about the
+Against the previous run of the same protocol: MateProver -8, **Chest -14**,
+margin 427 against 421, exclusive wins 465 against 459. No change here can lower
+Chest's score, so the absolute dips are the machine rather than either engine;
+the paired figures are measured within a session and both moved in MateProver's
+favour. The coverage exit is **not** visible in this table -- mate-in-8 went down
+three -- and the table is not offered as evidence for it. Its only clean evidence
+is the same-session A/B: 230 against 228 at 20 s with nothing lost.
+
+73 positions where Chest returns a definitive "no solution" are evidence about the
 corpora rather than either engine.
 
 Also fixes a harness defect found mid-run: the paired driver keyed its resumable
