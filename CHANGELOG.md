@@ -10,6 +10,29 @@ without one.
 
 ## Unreleased
 
+**The selfmate residue is now nine positions, characterised, and two more
+mechanisms are measured out.** After the rejection test the Chest-only residue is
+12 at 30 s and **9 at 120 s** -- three fell to budget alone, so part of what has
+been called structural since the 10 s paired run never was. Eight of the nine are
+6-8 man miniatures at sfm 8 or 9 whose defender holds one strong unit (K+Q four
+times, K+R twice), the material that most resists being forced to mate; the ninth
+is a 24-man sfm 6.
+
+Strengthening the rejection test will not move them: it already fires at 94.1% on
+a failing miniature, and extending its witness beyond king moves gains no
+coverage, because a defender node already returns on its first non-mating reply.
+The king-move test is a cheaper route to the same verdict, not a route to more of
+them -- a cost optimisation, not a coverage one.
+
+The defender transposition table is rejected a second time, now on the class
+picked to favour it. A lone shuffling queen is the textbook case for memoising
+the defender side; it gives 13% fewer nodes and no time, exactly as on the whole
+corpus at section 78. Two independent measurements, question closed.
+
+No instrument remains for the nine. Their shape argues for backward analysis, but
+a 7-man selfmate table is ~200 GB per material class and they span seven classes;
+only one position is six-man and buildable. See `docs/ARCHITECTURE.md` section 87.
+
 **The selfmate attacker-rejection test, and the first mechanism to move the
 residue.** At selfmate depth 1 an attacker move is refuted without searching it
 whenever the defender king has a legal move that gives no check: a selfmate in

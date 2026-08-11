@@ -163,6 +163,7 @@ did. If you are reading it for the first time:
 - [84. The Cache Is Provably Sound, The Residue Is Two Classes, And Ordering Has No Headroom Left](#84-the-cache-is-provably-sound-the-residue-is-two-classes-and-ordering-has-no-headroom-left)
 - [85. Internal Iterative Deepening, And The Closure Of The Graded-Failure-Depth Line](#85-internal-iterative-deepening-and-the-closure-of-the-graded-failure-depth-line)
 - [86. The Attacker Rejection Test: The Mechanism Six Investigations Missed](#86-the-attacker-rejection-test-the-mechanism-six-investigations-missed)
+- [87. The Residue After The Rejection Test: Nine Positions, No Instrument](#87-the-residue-after-the-rejection-test-nine-positions-no-instrument)
 
 ## Impact-Ordered Architecture
 
@@ -6530,3 +6531,82 @@ structural was budget.
 Promoted, default on, gated to selfmate, with `--no-attacker-reject` retained as
 the differential test and `--reject-observer` kept as the measurement aid that
 justified the work. 414 checks pass.
+
+### 87. The Residue After The Rejection Test: Nine Positions, No Instrument
+
+86 took the Chest-only selfmate residue from 28 to 16 at a 30 s budget. This
+characterises what is left, tests the two mechanisms that looked most likely to
+move it, and reports both as negative.
+
+#### What remains
+
+At 30 s, twelve. At 120 s, nine:
+
+| | men | count | stipulation | defender's force |
+| --- | --- | ---: | --- | --- |
+| heavy | 24 | 1 | sfm 6 | large mixed |
+| miniature | 6-8 | 8 | sfm 8 or 9 | K+Q (4), K+R (2), K+P (1), K+PP (1) |
+
+Three of the twelve fell simply to a longer budget -- one heavy at 113M nodes and
+two miniatures at 97M and 311M -- which is worth noting because it means part of
+what has been called a residue all along was a budget artefact of the 10 s paired
+run. The nine that remain burned 300-390M nodes at 120 s without converging, so
+they are not marginal.
+
+**The class is sharp.** Eight of nine are sparse endgame-shaped positions with a
+deep forced sequence and a defender holding one strong unit. In a selfmate the
+defender must be forced to deliver mate, so a lone queen or rook that can check
+from dozens of squares is exactly the material that resists being forced -- the
+same class GAP-2 was written for at 71, except that here a solution does exist
+and the theorem correctly declines to fire.
+
+#### Strengthening the rejection test would not help
+
+The obvious next move after 86 is a stronger witness -- the specification's
+board-free geometry, or looking past king moves. Neither pays, for a reason that
+took one measurement to establish.
+
+On a failing miniature the test already rejects **94.1%** of depth-1 attacker
+moves, and those are 80.5% of all attacker candidates. It is not the limiter.
+
+And extending the witness beyond king moves gains no coverage at all. A defender
+node at depth 1 already returns on its first legal reply that fails to mate,
+which is the general witness; the king-move test is a cheaper way to reach the
+same verdict, not a way to reach more of them. **The test is a cost optimisation,
+not a coverage one**, and that distinction was not obvious before measuring it.
+
+#### The defender table, rejected a second time and on its best class
+
+78 added a transposition table to the selfmate defender node, measured -2
+positions on the corpus, and reverted it. The aggregate was dominated by
+positions that solve either way, so the natural suspicion was that it hid a win
+on some class -- and the class above is the one it should have been: a lone queen
+shuffling through vast numbers of transposing positions is the textbook case for
+memoising the defender side.
+
+    sfm 8, one of the nine, 30 s
+      defender table off   81,324,818 nodes
+      defender table on    70,704,851 nodes      -13%, no change in time
+
+Thirteen percent, again, and no wall-clock improvement, again. Two independent
+measurements now -- once on the whole corpus and once on the class picked
+specifically to favour it -- and it does not pay either time. It is not a hidden
+class win, and that question is closed.
+
+#### Where this leaves the nine
+
+No mechanism in five clean-room specifications, and none of this project's own,
+moves them. Their shape argues for backward analysis rather than forward search:
+at 6-8 men the state space is small enough to enumerate in principle, and forward
+AND/OR search over a 16-to-17-ply forced sequence is the wrong algorithm for it.
+
+The arithmetic is unfriendly, though. A single 7-man material class is roughly
+2x10^11 placements after symmetry, so about 200 GB for a one-byte-per-entry
+selfmate table -- and the eight miniatures span seven distinct material classes.
+Only one of the nine is a six-man position, where the table would be around 7 GB
+and genuinely buildable. **A purpose-built selfmate table closes one of nine**,
+which does not justify the subsystem.
+
+So the honest position is that the residue is now nine, sharply characterised,
+and without an instrument. That is a better place than 28 uncharacterised, and it
+is not a solved problem.
