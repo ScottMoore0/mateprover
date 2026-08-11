@@ -174,6 +174,7 @@ did. If you are reading it for the first time:
 - [95. The First Auditable Table, And What A Re-Run Costs You](#95-the-first-auditable-table-and-what-a-re-run-costs-you)
 - [96. x-check As A Variant, Not A Seventh Goal](#96-x-check-as-a-variant-not-a-seventh-goal)
 - [97. The Second Variant Rule, And What The First One Cost To Generalise](#97-the-second-variant-rule-and-what-the-first-one-cost-to-generalise)
+- [98. A Disproof Wants The Opposite Configuration To A Proof](#98-a-disproof-wants-the-opposite-configuration-to-a-proof)
 
 ## Impact-Ordered Architecture
 
@@ -7358,3 +7359,71 @@ now. The refactor's value is precisely that there is one place to add rule three
 gating and a test that fails loudly when it is missing -- the gate for GAP-1 is
 checked from BOTH directions, because a gate that simply disabled the axiom would
 pass "the lone king still wins" and fail "the axiom still bites".
+
+### 98. A Disproof Wants The Opposite Configuration To A Proof
+
+The restriction portfolio is this engine's single largest source of reach --
+section 43 measures it at +15 positions of 60 at mate-in-10, gained with none
+lost -- and it turns itself on whenever `--time-limit` is set, which is the
+right default for the question people usually ask.
+
+It is exactly wrong for the opposite question, and the reason is in `solve.h`
+already: **only the unrestricted lane may assert "no solution"**. A restriction
+removes attacker options, so a restricted lane that finds a mate has found a
+real one -- that is what makes the portfolio sound -- but a restricted lane that
+finds nothing has proved nothing whatever, because it never looked at the moves
+the restriction removed.
+
+So when the answer is going to be "there is none", every lane but one is
+structurally incapable of contributing, while competing for the same cores
+throughout. Measured on an opening position from the x-check work: **2.3 seconds
+with `--no-portfolio`, and not finished after 90 minutes without it.** Same
+binary, same position, same depth.
+
+#### Why this is a documentation change and not a behavioural one
+
+The obvious fix is to have the engine notice. It cannot: whether a search will
+end in a proof or a disproof is not known until it ends, which is the whole
+difficulty.
+
+The next obvious fix is to weight the unrestricted lane more heavily, or to
+cancel the others when it completes. The second saves nothing -- on a disproof
+the unrestricted lane is the LAST to finish, since it searches the most -- and
+the first is a change to the thread allocation that produced the +15, with no
+measurement behind it. This project's promotion rule is that a change is
+promoted on evidence or documented and rejected, and inventing a new lane
+weighting on the strength of one position would be the kind of unmeasured
+plausible improvement the rule exists to prevent.
+
+What was actually missing was that a caller had no way to know. `--portfolio`
+explained why a restricted lane's PROOF is sound and said nothing about what its
+FAILURE is worth, which is the fact that decides whether to use it. It says so
+now, in the help text, where the decision is made.
+
+The general form is worth keeping: **a mechanism sound in one direction is not
+therefore useful in both, and asymmetric soundness deserves asymmetric
+documentation.**
+
+#### The x-capture openings, and why the tempo stops mattering
+
+Three games from the starting array, each side needing one capture to win
+outright. All three answer **3**, and depths 1 and 2 are exhaustive refusals in
+every case:
+
+| game | answer |
+|---|---|
+| White wins on its first capture | White forces it on move 3 |
+| Black wins on its first capture, White cannot | Black forces it on move 3, after every one of White's twenty first moves |
+| either side wins on its first capture | White forces it on move 3 |
+
+Set that beside the x-check answers to the same three questions, which were 5
+for White and **not achievable in 6** for Black. One tempo was worth two or more
+moves there and is worth nothing here.
+
+The asymmetry is structural rather than accidental. A check requires reaching
+the enemy king, which is difficult and roughly symmetric. **A capture requires
+the opponent to have committed a man to a square you can take** -- and the side
+that moves first is the side that has committed one. White's first move creates
+Black's target. Moving second is not a handicap in a capture race; if anything
+it is an advantage, and the third game confirms it from the other direction:
+giving Black the same winning condition changes White's answer not at all.
