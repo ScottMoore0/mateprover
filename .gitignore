@@ -10,6 +10,9 @@ build/
 # the first push, which is the only reason it is a comment rather than a commit.
 build-*/
 
+# Python bytecode from the tools and the suite.
+__pycache__/
+
 # Benchmark corpus fetched by tools/fetch_corpus.py. Not distributed: it is a
 # separate project under its own licence. See benchmarks/README.md.
 benchmarks/corpus/

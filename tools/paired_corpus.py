@@ -92,9 +92,19 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROOT = os.path.dirname(HERE)
-CHEST_DIR = os.path.join(ROOT, "chest-3.19-original", "build")
-CHEST = os.path.join(CHEST_DIR, "dchest_original.exe")
+
+# Where the reference implementation lives, supplied rather than assumed.
+#
+# This used to be `../chest-3.19-original/build` relative to the prover, which
+# was true only while the prover sat inside a larger workspace beside it. That
+# is a measurement parameter wearing a constant's clothing: the comparison
+# depends on WHICH binary answered, and a path the harness guesses is a path
+# nobody records. It is now an argument, it is checked to exist before a sweep
+# starts, and its digest goes into every result record and the ledger.
+#
+# The environment variable exists so a shell can set it once for a session; the
+# flag beats it, and neither has a default, because there is no correct guess.
+DEFAULT_CHEST = os.environ.get("MATEPROVER_CHEST", "")
 
 # Bump when the record shape or the identity inputs change. A state file written
 # under an older schema is refused rather than reinterpreted.
@@ -400,11 +410,13 @@ def chest_job(goal: str, row: dict) -> str:
     return f"LE\nf {board}\n{extra}{GOALS[goal]['chest_job']}\nz{row['mate']}{stm}\n..\n"
 
 
-def chest_one(goal: str, row: dict, seconds: float, memory_mb: int) -> tuple[str, float]:
+def chest_one(goal: str, row: dict, seconds: float, memory_mb: int,
+              chest: str) -> tuple[str, float]:
     job = chest_job(goal, row)
     start = time.time()
     try:
-        proc = subprocess.run([CHEST, "-r", "-M", str(memory_mb)], cwd=CHEST_DIR,
+        proc = subprocess.run([chest, "-r", "-M", str(memory_mb)],
+                          cwd=os.path.dirname(chest),
                               input=job.encode(), capture_output=True, timeout=seconds)
     except subprocess.TimeoutExpired:
         return "timeout", seconds
@@ -466,6 +478,11 @@ def main() -> int:
                     help="pass -M to mateprover; omitted means the shipped "
                          "default, which is what a fair run wants")
     ap.add_argument("--chest-mb", type=int, default=2048)
+    ap.add_argument("--chest", default=DEFAULT_CHEST,
+                    help="path to the reference implementation's executable. "
+                         "Required: the comparison is against a specific binary "
+                         "and the harness will not guess which. May also be set "
+                         "with MATEPROVER_CHEST.")
     ap.add_argument("--chunk", type=int, default=20)
     ap.add_argument("--state", required=True)
     args = ap.parse_args()
@@ -476,7 +493,13 @@ def main() -> int:
     # traceback about CreateProcess -- an hour into a sweep, if the corpus is
     # large. Resolve it here and say what is missing.
     args.engine = os.path.abspath(args.engine)
-    for what, path in (("engine", args.engine), ("chest", CHEST)):
+    if not args.chest:
+        raise HarnessError(
+            "no reference implementation given. Pass --chest <path> or set "
+            "MATEPROVER_CHEST; there is no default, because which binary "
+            "answered is part of what the measurement means.")
+    args.chest = os.path.abspath(args.chest)
+    for what, path in (("engine", args.engine), ("chest", args.chest)):
         if not os.path.exists(path):
             raise HarnessError(f"{what} not found: {path}")
 
@@ -495,7 +518,7 @@ def main() -> int:
         "mateprover_digest": sha256_file(args.engine)[:16],
         "mateprover_memory_mb": args.mateprover_mb,
         "chest_version": "3.19",
-        "chest_digest": sha256_file(CHEST)[:16],
+        "chest_digest": sha256_file(args.chest)[:16],
         "chest_memory_mb": args.chest_mb,
         "harness_commit": harness_commit(),
     }
@@ -531,7 +554,8 @@ def main() -> int:
             state["records"].append(make_record(
                 definition, identity, row, "mateprover", result["verdict"],
                 result["depth"], result["seconds"]))
-            verdict, elapsed = chest_one(args.goal, row, args.seconds, args.chest_mb)
+            verdict, elapsed = chest_one(args.goal, row, args.seconds,
+                                         args.chest_mb, args.chest)
             if verdict == "refused":
                 state["refused"].append(position_id(row["fen4"]))
             state["records"].append(make_record(

@@ -1307,6 +1307,20 @@ def test_bom_tolerated_on_input(engine: Path, res: Results) -> None:
               run(engine, ["--time-limit", "10", "-"], "﻿\n").strip() == "")
 
 
+# The corpora are NOT distributed -- they are subsets of a separately-licensed
+# set, rebuilt locally by tools/fetch_corpus.py and tools/mint_eval_set.py. So a
+# fresh checkout does not have them, and a test that reads one must say so and
+# stand down rather than raise. This was found the only way it could be: by
+# checking the tree out somewhere the corpora had never been, which is what CI
+# does on every run and what nothing had ever done before.
+def corpus_rows(name: str):
+    path = HERE.parent / "benchmarks" / name
+    if not path.exists():
+        return None
+    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()
+            if l.strip()]
+
+
 def test_check_variant(engine: Path, res: Results) -> None:
     """x-check chess: a VARIANT, orthogonal to all six goals.
 
@@ -2618,9 +2632,11 @@ def test_any_depth_refutations(engine: Path, res: Results) -> None:
     # a selfmate that has a solution. Run paired, because a difference in the
     # solved SET is the only thing that distinguishes a false refutation from a
     # position that was always too slow.
-    selfmates = [json.loads(l) for l in
-                 (HERE.parent / "benchmarks" / "selfmate_deep.jsonl").read_text().splitlines()
-                 if l.strip()]
+    selfmates = corpus_rows("selfmate_deep.jsonl")
+    if selfmates is None:
+        res.skip("a refutation never contradicts a solved selfmate",
+                 "benchmarks/selfmate_deep.jsonl not built")
+        return
     quick = [r for r in selfmates if r["status"] == "solved" and r["mate"] <= 5][:40]
     if quick:
         sstdin = "".join(r["fen4"] + chr(10) for r in quick)
@@ -2668,9 +2684,11 @@ def test_help_reachability_bound(engine: Path, res: Results) -> None:
     else, which is why this runs positives rather than timings.
     """
     print("\n[coop] the helpmate reachability bound loses no solution")
-    rows = [json.loads(l) for l in
-            (HERE.parent / "benchmarks" / "helpmate_yacpdb.jsonl").read_text().splitlines()
-            if l.strip()]
+    rows = corpus_rows("helpmate_yacpdb.jsonl")
+    if rows is None:
+        res.skip("the helpmate bound loses no solution",
+                 "benchmarks/helpmate_yacpdb.jsonl not built")
+        return
     by_depth = {}
     for row in rows:
         by_depth.setdefault(row["mate"], []).append(row)
@@ -2732,6 +2750,9 @@ def test_corpus_integrity(engine: Path, res: Results) -> None:
 
     bench = HERE.parent / "benchmarks"
     corpora = [p for p in sorted(bench.glob("*.jsonl")) if p.name != "KNOWN_BAD.jsonl"]
+    if not corpora:
+        res.skip("corpora are structurally sound", "benchmarks not built")
+        return
     res.check("benchmark corpora are present", len(corpora) >= 10, f"{len(corpora)} found")
 
     rows = {}
@@ -3078,8 +3099,29 @@ def main() -> int:
     # most readers see first was the one file not checked.
     docs = (HERE.parent / "CHANGELOG.md", HERE.parent / "docs" / "RESULTS.md",
             HERE.parent / "README.md")
-    claimed = res.passed + len(docs) + len(res.failed)
+    # Skipped checks COUNT. The number advertised is how many checks the suite
+    # defines, not how many happened to run here -- otherwise it moves with
+    # --quick, with whether python-chess is installed, and with whether the
+    # corpora have been built. CI runs without --quick and with python-chess
+    # present, so an environment-dependent count would have failed there on the
+    # first push while passing every local run.
+    claimed = res.passed + len(res.skipped) + len(docs) + len(res.failed)
+
+    # The count is only knowable in the REFERENCE CONFIGURATION. Counting skips
+    # makes it independent of --quick and of python-chess, because those skip
+    # individual checks -- but a missing corpus makes a whole test stand down,
+    # replacing a dozen checks with one skip, and no arithmetic recovers the
+    # number from that. So when the corpora are absent the suite says it cannot
+    # tell rather than asserting something it cannot know.
+    #
+    # A test that fails when it merely lacks the data to judge is worse than no
+    # test: it trains the reader to discount the failure.
+    complete = (HERE.parent / "benchmarks" / "selfmate_deep.jsonl").exists()
     for doc in docs:
+        if not complete:
+            res.skip(f"{doc.name} states the current check count",
+                     "corpora not built, so the total is not determinable here")
+            continue
         text = doc.read_text(encoding="utf-8")
         stated = re.search(r"(\d+) automated checks", text)
         res.check(f"{doc.name} states the current check count",
