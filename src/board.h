@@ -369,7 +369,7 @@ bool in_check(const Board& b, Color c);
 // A parser that claimed those would break every existing corpus, so an
 // unrecognised token is ignored precisely as it is today.
 inline bool parse_quota_pair(const std::string& token, int rule,
-                             std::array<std::uint8_t, 2 * VR_COUNT>& out) {
+                             std::array<std::uint8_t, kQuotaSlots>& out) {
     const bool delivered = !token.empty() && token[0] == '+';
     const std::string body = delivered ? token.substr(1) : token;
     const std::size_t plus = body.find('+');
@@ -387,20 +387,18 @@ inline bool parse_quota_pair(const std::string& token, int rule,
     if (delivered) {
         const int limit = 3;                 // the only limit the spelling has
         if (rule != VR_CHECK || a > limit || c > limit) return false;
-        out[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] =
-            static_cast<std::uint8_t>(limit - a);
-        out[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] =
-            static_cast<std::uint8_t>(limit - c);
+        out[quota_index(WHITE, rule)] = static_cast<std::uint8_t>(limit - a);
+        out[quota_index(BLACK, rule)] = static_cast<std::uint8_t>(limit - c);
         return true;
     }
     if (a > kMaxQuota || c > kMaxQuota) return false;
-    out[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] = static_cast<std::uint8_t>(a);
-    out[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] = static_cast<std::uint8_t>(c);
+    out[quota_index(WHITE, rule)] = static_cast<std::uint8_t>(a);
+    out[quota_index(BLACK, rule)] = static_cast<std::uint8_t>(c);
     return true;
 }
 
 inline bool parse_variant_field(const std::string& token,
-                                std::array<std::uint8_t, 2 * VR_COUNT>& out) {
+                                std::array<std::uint8_t, kQuotaSlots>& out) {
     out.fill(kNoQuota);
     std::size_t start = 0;
     bool any = false;
@@ -529,7 +527,7 @@ std::optional<Board> parse_fen4(const std::string& line) {
         return std::nullopt;
     }
     if (tokens.size() >= 5) {
-        std::array<std::uint8_t, 2 * VR_COUNT> quota{};
+        std::array<std::uint8_t, kQuotaSlots> quota{};
         if (parse_variant_field(tokens[4], quota)) {
             b.quota = quota;
         }

@@ -185,11 +185,11 @@ Board make_move(Board b, const Move& m) {
     // The two rules cost very differently. A check is a property of the RESULTING
     // POSITION and needs an attack query; a capture is a property of the MOVE and
     // was already known before the move was made.
-    std::uint8_t& checks = b.quota[static_cast<std::size_t>(b.stm) * VR_COUNT + VR_CHECK];
+    std::uint8_t& checks = b.quota[quota_index(b.stm, VR_CHECK)];
     if (checks != kNoQuota && checks > 0 && in_check(b, other(b.stm))) {
         --checks;
     }
-    std::uint8_t& captures = b.quota[static_cast<std::size_t>(b.stm) * VR_COUNT + VR_CAPTURE];
+    std::uint8_t& captures = b.quota[quota_index(b.stm, VR_CAPTURE)];
     if (captures != kNoQuota && captures > 0 && captured) {
         --captures;
     }

@@ -416,6 +416,91 @@ void print_usage() {
 "Exit codes: 0 success, 2 usage error.\n";
 }
 
+// Boolean options, as data rather than as control flow.
+//
+// This was 65 more links in main's `else if` chain, and that chain grew past a
+// limit nobody knew was there: MSVC gives up at 128 nested blocks (C1061), and
+// each `else if` nests one. The program stopped compiling on MSVC entirely --
+// not slowly, not with a warning -- while GCC and Clang, which have no such
+// limit, built it clean every time locally. Nothing said so until CI ran on a
+// Windows runner for the first time.
+//
+// A table has no depth. It is also the better shape: adding a flag is adding a
+// row, and the rows sit where they can be read together.
+struct BoolOption {
+    const char* name;
+    bool SearchConfig::* field;
+    bool value;
+};
+
+const BoolOption kBoolOptions[] = {
+    {"--debug", &SearchConfig::debug, true},
+    {"--emit-proof", &SearchConfig::emit_proof, true},
+    {"--profile", &SearchConfig::profile, true},
+    {"--no-profile", &SearchConfig::profile, false},
+    {"--score-mates", &SearchConfig::score_mates, true},
+    {"--no-mate-score", &SearchConfig::score_mates, false},
+    {"--score-checks", &SearchConfig::score_checks, true},
+    {"--no-check-score", &SearchConfig::score_checks, false},
+    {"--fast-check-score", &SearchConfig::fast_check_score, true},
+    {"--exact-check-score", &SearchConfig::fast_check_score, false},
+    {"--refutation-hints", &SearchConfig::refutation_hints, true},
+    {"--no-refutation-hints", &SearchConfig::refutation_hints, false},
+    {"--proof-hints", &SearchConfig::proof_hints, true},
+    {"--no-proof-hints", &SearchConfig::proof_hints, false},
+    {"--attacker-reject", &SearchConfig::attacker_reject, true},
+    {"--no-attacker-reject", &SearchConfig::attacker_reject, false},
+    {"--fac-observer", &SearchConfig::fac_observer, true},
+    {"--fast-reject", &SearchConfig::fast_reject, true},
+    {"--no-fast-reject", &SearchConfig::fast_reject, false},
+    {"--selfmate-node-exit", &SearchConfig::selfmate_node_exit, true},
+    {"--no-selfmate-node-exit", &SearchConfig::selfmate_node_exit, false},
+    {"--selfmate-node-observer", &SearchConfig::selfmate_node_observer, true},
+    {"--coverage-exit", &SearchConfig::coverage_exit, true},
+    {"--no-coverage-exit", &SearchConfig::coverage_exit, false},
+    {"--coverage-observer", &SearchConfig::coverage_observer, true},
+    {"--reject-observer", &SearchConfig::reject_observer, true},
+    {"--depth2-scorer", &SearchConfig::depth2_scorer, true},
+    {"--no-depth2-scorer", &SearchConfig::depth2_scorer, false},
+    {"--no-exact-tt", &SearchConfig::exact_tt, false},
+    {"--exact-tt", &SearchConfig::exact_tt, true},
+    {"--answer-order", &SearchConfig::answer_order, true},
+    {"--no-answer-order", &SearchConfig::answer_order, false},
+    {"--selfmate-bound", &SearchConfig::selfmate_bound, true},
+    {"--no-selfmate-bound", &SearchConfig::selfmate_bound, false},
+    {"--help-bound", &SearchConfig::help_bound, true},
+    {"--no-help-bound", &SearchConfig::help_bound, false},
+    {"--any-depth-refutations", &SearchConfig::any_depth_refutations, true},
+    {"--no-any-depth-refutations", &SearchConfig::any_depth_refutations, false},
+    {"--move-reserve", &SearchConfig::move_reserve, true},
+    {"--no-move-reserve", &SearchConfig::move_reserve, false},
+    {"--inplace-order", &SearchConfig::inplace_order, true},
+    {"--scored-vector-order", &SearchConfig::inplace_order, false},
+    {"--stable-sort-order", &SearchConfig::bucket_order, false},
+    {"--keep-iter-tt", &SearchConfig::keep_iter_tt, true},
+    {"--clear-iter-tt", &SearchConfig::keep_iter_tt, false},
+    {"--ordered-check-shortcut", &SearchConfig::ordered_check_shortcut, true},
+    {"--no-ordered-check-shortcut", &SearchConfig::ordered_check_shortcut, false},
+    {"--static-pseudo", &SearchConfig::static_pseudo, true},
+    {"--vector-pseudo", &SearchConfig::static_pseudo, false},
+    {"--portfolio", &SearchConfig::portfolio, true},
+    {"--no-portfolio", &SearchConfig::portfolio, false},
+    {"--direct-depth", &SearchConfig::direct_depth, true},
+    {"--iterative-depth", &SearchConfig::direct_depth, false},
+    {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
+    {"--dfpn-every-depth", &SearchConfig::dfpn_final_depth_only, false},
+    {"--dfpn-sort", &SearchConfig::dfpn_sort, true},
+    {"--dfpn-no-sort", &SearchConfig::dfpn_sort, false},
+    {"--dfpn-hints-only", &SearchConfig::dfpn_share_disproofs, false},
+    {"--dfpn-share-disproofs", &SearchConfig::dfpn_share_disproofs, true},
+    {"--lazy-defender", &SearchConfig::lazy_defender, true},
+    {"--eager-defender", &SearchConfig::lazy_defender, false},
+    {"--fused-order", &SearchConfig::fused_order, true},
+    {"--split-order", &SearchConfig::fused_order, false},
+    {"--shared-tt", &SearchConfig::shared_tt, true},
+    {"--private-tt", &SearchConfig::shared_tt, false},
+};
+
 int main(int argc, char** argv) {
     SearchConfig config;
     bool print_config = false;
@@ -466,6 +551,17 @@ int main(int argc, char** argv) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        bool from_table = false;
+        for (const BoolOption& option : kBoolOptions) {
+            if (arg == option.name) {
+                config.*option.field = option.value;
+                from_table = true;
+                break;
+            }
+        }
+        if (from_table) {
+            continue;
+        }
         if (arg == "-h" || arg == "--help") {
             print_usage();
             return 0;
@@ -500,8 +596,6 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "-") {
             read_stdin = true;
-        } else if (arg == "--debug") {
-            config.debug = true;
         } else if (arg == "--self-check") {
             self_check = true;
             // Once, before any position: a table checked only against itself is
@@ -522,92 +616,14 @@ int main(int argc, char** argv) {
             perft_depth = std::atoi(v);
             if (perft_depth <= 0) return usage_error("option " + arg + " requires a positive depth");
             perft_divide = (arg == "--perft-divide");
-        } else if (arg == "--emit-proof") {
-            config.emit_proof = true;
         } else if (arg == "--print-config") {
             print_config = true;
-        } else if (arg == "--profile") {
-            config.profile = true;
-        } else if (arg == "--no-profile") {
-            config.profile = false;
-        } else if (arg == "--score-mates") {
-            config.score_mates = true;
-        } else if (arg == "--no-mate-score") {
-            config.score_mates = false;
-        } else if (arg == "--score-checks") {
-            config.score_checks = true;
-        } else if (arg == "--no-check-score") {
-            config.score_checks = false;
-        } else if (arg == "--fast-check-score") {
-            config.fast_check_score = true;
-        } else if (arg == "--exact-check-score") {
-            config.fast_check_score = false;
-        } else if (arg == "--refutation-hints") {
-            config.refutation_hints = true;
-        } else if (arg == "--no-refutation-hints") {
-            config.refutation_hints = false;
-        } else if (arg == "--proof-hints") {
-            config.proof_hints = true;
-        } else if (arg == "--no-proof-hints") {
-            config.proof_hints = false;
-        } else if (arg == "--attacker-reject") {
-            config.attacker_reject = true;
-        } else if (arg == "--no-attacker-reject") {
-            config.attacker_reject = false;
-        } else if (arg == "--fac-observer") {
-            config.fac_observer = true;
-        } else if (arg == "--fast-reject") {
-            config.fast_reject = true;
-        } else if (arg == "--no-fast-reject") {
-            config.fast_reject = false;
-        } else if (arg == "--selfmate-node-exit") {
-            config.selfmate_node_exit = true;
-        } else if (arg == "--no-selfmate-node-exit") {
-            config.selfmate_node_exit = false;
-        } else if (arg == "--selfmate-node-observer") {
-            config.selfmate_node_observer = true;
-        } else if (arg == "--coverage-exit") {
-            config.coverage_exit = true;
-        } else if (arg == "--no-coverage-exit") {
-            config.coverage_exit = false;
-        } else if (arg == "--coverage-observer") {
-            config.coverage_observer = true;
-        } else if (arg == "--reject-observer") {
-            config.reject_observer = true;
-        } else if (arg == "--depth2-scorer") {
-            config.depth2_scorer = true;
-        } else if (arg == "--no-depth2-scorer") {
-            config.depth2_scorer = false;
-        } else if (arg == "--no-exact-tt") {
-            config.exact_tt = false;
-        } else if (arg == "--exact-tt") {
-            config.exact_tt = true;
         } else if (arg == "--answer-order-min-depth" && i + 1 < argc) {
             config.answer_order_min_depth = std::atoi(argv[++i]);
-        } else if (arg == "--answer-order") {
-            config.answer_order = true;
-        } else if (arg == "--no-answer-order") {
-            config.answer_order = false;
-        } else if (arg == "--selfmate-bound") {
-            config.selfmate_bound = true;
-        } else if (arg == "--no-selfmate-bound") {
-            config.selfmate_bound = false;
-        } else if (arg == "--help-bound") {
-            config.help_bound = true;
-        } else if (arg == "--no-help-bound") {
-            config.help_bound = false;
-        } else if (arg == "--any-depth-refutations") {
-            config.any_depth_refutations = true;
-        } else if (arg == "--no-any-depth-refutations") {
-            config.any_depth_refutations = false;
         } else if (arg == "--tt-reserve") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--tt-reserve' requires a bucket count");
             if (!parse_size(v, config.tt_reserve)) return usage_error("option '--tt-reserve' expects a number");
-        } else if (arg == "--move-reserve") {
-            config.move_reserve = true;
-        } else if (arg == "--no-move-reserve") {
-            config.move_reserve = false;
         } else if (arg == "--move-reserve-cap") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--move-reserve-cap' requires a capacity");
@@ -615,27 +631,9 @@ int main(int argc, char** argv) {
             if (!parse_size(v, value) || value == 0) return usage_error("option '--move-reserve-cap' expects a positive number");
             config.move_reserve = true;
             config.move_reserve_capacity = value;
-        } else if (arg == "--inplace-order") {
-            config.inplace_order = true;
-        } else if (arg == "--scored-vector-order") {
-            config.inplace_order = false;
         } else if (arg == "--bucket-order") {
             config.bucket_order = true;
             config.inplace_order = true;
-        } else if (arg == "--stable-sort-order") {
-            config.bucket_order = false;
-        } else if (arg == "--keep-iter-tt") {
-            config.keep_iter_tt = true;
-        } else if (arg == "--clear-iter-tt") {
-            config.keep_iter_tt = false;
-        } else if (arg == "--ordered-check-shortcut") {
-            config.ordered_check_shortcut = true;
-        } else if (arg == "--no-ordered-check-shortcut") {
-            config.ordered_check_shortcut = false;
-        } else if (arg == "--static-pseudo") {
-            config.static_pseudo = true;
-        } else if (arg == "--vector-pseudo") {
-            config.static_pseudo = false;
         } else if (arg == "--order-min-size") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--order-min-size' requires a size");
@@ -683,8 +681,6 @@ int main(int argc, char** argv) {
             config.root_sequential_first = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
-        } else if (arg == "--portfolio") {
-            config.portfolio = true;
         } else if (arg == "--portfolio-parallel") {
             config.portfolio = true;
             config.portfolio_parallel = true;
@@ -719,8 +715,6 @@ int main(int argc, char** argv) {
             config.print_tree = true;
         } else if (arg == "--short-notation" || arg == "-S") {
             config.short_notation = true;
-        } else if (arg == "--no-portfolio") {
-            config.portfolio = false;
         } else if (arg == "--portfolio-lanes") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--portfolio-lanes' requires a count");
@@ -733,10 +727,6 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--route-lane-threads' expects a number");
             config.route_lane_threads = static_cast<int>(value); // 0 means the default
-        } else if (arg == "--direct-depth") {
-            config.direct_depth = true;
-        } else if (arg == "--iterative-depth") {
-            config.direct_depth = false;
         } else if (arg == "--parallel-positions") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--parallel-positions' requires a count");
@@ -763,10 +753,6 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--dfpn-epsilon-64' expects a number");
             config.dfpn_epsilon_64 = static_cast<int>(value);
-        } else if (arg == "--dfpn-final-depth-only") {
-            config.dfpn_final_depth_only = true;
-        } else if (arg == "--dfpn-every-depth") {
-            config.dfpn_final_depth_only = false;
         } else if (arg == "--checks" || arg == "--captures") {
             const int rule = (arg == "--captures") ? VR_CAPTURE : VR_CHECK;
             const char* v = need_value(i);
@@ -792,8 +778,8 @@ int main(int argc, char** argv) {
                 return usage_error("option " + arg + " wants 1.." +
                                    std::to_string(kMaxQuota) + " a side");
             }
-            config.quota_limit[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] = w;
-            config.quota_limit[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] = bl;
+            config.quota_limit[quota_index(WHITE, rule)] = w;
+            config.quota_limit[quota_index(BLACK, rule)] = bl;
         } else if (arg == "--check-win") {
             config.rule_wins[VR_CHECK] = true;
         } else if (arg == "--no-check-win") {
@@ -852,32 +838,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--dfpn-min-depth' expects a number");
             config.dfpn_min_depth = static_cast<int>(value);
-        } else if (arg == "--dfpn-sort") {
-            config.dfpn_sort = true;
-        } else if (arg == "--dfpn-no-sort") {
-            config.dfpn_sort = false;
-        } else if (arg == "--dfpn-hints-only") {
-            config.dfpn_share_disproofs = false;
-        } else if (arg == "--dfpn-share-disproofs") {
-            config.dfpn_share_disproofs = true;
         } else if (arg == "--dfpn-node-limit") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-node-limit' requires a node count");
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--dfpn-node-limit' expects a number");
             config.dfpn_node_limit = static_cast<std::uint64_t>(value);
-        } else if (arg == "--lazy-defender") {
-            config.lazy_defender = true;
-        } else if (arg == "--eager-defender") {
-            config.lazy_defender = false;
-        } else if (arg == "--fused-order") {
-            config.fused_order = true;
-        } else if (arg == "--split-order") {
-            config.fused_order = false;
-        } else if (arg == "--shared-tt") {
-            config.shared_tt = true;
-        } else if (arg == "--private-tt") {
-            config.shared_tt = false;
         } else if (arg == "--shared-tt-shards") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--shared-tt-shards' requires a shard count");

@@ -36,6 +36,9 @@ HERE = Path(__file__).resolve().parent
 # than shorten their time limit, so a quick run never reports a weakened check
 # as a passing one.
 QUICK = False
+# The engine under test is an instrumented build; wall-clock claims are about
+# the build rather than the engine, so they stand down rather than lie.
+SLOW_BUILD = False
 
 DM_RE = re.compile(r"\bdm\s+(\d+)\b")
 SM_RE = re.compile(r"\bsm\s+(\d+)\b")
@@ -247,8 +250,17 @@ def test_time_limit(engine: Path, res: Results) -> None:
                            "--time-limit", str(limit), "-z", "8", "-"],
                   hard + "\n", timeout=limit + 30.0)
         elapsed = time.monotonic() - started
-        res.check(f"budget {limit}s is honoured",
-                  elapsed < limit + 5.0, f"took {elapsed:.1f}s")
+        # ONLY the wall-clock claim stands down. The check below it -- that a
+        # budget exhausted reports a timeout rather than claiming a mate -- is a
+        # correctness property, not a timing one, and an instrumented build is
+        # if anything a better place to test it. A `continue` here would have
+        # skipped it too, and the check count is what caught that.
+        if SLOW_BUILD:
+            res.skip(f"budget {limit}s is honoured",
+                     "instrumented build: the clock measures the build, not the engine")
+        else:
+            res.check(f"budget {limit}s is honoured",
+                      elapsed < limit + 5.0, f"took {elapsed:.1f}s")
         res.check(f"budget {limit}s reports timeout, not a mate",
                   "timeout" in out and DM_RE.search(out) is None,
                   f"output {out.strip()[:80]!r}")
@@ -3015,12 +3027,21 @@ def main() -> int:
     parser.add_argument("--engine", type=Path, required=True)
     parser.add_argument("--quick", action="store_true",
                         help="skip the deepest perft levels")
+    parser.add_argument("--slow-build", action="store_true",
+                        help="the engine under test is an instrumented build "
+                             "(bounds-checked, sanitised, unoptimised). Wall-clock "
+                             "assertions are skipped: they measure the BUILD, not "
+                             "the engine, and a 0.5s budget honoured in 7.5s under "
+                             "_GLIBCXX_DEBUG says nothing about the shipped binary."),
     args = parser.parse_args()
 
     if not args.engine.exists():
         print(f"engine not found: {args.engine}", file=sys.stderr)
         return 2
 
+    if args.slow_build:
+        global SLOW_BUILD
+        SLOW_BUILD = True
     if args.quick:
         global QUICK
         QUICK = True

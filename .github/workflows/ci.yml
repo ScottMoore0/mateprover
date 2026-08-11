@@ -168,7 +168,12 @@ jobs:
         run: |
           g++ -std=c++17 -O1 -g -D_GLIBCXX_DEBUG -D_GLIBCXX_ASSERTIONS               -Wall -Wextra -pedantic -pthread -o /tmp/mateprover_checked src/mateprover.cpp
       - name: Run the full suite under bounds checking
-        run: python tests/run_tests.py --engine /tmp/mateprover_checked
+        # --slow-build stands the wall-clock assertions down. _GLIBCXX_DEBUG at
+        # -O1 is roughly fifty times slower than the shipped build, so a 0.5 s
+        # budget legitimately takes 7.5 s here -- which says something about the
+        # instrumentation and nothing about the engine. Every other check still
+        # runs; it is the bounds checking this job exists for.
+        run: python tests/run_tests.py --engine /tmp/mateprover_checked --slow-build
 
   future-standards:
     name: c++20 and c++23

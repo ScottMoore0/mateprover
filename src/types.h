@@ -195,6 +195,18 @@ enum VariantRule { VR_CHECK = 0, VR_CAPTURE = 1, VR_COUNT = 2 };
 // the largest quota and 127 means the rule is not in force. Refused above that
 // rather than clamped: two distinct states sharing a key is the one failure this
 // engine exists to prevent, and folding 200 onto 126 would do exactly that.
+// One slot per (colour, rule). Named rather than written as `2 * VR_COUNT` at
+// each use: cppcheck evaluated that expression as 2 and reported every write to
+// slot 2 or 3 as out of bounds -- a false positive, but `containerOutOfBounds`
+// is not a class to wave through, and the honest fix is to give the analyser a
+// single indexing site to reason about rather than an argument to lose.
+constexpr std::size_t kQuotaSlots = 2 * static_cast<std::size_t>(VR_COUNT);
+
+// The one place the (colour, rule) arithmetic happens.
+inline std::size_t quota_index(int colour, int rule) {
+    return static_cast<std::size_t>(colour) * VR_COUNT + static_cast<std::size_t>(rule);
+}
+
 constexpr std::uint8_t kNoQuota = 127;
 constexpr int kMaxQuota = 126;
 
@@ -215,16 +227,16 @@ struct Board {
     // the transposition key can walk it, and defaulted to "not in force" because
     // Boards are constructed as scratch probes in several places and every one of
     // them means standard chess.
-    std::array<std::uint8_t, 2 * VR_COUNT> quota{
+    std::array<std::uint8_t, kQuotaSlots> quota{
         {kNoQuota, kNoQuota, kNoQuota, kNoQuota}};
 };
 
 inline std::uint8_t quota_of(const Board& b, int colour, int rule) {
-    return b.quota[static_cast<std::size_t>(colour) * VR_COUNT + rule];
+    return b.quota[quota_index(colour, rule)];
 }
 
 inline void set_quota(Board& b, int colour, int rule, std::uint8_t value) {
-    b.quota[static_cast<std::size_t>(colour) * VR_COUNT + rule] = value;
+    b.quota[quota_index(colour, rule)] = value;
 }
 
 // Is ANY variant rule in force? The guard that keeps standard chess free.
