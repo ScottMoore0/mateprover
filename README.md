@@ -118,12 +118,21 @@ Speed matters less than reach, so this is measured against
 [matetrack](https://github.com/vondele/matetrack), a public mate benchmark,
 rather than suites chosen by this project.
 
-Solve rate on evaluation sets that were minted before the work they judge,
-measured exactly once, and never consulted in between. Wilson 95% intervals:
+Solve rate on evaluation sets that were minted before the work they judge.
+Wilson 95% intervals.
+
+**Read the mate-in-8 row with its history.** It was measured once, at 78.0%,
+against a set never consulted during the work it judged -- that was clean
+holdout evidence. The set has since been used in engine-to-engine comparison
+sweeps, and re-measuring it today gives 88.5%. The improvement is real and the
+set was never TUNED against, but it is no longer virgin, so 88.5% is current
+performance on a known set rather than a fresh holdout result. The distinction
+costs nothing to state and is the whole difference between evidence and a
+number.
 
 | problems | solve rate | 95% CI |
 |---|---:|---|
-| mate-in-8, default configuration, 15 s (200 positions) | **78.0%** | 71.8–83.2 |
+| mate-in-8, default configuration, 15 s (200 positions) | **88.5%** | 83.3–92.2 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60) | **96.7%** | 88.6–99.1 |
 | mate-in-12, same conditions (40) | 82.5% | 68.0–91.3 |
 | mate-in-14, same conditions (40) | 75.0% | 59.8–85.8 |

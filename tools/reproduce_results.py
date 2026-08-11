@@ -130,16 +130,26 @@ def main():
     # Sets are loaded lazily. Building this list eagerly made --deterministic
     # demand the evaluation sets it never reads, so a deterministic run failed
     # on a missing file belonging to the other mode entirely.
+    # THE SETS HERE MUST BE REBUILDABLE ONES. This list named the original
+    # eval200 and eval60, which benchmarks/MANIFEST.json marks
+    # `"rebuildable": false` -- so a reader following the README could fetch the
+    # corpus, fail to mint the sets, and never reach a comparison at all. It also
+    # quoted those retired sets' figures, which disagree with the ones the README
+    # now documents. A reproduction script that cannot be run, printing numbers
+    # that are not the published ones, is worse than no reproduction script.
+    #
+    # The _r2 sets are the current, rebuildable ones, and the figures below are
+    # what THEY produced.
     checks = [
         ("mate-in-8, default configuration, 15s",
-         "matetrack_d8_eval200.jsonl", [], 15 // scale, "159/200 = 79.5%"),
+         "matetrack_d8_eval200_r2.jsonl", [], 15 // scale, "177/200 = 88.5%"),
         ("mate-in-10, 32 threads, --direct-depth, 30s",
-         "matetrack_d10_eval60.jsonl",
-         ["-M", "2048", "--threads", "32", "--direct-depth"], 30 // scale, "44/60 = 73.3%"),
+         "matetrack_d10_eval60_r2.jsonl",
+         ["-M", "2048", "--threads", "32", "--direct-depth"], 30 // scale, "58/60 = 96.7%"),
         ("mate-in-10, no portfolio (the comparison)",
-         "matetrack_d10_eval60.jsonl",
+         "matetrack_d10_eval60_r2.jsonl",
          ["-M", "2048", "--threads", "32", "--direct-depth", "--no-portfolio"], 30 // scale,
-         "29/60 = 48.3%"),
+         "54/60 = 90.0%"),
     ]
 
     if args.deterministic:
