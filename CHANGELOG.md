@@ -8,7 +8,16 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## 1.1.0 — 2026-08-11
+## 0.1.0 — 2026-08-11
+
+**The version number goes DOWN here, deliberately.** This is a new repository
+holding the current line of development, and it restarts at 0.1.0 to say that
+the interfaces are not yet promised: the output format, the certificate schema
+and the CLI are all still free to change. The 1.0.0 entry below is a real
+release and its record is kept as it was written; it was published from a
+different repository, and nothing in it is retracted by the renumbering.
+
+Read 0.1.0 as "first release of this line", not as a step backwards from 1.0.0.
 
 Six stipulations rather than one, two variant rules, a verified measurement
 harness, and the first execution of continuous integration in the project's
