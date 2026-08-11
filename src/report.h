@@ -470,16 +470,16 @@ std::string move_san(const Board& b, const Move& m) {
     } else {
         out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(piece))));
         bool same_file = false, same_rank = false, ambiguous = false;
-        for (const Move& other : legal_moves(b, false, 64, false)) {
-            if (other.from == m.from || other.to != m.to) {
+        for (const Move& rival : legal_moves(b, false, 64, false)) {
+            if (rival.from == m.from || rival.to != m.to) {
                 continue;
             }
-            if (type_of(b.sq[static_cast<std::size_t>(other.from)]) != type) {
+            if (type_of(b.sq[static_cast<std::size_t>(rival.from)]) != type) {
                 continue;
             }
             ambiguous = true;
-            if (file_of(other.from) == file_of(m.from)) same_file = true;
-            if (rank_of(other.from) == rank_of(m.from)) same_rank = true;
+            if (file_of(rival.from) == file_of(m.from)) same_file = true;
+            if (rank_of(rival.from) == rank_of(m.from)) same_rank = true;
         }
         if (ambiguous) {
             // File alone unless another candidate shares it; then rank; then

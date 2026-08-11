@@ -712,7 +712,7 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             // 37 -- parallelism making the engine four times worse, because the
             // work it parallelised was the work the hints made unnecessary.
             if (s.proof_hints) {
-                for (auto& ws : workers) {
+                for (const auto& ws : workers) {
                     ws->attacker_proofs = s.attacker_proofs;
                 }
             }

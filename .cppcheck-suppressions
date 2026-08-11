@@ -26,3 +26,22 @@ constVariableReference:src/board.h
 # Only reported by the CI runner's cppcheck, not by 2.18.0 locally, which is
 # why it appeared on the first run rather than during development.
 constParameterReference:src/ordering.h
+
+# `thpn > total.pn ? sat_add(chosen.pn, thpn - total.pn) : chosen.pn` in the DFPN
+# threshold update. The analyser proves the condition always true, because the
+# loop guard above returns whenever `total.pn >= thpn`, and it is right about
+# that today. The ternary is not redundancy, it is a guard against UNSIGNED
+# UNDERFLOW: these are uint32, and `thpn - total.pn` with the inequality the
+# other way is not a small negative number, it is about four billion, which
+# saturating addition would then turn into an effectively infinite threshold and
+# a subtree that never terminates. Deleting the branch would be correct only for
+# as long as the guard above it stays exactly as it is.
+knownConditionTrueFalse:src/dfpn.h
+
+# `print_cert_tree(std::ostream&, CertReader&, Board b, int, bool)` takes the
+# board BY VALUE on purpose, and so does print_cert_node below it. A defender
+# branch mutates the position as it walks its line, and every sibling branch has
+# to start from the same board -- the copy is what makes the tree a tree rather
+# than one long line. A const reference would not compile against the callee,
+# and a mutable reference would give each branch the previous branch's leftovers.
+passedByValue:src/report.h

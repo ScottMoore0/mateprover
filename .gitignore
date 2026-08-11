@@ -4,6 +4,11 @@ build-cmake/
 # file covered the binary but nothing else, so following the documented
 # instructions left the tree dirty.
 build/
+# Any out-of-source CMake tree, not just the documented one. `build-ci/` was
+# created to test the artefact the README's own build command produces, and a
+# plain `git add -A` swept the whole ninja cache into the index -- caught before
+# the first push, which is the only reason it is a comment rather than a commit.
+build-*/
 
 # Benchmark corpus fetched by tools/fetch_corpus.py. Not distributed: it is a
 # separate project under its own licence. See benchmarks/README.md.

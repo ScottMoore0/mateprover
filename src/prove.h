@@ -549,7 +549,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
 // Selfmate ONLY. Under selfstalemate the argument is unsound: it rests on the
 // capture of the queen being fatal because a bare king cannot mate, and a bare
 // king can perfectly well stalemate.
-inline bool selfmate_perpetual_check(Search& s, const Board& root) {
+inline bool selfmate_perpetual_check(const Search& s, const Board& root) {
     if (!s.any_depth_refutations || s.goal != Goal::Selfmate) {
         return false;                       // goal scope first, before material
     }
@@ -930,7 +930,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         return false;
     };
 
-    auto scan = [&](auto& pseudo) {
+    auto scan = [&](const auto& pseudo) {
         for (const Move& r : pseudo) {
             ++s.stats.defender_legality_tests;
             if (!move_is_legal(b, r)) {

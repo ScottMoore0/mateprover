@@ -602,8 +602,9 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             // Help goals enumerate whole SEQUENCES, because two solutions often
             // share a first move: counting root keys would report one where a
             // composer intends two. See prove.h.
-            std::vector<Move> line;
-            collect_help_solutions(s, b, max_depth * 2, line, help_solutions, kHelpSolutionCap);
+            std::vector<Move> help_line;
+            collect_help_solutions(s, b, max_depth * 2, help_line, help_solutions,
+                                   kHelpSolutionCap);
             for (const std::vector<Move>& sol : help_solutions) {
                 if (!sol.empty()) {
                     root_solutions.push_back(RootSolution{sol.front(), Proof{true, sol, {}}});

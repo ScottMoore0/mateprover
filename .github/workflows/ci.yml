@@ -1,9 +1,15 @@
 name: CI
 
 # This workflow runs from the repository root. It was written while the prover
-# was still a subdirectory of a larger workspace, where GitHub would not read it;
-# extracting the tree into its own repository is what puts it into effect, so
-# the first push here is also the first time any of it has executed.
+# was still a subdirectory of a larger workspace, where GitHub would not read it,
+# so for a long time none of it had ever executed.
+#
+# Every job below was therefore run by hand on one machine before the first push,
+# and cppcheck FAILED -- eight findings that had accumulated unseen precisely
+# because the job that would have reported them had never run. Four were real and
+# fixed; two were deliberate and are now in .cppcheck-suppressions with reasons.
+# Untested CI configuration is not the same thing as passing CI, and the gap
+# between them was eight findings wide.
 
 on:
   push:
