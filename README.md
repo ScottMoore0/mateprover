@@ -1,12 +1,23 @@
 # MateProver
 
-An exact directmate prover that emits **machine-checkable proof certificates**.
+An exact chess problem prover that emits **machine-checkable proof certificates**.
 
-Given a position and a depth N, mateprover either proves a forced mate in N and
-emits a proof an independent checker can verify, or reports that it found none.
-It does not estimate, search heuristically for a likely mate, or return a score
-— every reported mate is a complete AND/OR proof in which every legal defender
-reply is refuted.
+Given a position and a depth N, mateprover either proves the stipulation is
+forced in N and emits a proof an independent checker can verify, or reports that
+it found none. It does not estimate, search heuristically, or return a score —
+every reported solution is a complete AND/OR proof in which every legal defence
+is refuted.
+
+**Six stipulations**, each a different problem rather than an easier or harder
+one, and each with its own result token: directmate (`dm`), stalemate (`sm`),
+selfmate (`sfm`), selfstalemate (`ssm`), helpmate (`hm`) and helpstalemate
+(`hsm`). A checkmate *fails* a stalemate goal.
+
+**Two variant rules**, orthogonal to all six: x-check, where a side wins on its
+Nth check, and x-capture, where it wins on its Nth capture. Per-side quotas, so
+5+2 is as ordinary as 3+3, and they compose — 3-check selfmate is a job you can
+run. Under a mate goal a filled quota is the win being forced; under the others
+the game ended without reaching the terminal the stipulation names.
 
 ```
 $ echo "8/2Q5/R7/8/1k4K1/8/8/8 w - -" | mateprover -z 2 -

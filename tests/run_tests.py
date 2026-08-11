@@ -1232,8 +1232,10 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
     # silently cost a factor of nine in capability and reported nothing wrong.
     #
     # The position below is one of those eight. It is slow by construction, so
-    # the check is skipped in --quick runs rather than weakened.
-    if not QUICK:
+    # the check is skipped in --quick runs rather than weakened -- and under an
+    # instrumented build, where it does not merely take longer but stops meaning
+    # anything, for the same reason the budget checks stand down there.
+    if not QUICK and not SLOW_BUILD:
         starved = "8/8/R5r1/3k4/8/8/8/K7 w - - sm 16\n"
         out = run(engine, ["--stalemate", "--direct-depth", "-M", "256",
                            "--time-limit", "30", "-"], starved)
@@ -1250,7 +1252,11 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
     # the defect lived in the DEFAULT configuration of a 16-thread machine. The
     # check therefore forces a high thread count explicitly rather than trusting
     # whatever this machine happens to have.
-    if not QUICK:
+    #
+    # Wall-clock again, so an instrumented build stands it down: 0.6 s becomes
+    # seventeen under _GLIBCXX_DEBUG, which measures the containers rather than
+    # the thread scheduling this is about.
+    if not QUICK and not SLOW_BUILD:
         # Behavioural, not configurational: this position takes 0.6 s with one
         # thread a lane and hits the time limit without it.
         quick_sfm = "8/8/8/4B3/p7/8/1R1R4/k1KB4 w - - sfm 7\n"

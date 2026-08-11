@@ -8,7 +8,13 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## Unreleased
+## 1.1.0 — 2026-08-11
+
+Six stipulations rather than one, two variant rules, a verified measurement
+harness, and the first execution of continuous integration in the project's
+life. Every addition is backwards compatible: existing output lines, existing
+certificates and existing corpora read exactly as they did under 1.0.0, which is
+why this is a minor version and not a major one.
 
 **x-capture chess, and the variant framework that makes a third rule cheap**
 (`--captures N` or `--captures W:B`). A side wins outright on its Nth capture,

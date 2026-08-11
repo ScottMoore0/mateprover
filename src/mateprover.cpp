@@ -68,7 +68,7 @@ constexpr int AUTO_THREAD_CAP = 16;
 // a direct g++ build of the same source fell back to "0.1.0-dev". Two builds of
 // identical code reported different versions, and neither string said which was
 // which.
-#define MATEPROVER_VERSION "1.0.0"
+#define MATEPROVER_VERSION "1.1.0"
 
 void print_version() {
     std::cout << "mateprover " << MATEPROVER_VERSION << "\n";
