@@ -529,3 +529,48 @@ essentially no mobility in this corpus -- 0.6 legal king moves on average -- whi
 is why `KingSquares` restrictions are the strongest lanes at both depths. They
 cost almost nothing and prune every attacker move that would free the king. The
 set-cover derivation found that without anyone realising why it worked.
+
+## Unified comparison against Chest 3.19
+
+One protocol for every goal, which the previous figures did not have: **5 s and
+2 GB a position for each engine**, full corpora, same machine, same session. The
+numbers quoted before this ran came from separate measurements at unrecorded
+budgets and are not comparable to each other; these are.
+
+| goal (corpus size) | MateProver | Chest | only MP | only Chest | Chest refused |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| mate (d8, 200) | **161** | 130 | 41 | 10 | 0 |
+| mate (d10, 60) | **49** | 18 | 33 | 2 | 0 |
+| stalemate (792) | **757** | 720 | 38 | 1 | 26 |
+| selfstalemate (76) | **49** | 48 | 2 | 1 | 14 |
+| helpmate (546) | **513** | 483 | 30 | 0 | 14 |
+| helpstalemate (431) | **355** | 299 | 56 | 0 | 9 |
+| **total (2,105)** | **1,884** | **1,698** | **200** | **14** | **63** |
+
+Speed, on the positions both engines solve:
+
+| goal | total | median per position |
+| --- | ---: | ---: |
+| mate d8 | 4.09x | 12.0x |
+| mate d10 | 4.14x | **104.4x** |
+| stalemate | 2.25x | 32.3x |
+| selfstalemate | 6.57x | 5.7x |
+| helpmate | 3.71x | 8.3x |
+| helpstalemate | 5.86x | 7.5x |
+
+Ahead on coverage on all six, ahead on speed on all six, and the exclusive-win
+ratio is 200 to 14. The median exceeds the total everywhere because the totals
+are dominated by a few positions near the budget where both engines spend all of
+it; the median is the better description of ordinary behaviour.
+
+**"Chest refused" counts positions where Chest returns a definitive "no
+solution".** That is evidence about the CORPUS rather than about either engine,
+and 63 such positions want the same two-prover adjudication that produced
+`KNOWN_BAD.jsonl`.
+
+Two goals -- helpmate and helpstalemate -- now have **zero** positions Chest
+solves and MateProver does not. Helpmate read as *behind* until the `-M`
+harness handicap of section 70 was found; the engine had not changed.
+
+The selfmate row is measured separately and reported in section 86, because the
+attacker-rejection test landed after this run began.
