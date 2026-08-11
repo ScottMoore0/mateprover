@@ -304,7 +304,7 @@ Proof prove_shallow_mate2(Search& s, const Board& b) {
 RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
     ++s.stats.shallow_fast_attempts;
     RouteResult result;
-    if (check_limit_active(b)) {
+    if (variant_active(b)) {
         ++s.stats.shallow_fast_fallbacks;
         return result;
     }
@@ -455,7 +455,7 @@ std::vector<RootSolution> run_all_root_solutions(Search& s, const Board& b, int 
             // root move hands straight to the defender at the SAME depth.
             sub = prove_selfmate_defender(s, nb, depth);
         } else if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo) ||
-                   check_win_reached(nb, s.goal, s.attacker, s.check_win)) {
+                   variant_win_reached(nb, s.goal, s.attacker, s.rule_wins) >= 0) {
             sub = Proof{true, {}, s.emit_proof
                 ? (s.goal == Goal::Stalemate ? std::string("{\"stalemate\":true}")
                                              : std::string("{\"mate\":true}"))

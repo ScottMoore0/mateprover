@@ -179,18 +179,24 @@ inline PieceType type_of(char p) {
     }
 }
 
-// x-check: how many checks a side must still DELIVER to win outright. 127 means
-// no limit, which is standard chess, which is the default -- so every query
-// against this is a comparison that standard play never fails.
+// THE VARIANT RULES. Each is an event a side may be required to produce a fixed
+// number of in order to win outright, and everything downstream is indexed by
+// this enumerator rather than written once per rule.
 //
-// SEVEN BITS, because that is what was spare in the transposition key's context
-// word (bits 50-63, with the goal at 47-49 and en passant at 39-45). The limit
-// is therefore capped at 126 and the cap is checked at parse time rather than
-// clamped: two distinct states sharing a key is the one failure this engine
-// exists to prevent, and silently folding 200 checks into 126 would do exactly
-// that.
-constexpr std::uint8_t kNoCheckLimit = 127;
-constexpr int kMaxCheckLimit = 126;
+// That indirection is the whole point of the type. x-check shipped first as a
+// scalar, and the cost of the second rule would otherwise have been a third copy
+// of the terminal logic, the mate-versus-quota tie-break, the list of shortcuts
+// that must stand down, and -- worst -- a third hunt for the five separate
+// places that decide "this move ends the game now". Adding a rule here should be
+// adding a vocabulary entry.
+enum VariantRule { VR_CHECK = 0, VR_CAPTURE = 1, VR_COUNT = 2 };
+
+// Seven bits a side per rule in the transposition key's context word, so 126 is
+// the largest quota and 127 means the rule is not in force. Refused above that
+// rather than clamped: two distinct states sharing a key is the one failure this
+// engine exists to prevent, and folding 200 onto 126 would do exactly that.
+constexpr std::uint8_t kNoQuota = 127;
+constexpr int kMaxQuota = 126;
 
 struct Board {
     std::array<char, 64> sq{};
@@ -204,23 +210,52 @@ struct Board {
     Color stm = WHITE;
     unsigned castling = 0; // 1 WK, 2 WQ, 4 BK, 8 BQ
     int ep = -1;
-    // Index by Color. Defaulted to "no limit" so a Board built anywhere in the
-    // engine -- and several are, as scratch probes -- is a standard-chess board.
-    std::array<std::uint8_t, 2> checks_left{{kNoCheckLimit, kNoCheckLimit}};
+    // quota[colour * VR_COUNT + rule]: how many more of that event this side must
+    // still produce to win outright. Flat rather than nested so it packs and so
+    // the transposition key can walk it, and defaulted to "not in force" because
+    // Boards are constructed as scratch probes in several places and every one of
+    // them means standard chess.
+    std::array<std::uint8_t, 2 * VR_COUNT> quota{
+        {kNoQuota, kNoQuota, kNoQuota, kNoQuota}};
 };
 
-// Is the x-check rule in force for either side?
-inline bool check_limit_active(const Board& b) {
-    return b.checks_left[WHITE] != kNoCheckLimit ||
-           b.checks_left[BLACK] != kNoCheckLimit;
+inline std::uint8_t quota_of(const Board& b, int colour, int rule) {
+    return b.quota[static_cast<std::size_t>(colour) * VR_COUNT + rule];
 }
 
-// Which side, if any, has already won by exhausting its check allowance?
-// Returns -1 when nobody has. Both cannot be zero: the game ends on the first.
-inline int check_winner(const Board& b) {
-    if (b.checks_left[WHITE] == 0) return WHITE;
-    if (b.checks_left[BLACK] == 0) return BLACK;
-    return -1;
+inline void set_quota(Board& b, int colour, int rule, std::uint8_t value) {
+    b.quota[static_cast<std::size_t>(colour) * VR_COUNT + rule] = value;
+}
+
+// Is ANY variant rule in force? The guard that keeps standard chess free.
+inline bool variant_active(const Board& b) {
+    for (std::uint8_t q : b.quota) {
+        if (q != kNoQuota) return true;
+    }
+    return false;
+}
+
+// Who has already won outright, and under which rule. `side` is -1 when nobody
+// has. Two quotas cannot both be spent: the game ends on the first.
+struct VariantWin {
+    int side = -1;
+    int rule = VR_CHECK;
+};
+
+inline VariantWin variant_winner(const Board& b) {
+    for (int colour = 0; colour < 2; ++colour) {
+        for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (quota_of(b, colour, rule) == 0) return VariantWin{colour, rule};
+        }
+    }
+    return VariantWin{};
+}
+
+// The token each rule contributes to a proof certificate. Named per rule rather
+// than shared, because docs/PROOF_FORMAT.md promises an existing field's meaning
+// will not change -- so `checkwin` stays what it was and captures get their own.
+inline const char* variant_win_key(int rule) {
+    return rule == VR_CAPTURE ? "capturewin" : "checkwin";
 }
 
 struct Stats {

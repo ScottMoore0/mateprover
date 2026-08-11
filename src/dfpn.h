@@ -434,13 +434,14 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         // one. Testing `score < 50000` unconditionally was correct for mate and
         // skipped EVERY move under a stalemate goal, since the check term is
         // negative there -- the search then never saw a stalemate at all.
-        if (mate_shortcut && !move_can_reach_goal(m.score, s.goal)) {
+        if (mate_shortcut && last_ply_win_needs_check(s.rule_wins, b, s.attacker) &&
+            !move_can_reach_goal(m.score, s.goal)) {
             continue;
         }
         ++s.stats.dfpn_mate_tests;
         const Board nb = make_move(b, m);
         if (is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo) ||
-            check_win_reached(nb, s.goal, s.attacker, s.check_win)) {
+            variant_win_reached(nb, s.goal, s.attacker, s.rule_wins) >= 0) {
             const PnDn v{0, DFPN_INF};
             dfpn_store(s, key, v);
             ++s.stats.dfpn_proved;

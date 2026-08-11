@@ -173,6 +173,7 @@ did. If you are reading it for the first time:
 - [94. The Fatal-Anti-Check Family, Measured Against The Ordering It Would Replace](#94-the-fatal-anti-check-family-measured-against-the-ordering-it-would-replace)
 - [95. The First Auditable Table, And What A Re-Run Costs You](#95-the-first-auditable-table-and-what-a-re-run-costs-you)
 - [96. x-check As A Variant, Not A Seventh Goal](#96-x-check-as-a-variant-not-a-seventh-goal)
+- [97. The Second Variant Rule, And What The First One Cost To Generalise](#97-the-second-variant-rule-and-what-the-first-one-cost-to-generalise)
 
 ## Impact-Ordered Architecture
 
@@ -7277,3 +7278,83 @@ The variant changes answers in ways that are the point rather than a side effect
 and at `3+3` it is not, because the solution delivers three checks on the way and
 under those rules the game ends before the attacker can be mated. A selfmate
 stipulation is not satisfied by a check win, and the engine says so.
+
+### 97. The Second Variant Rule, And What The First One Cost To Generalise
+
+x-capture: a side wins outright on its Nth capture, with independent per-side
+quotas. `--captures N` or `--captures W:B`, composable with `--checks`, and a
+fifth Forsyth field that now reads `chk3+3,cap5+2` -- tagged rather than
+positional, because a sixth Forsyth field for the second rule would need a
+seventh for the third.
+
+The feature is small. The refactor it forced is the section.
+
+#### The key had space; it was in the wrong field
+
+The last section said the context word was full: goal at 47-49, en passant at
+39-45, x-check taking 50-63, one bit spare. That reading was wrong, and wrong in
+a way worth naming. **Depth occupied bits 0-31 -- thirty-two bits for a value
+that never exceeds the requested search depth.** Reading a field's WIDTH as its
+REQUIREMENT is the same error as reading a call count as a cost, which section
+93 had already recorded about a different measurement.
+
+Narrowing depth to eight bits freed twenty-four. The quotas now sit at 25-52 and
+bits 53-63 are spare for the rules after these. Eight bits is a real bound rather
+than a hopeful one, so it is asserted, and `-z` is refused above 127 at the
+command line -- the cooperative key carries PLIES, twice the requested depth, so
+127 is the largest depth that keys exactly.
+
+#### One rule, one vocabulary entry
+
+`Board` now carries `quota[colour * VR_COUNT + rule]` and everything downstream
+is indexed by rule: `variant_active`, `variant_winner`, `variant_terminal`,
+`variant_win_reached`. x-check became rule 0 with **no behaviour change**, which
+is what made the refactor safe -- the thirty-two checks written for it in section
+96 are the regression test, and nothing about them was allowed to move.
+
+Two compatibility promises were kept deliberately. A check-only position still
+emits the bare `3+3` it shipped with, because corpora and the suite hold that
+spelling. And the certificate token stays `checkwin` rather than becoming a
+generic `variantwin`, because `docs/PROOF_FORMAT.md` promises an existing field's
+meaning will not change; captures get `capturewin` of their own.
+
+#### The two rules disagree in exactly two places
+
+Every goal-specific shortcut had to be re-audited against the second rule, and
+the interesting result is that x-check and x-capture do not need the same gates:
+
+| shortcut | sound under x-check | sound under x-capture |
+|---|---|---|
+| coverage exit ("no mate in one") | no | no |
+| mate-reachability bounds | no | no |
+| shallow-fast route | no | no |
+| GAP-1, "a lone king cannot mate" | **yes** | **NO** |
+| last-ply prune, "a winner must be a check" | **yes** | **NO** |
+
+Both disagreements come from the same place: the reasoning depends on WHAT KIND
+of event the quota counts. A lone king cannot give check, so the material axiom
+survived x-check -- but a lone king can capture. A check quota is filled by a
+check, so the last-ply prune survived x-check -- but a quiet capture fills a
+capture quota and wins.
+
+**That is the pattern to test first for any third rule.**
+
+#### The bug the suite caught, and why it nearly did not
+
+`move_can_reach_goal` discards moves at the last ply on the grounds that a
+winning move must be a check. Six call sites use it: the attacker loop, two
+defender last-ply prunes, the DFPN expander, and both root-split paths. Under a
+capture quota every one of them was throwing the winning move away before it was
+executed.
+
+The first capture test passed anyway, because the move it used -- `Ra1xa8` --
+happened to be a check as well as a capture and survived the filter. It took a
+LONE KING capturing a pawn, which cannot be a check, to expose it. Two tests, one
+of which was accidentally too weak, and only the second one carried the finding.
+
+This was the sixth shortcut to need gating and the first that was not behind a
+named predicate; it sat inside a loop condition. It is `last_ply_win_needs_check`
+now. The refactor's value is precisely that there is one place to add rule three's
+gating and a test that fails loudly when it is missing -- the gate for GAP-1 is
+checked from BOTH directions, because a gate that simply disabled the axiom would
+pass "the lone king still wins" and fail "the axiom still bites".

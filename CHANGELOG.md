@@ -10,6 +10,34 @@ without one.
 
 ## Unreleased
 
+**x-capture chess, and the variant framework that makes a third rule cheap**
+(`--captures N` or `--captures W:B`). A side wins outright on its Nth capture,
+with independent per-side quotas, composable with `--checks`. The fifth Forsyth
+field is now tagged -- `chk3+3,cap5+2` -- while a bare `3+3` still means checks,
+so existing corpora and the `checkwin` certificate token are untouched.
+
+x-check shipped as a scalar; adding the second rule generalised it into a quota
+vector indexed by rule, with one terminal, one win predicate, and one gating
+list. x-check became rule 0 with no behaviour change, which is what made the
+refactor safe: its thirty-two existing checks were the regression test.
+
+Room for the quotas came from the transposition key's DEPTH field, which held
+thirty-two bits for a value that never exceeds the requested depth. Narrowed to
+eight, freeing twenty-four, with eleven still spare after the two rules. `-z` is
+now refused above 127, because the cooperative key carries plies -- twice the
+requested depth -- and a depth that cannot be keyed exactly must not be searched.
+
+**The two rules do not need the same soundness gates, and that is the finding.**
+GAP-1's "a lone king cannot mate" survives x-check, because a lone king cannot
+give check either -- but a lone king CAN capture. The last-ply prune "a winning
+move must be a check" survives x-check for the same shape of reason -- but a
+quiet capture fills a capture quota and wins. Both are now gated, the second
+across six call sites that were discarding the winning move before executing it.
+
+That bug survived the first capture test, which used a move that happened to be
+a check as well as a capture and so slipped through the very filter that was
+broken. It took a lone king capturing a pawn to expose it.
+
 **x-check chess, as a variant orthogonal to all six goals** (`--checks N` or
 `--checks W:B`). A side wins outright on giving its Nth check. It is a variant
 rather than a seventh goal because a way for the game to END is not the same as a
@@ -462,7 +490,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 483 automated checks cover perft against
+sharing no code with the engine. 500 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

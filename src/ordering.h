@@ -55,6 +55,22 @@ int check_term(bool gives_check, Goal goal) {
 // other, and both terminal scans use this rather than testing the score's sign
 // directly -- getting that test backwards once silently skipped every candidate,
 // and getting it backwards the other way would accept a checkmate as a stalemate.
+// Must a move that WINS at the last ply be a check?
+//
+// True for a mate goal, because a checkmate is a check, and true for a check
+// quota for the obvious reason. FALSE under a capture quota: a quiet capture can
+// fill the quota and win outright, and every caller of `move_can_reach_goal`
+// below uses it to DISCARD moves before they are executed -- so under captures
+// they would throw the winning move away unexecuted.
+//
+// This is the sixth shortcut to need gating for a variant rule, and the first
+// that was not behind a named predicate. It is one now.
+inline bool last_ply_win_needs_check(const std::array<bool, VR_COUNT>& rule_wins,
+                                     const Board& b, Color attacker) {
+    return !(rule_wins[VR_CAPTURE] &&
+             quota_of(b, attacker, VR_CAPTURE) != kNoQuota);
+}
+
 bool move_can_reach_goal(int score, Goal goal) {
     // The thresholds must clear static_move_terms, which adds up to 18050
     // (capture 10000 + promotion 8000 + piece 50) on top of the check term.
@@ -167,16 +183,30 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
 // nothing can mix them today -- but a stalemate verdict satisfying a mate query
 // would be a false proof, which is the one class of bug this engine exists to
 // make impossible. It costs a bit of an already-spare word.
+// Field layout of the context word. Depth used to occupy bits 0-31 -- thirty-two
+// bits for a value that never exceeds the requested search depth. Reading a
+// field's WIDTH as its REQUIREMENT is how this engine came to believe it was out
+// of key space; narrowing depth to eight bits freed twenty-four, which is room
+// for the variant quotas and the next several rules after them.
+//
+// Eight bits is a real bound, not a hopeful one, so it is asserted rather than
+// masked: a depth that wrapped would give two distinct nodes one key.
+constexpr int kKeyDepthBits = 8;
+constexpr int kMaxKeyDepth = (1 << kKeyDepthBits) - 1;
+
 TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
     TTKey k;
     k.board = b.packed;
     std::uint64_t ep = static_cast<std::uint64_t>(b.ep + 1);
-    k.context = static_cast<std::uint64_t>(static_cast<std::uint32_t>(depth))
-        | (static_cast<std::uint64_t>(b.stm) << 32)
-        | (static_cast<std::uint64_t>(attacker) << 33)
-        | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 34)
-        | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 35)
-        | (ep << 39)
+    // A search deeper than this cannot be keyed correctly, so it must not be
+    // keyed at all. Callers cap the requested depth well below it.
+    assert(depth >= 0 && depth <= kMaxKeyDepth);
+    k.context = static_cast<std::uint64_t>(depth & kMaxKeyDepth)
+        | (static_cast<std::uint64_t>(b.stm) << 8)
+        | (static_cast<std::uint64_t>(attacker) << 9)
+        | (static_cast<std::uint64_t>(kind == 'D' ? 1 : 0) << 10)
+        | (static_cast<std::uint64_t>(b.castling & 0x0fu) << 11)
+        | (ep << 15)
         // THREE bits, not one. This used to be `goal == Stalemate ? 1 : 0`,
         // which gave Mate and Selfmate the same encoding -- harmless only
         // because no table has ever spanned two goals, since a Search fixes its
@@ -185,15 +215,21 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
         // have been a verdict proved under one goal returned as another: a
         // false proof with nothing wrong in the output to see. ep occupies bits
         // 39-45, so 47-49 are free.
-        | (static_cast<std::uint64_t>(goal) << 47)
-        // x-check state, seven bits a side, filling the word exactly. Two
-        // positions identical on the board but differing in checks remaining
-        // are DIFFERENT positions, and a key that cannot tell them apart
-        // returns a verdict proved under one state as though it held under
-        // another -- the same class of false proof the goal bits above were
-        // widened to prevent, and just as invisible in the output.
-        | (static_cast<std::uint64_t>(b.checks_left[WHITE] & 0x7fu) << 50)
-        | (static_cast<std::uint64_t>(b.checks_left[BLACK] & 0x7fu) << 57);
+        | (static_cast<std::uint64_t>(goal) << 22);
+    // Variant quotas, seven bits each, starting at bit 25 and leaving 53-63 for
+    // the rules after these. Two positions identical on the board but differing
+    // in what either side still owes are DIFFERENT positions, and a key that
+    // cannot tell them apart returns a verdict proved under one state as though
+    // it held under another -- the same class of false proof the goal bits were
+    // widened to prevent, and just as invisible in the output.
+    //
+    // Capture quotas are in fact derivable from material, since captures by one
+    // side are exactly the men the other has lost since the root. They are keyed
+    // anyway: that derivation holds only while a table never spans two roots,
+    // which is true today and enforced nowhere.
+    for (std::size_t i = 0; i < b.quota.size(); ++i) {
+        k.context |= static_cast<std::uint64_t>(b.quota[i] & 0x7fu) << (25 + 7 * i);
+    }
     return k;
 }
 

@@ -16,6 +16,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cctype>
+#include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <cstddef>
@@ -115,12 +116,23 @@ void print_usage() {
 "                                the checks REMAINING ('3+3') or, Lichess-style,\n"
 "                                those already given ('+1+0'), and overrides\n"
 "                                this. Range 1..126\n"
-"  --check-win | --no-check-win  default: on. Under --goal mate, whether\n"
-"                                reaching the allowance counts as forcing the\n"
-"                                win. Off demands checkmate specifically. Only\n"
-"                                the mate goal has the choice: the other goals\n"
-"                                each name a terminal position, and a game that\n"
-"                                ended by check count did not reach it\n"
+"  --captures N | W:B            x-capture chess: a side wins outright on making\n"
+"                                its Nth capture. The second variant rule, and\n"
+"                                composable with the first, so --checks 3\n"
+"                                --captures 5 is a legal game. W:B differs the\n"
+"                                two sides. Range 1..126. A fifth Forsyth field\n"
+"                                states quotas tagged, 'chk3+3,cap5+2'; an\n"
+"                                untagged '3+3' still means checks\n"
+"  --check-win | --no-check-win  default: on. Under --goal mate, whether filling\n"
+"                                the CHECK quota counts as forcing the win. Off\n"
+"                                demands checkmate specifically\n"
+"  --capture-win | --no-capture-win\n"
+"                                default: on. Under --goal mate, whether filling\n"
+"                                a quota counts as forcing the win. Off demands\n"
+"                                checkmate specifically. Only the mate goal has\n"
+"                                the choice: the other goals each name a terminal\n"
+"                                position, and a game that ended on a quota did\n"
+"                                not reach it\n"
 "  --route NAME                  dfpn (default) | depth-first | shallow-fast\n"
 "  --direct-depth                prove \"a mate within N\" by searching at N\n"
 "                                directly; better solve rate at a fixed\n"
@@ -468,6 +480,15 @@ int main(int argc, char** argv) {
             const char* v = need_value(i);
             if (!v) return usage_error("option '-z' requires a mate depth");
             requested_depth = std::atoi(v);
+            // Bounded because the transposition key carries eight bits of depth,
+            // and the cooperative key carries PLIES -- twice this. A request
+            // past the bound cannot be keyed correctly, so it is refused here
+            // rather than asserted deep in the search. Mate in 120 is far beyond
+            // anything the corpora contain.
+            if (requested_depth < 1 || requested_depth > kMaxKeyDepth / 2) {
+                return usage_error("option '-z' wants 1.." +
+                                   std::to_string(kMaxKeyDepth / 2));
+            }
         } else if (arg == "--route") {
             const char* rv = need_value(i);
             if (!rv) return usage_error("option '--route' requires a route name");
@@ -682,8 +703,10 @@ int main(int argc, char** argv) {
             const char* v = need_value(i);
             if (!v) return usage_error("option '-Z' requires a depth");
             std::size_t value = 0;
-            if (!parse_size(v, value) || value == 0) {
-                return usage_error("option '-Z' expects a positive depth");
+            if (!parse_size(v, value) || value == 0 ||
+                value > static_cast<std::size_t>(kMaxKeyDepth / 2)) {
+                return usage_error("option '-Z' wants 1.." +
+                                   std::to_string(kMaxKeyDepth / 2));
             }
             config.default_depth = static_cast<int>(value);
         } else if (arg == "--all-solutions" || arg == "--duals") {
@@ -744,7 +767,8 @@ int main(int argc, char** argv) {
             config.dfpn_final_depth_only = true;
         } else if (arg == "--dfpn-every-depth") {
             config.dfpn_final_depth_only = false;
-        } else if (arg == "--checks") {
+        } else if (arg == "--checks" || arg == "--captures") {
+            const int rule = (arg == "--captures") ? VR_CAPTURE : VR_CHECK;
             const char* v = need_value(i);
             if (v == nullptr) return usage_error("option " + arg + " requires a value");
             // "N" for both sides, "W:B" for an asymmetric allowance. The two
@@ -764,16 +788,20 @@ int main(int argc, char** argv) {
             // Capped rather than clamped: the allowance occupies seven bits of
             // the transposition key, and folding two distinct states onto one
             // key is the single failure this engine exists to prevent.
-            if (w < 1 || w > kMaxCheckLimit || bl < 1 || bl > kMaxCheckLimit) {
+            if (w < 1 || w > kMaxQuota || bl < 1 || bl > kMaxQuota) {
                 return usage_error("option " + arg + " wants 1.." +
-                                   std::to_string(kMaxCheckLimit) + " a side");
+                                   std::to_string(kMaxQuota) + " a side");
             }
-            config.check_limit[WHITE] = w;
-            config.check_limit[BLACK] = bl;
+            config.quota_limit[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] = w;
+            config.quota_limit[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] = bl;
         } else if (arg == "--check-win") {
-            config.check_win = true;
+            config.rule_wins[VR_CHECK] = true;
         } else if (arg == "--no-check-win") {
-            config.check_win = false;
+            config.rule_wins[VR_CHECK] = false;
+        } else if (arg == "--capture-win") {
+            config.rule_wins[VR_CAPTURE] = true;
+        } else if (arg == "--no-capture-win") {
+            config.rule_wins[VR_CAPTURE] = false;
         } else if (arg == "--goal") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--goal' requires mate or stalemate");

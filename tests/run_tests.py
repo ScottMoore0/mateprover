@@ -1409,6 +1409,58 @@ def test_check_variant(engine: Path, res: Results) -> None:
         res.check(f"--goal {flag} composes with the variant: {fen[:24]}",
                   pattern.search(got) is not None, got[:90])
 
+    # ---- the second rule: x-capture ----
+    #
+    # Everything above is rule 0. These are rule 1 through the same machinery,
+    # which is the point of the refactor: a rule should be a vocabulary entry,
+    # not a second copy of the terminal, the tie-break and the five decision
+    # sites that each independently decide "this move ends the game now".
+    cap = line(["-z", "1", "--time-limit", "60", "--emit-proof"],
+               "r3k3/8/8/8/8/8/8/R3K3 w - - cap1+9")
+    res.check("a capture quota can be filled to win",
+              " dm 1;" in cap and '"capturewin":true' in cap, cap[:110])
+    res.check("--no-capture-win demands checkmate instead",
+              DM_RE.search(line(["-z", "1", "--time-limit", "60", "--no-capture-win"],
+                                "r3k3/8/8/8/8/8/8/R3K3 w - - cap1+9")) is None)
+    res.check("--captures sets the quota from the command line",
+              " dm 1;" in line(["-z", "1", "--time-limit", "60", "--captures", "1:9"],
+                               "r3k3/8/8/8/8/8/8/R3K3 w - -"))
+    both = line(["-z", "1", "--time-limit", "60"],
+                "r3k3/8/8/8/8/8/8/R3K3 w - - chk3+3,cap1+9")
+    res.check("the two rules compose in one position",
+              both.startswith("r3k3/8/8/8/8/8/8/R3K3 w - - chk3+3,cap1+9;"), both[:80])
+    res.check("a check-only position still emits the bare spelling it shipped with",
+              line(["-z", "1", "--time-limit", "60"],
+                   "4k3/8/8/8/8/8/8/R3K3 w - - 3+2").startswith(
+                       "4k3/8/8/8/8/8/8/R3K3 w - - 3+2;"))
+
+    # THE AXIOM GATE. "A lone king cannot mate" survived x-check, because a lone
+    # king cannot give check either. A lone king CAN capture, so under a capture
+    # quota the axiom is false, and it would report a won position as unsolvable
+    # -- silently. The axiom only fires with any-depth refutations on, so the
+    # test turns them on; both halves matter, since a gate that disabled the
+    # axiom outright would pass the first check and fail the second.
+    bare = ["--any-depth-refutations", "-z", "1", "--time-limit", "60"]
+    got = line(bare, "4k3/8/8/8/8/8/3p4/3K4 w - - cap1+9")
+    res.check("a lone attacker king can still fill a capture quota",
+              " dm 1;" in got, got[:90])
+    res.check("and the axiom still bites where it is sound",
+              DM_RE.search(line(bare, "4k3/8/8/8/8/8/3p4/3K4 w - -")) is None)
+
+    # The key's depth field was narrowed to eight bits to make room for the
+    # quotas, so a request past the bound must be refused rather than silently
+    # keyed wrong. The cooperative key carries PLIES, which is twice this.
+    for bad in ("0", "128", "300"):
+        proc = subprocess.run([str(engine), "-z", bad, "-"], input=b"",
+                              capture_output=True, timeout=120)
+        res.check(f"-z {bad} is refused as unkeyable", proc.returncode != 0,
+                  proc.stdout.decode()[:70])
+    deep = run(engine, ["--goal", "helpmate", "-z", "120", "--direct-depth",
+                        "--time-limit", "120", "-"],
+               "8/8/8/q7/2K5/k7/8/7R b - -\n")
+    res.check("a 240-ply cooperative key is still exact", " hm 120;" in deep,
+              deep.strip()[:80])
+
     # Range. The allowance occupies seven bits of the transposition key, so the
     # limit is refused rather than clamped -- folding two states onto one key is
     # the failure this engine exists to prevent.
@@ -1418,10 +1470,11 @@ def test_check_variant(engine: Path, res: Results) -> None:
         res.check(f"--checks {bad} is refused",
                   proc.returncode != 0, proc.stdout.decode()[:70])
     for good in ("3", "126", "5:2"):
-        proc = subprocess.run([str(engine), "--checks", good, "-z", "1", "-"],
+      for flag in ("--checks", "--captures"):
+        proc = subprocess.run([str(engine), flag, good, "-z", "1", "-"],
                               input=b"4k3/8/8/8/8/8/8/R3K3 w - -\n",
                               capture_output=True, timeout=120)
-        res.check(f"--checks {good} is accepted", proc.returncode == 0,
+        res.check(f"{flag} {good} is accepted", proc.returncode == 0,
                   proc.stderr.decode()[:70])
 
     # The certificate. A check win is a claim like any other and must be
@@ -1454,6 +1507,18 @@ def test_check_variant(engine: Path, res: Results) -> None:
               code != 0, out[-120:])
     code, out = verify(proof.replace(" 3+1;", ";"))
     res.check("the verifier rejects a check win with no allowance stated",
+              code != 0, out[-120:])
+
+    # The same three claims, for the second rule, through the same code path.
+    cap_proof = line(["-z", "1", "--time-limit", "60", "--emit-proof"],
+                     "r3k3/8/8/8/8/8/8/R3K3 w - - cap1+9")
+    code, out = verify(cap_proof)
+    res.check("the verifier accepts a genuine capture win", code == 0, out[-160:])
+    code, out = verify(cap_proof.replace('"capturewin"', '"checkwin"'))
+    res.check("the verifier rejects a capture win claimed as a check win",
+              code != 0, out[-120:])
+    code, out = verify(cap_proof.replace("cap1+9", "cap2+9"))
+    res.check("the verifier rejects a capture win with the quota unfilled",
               code != 0, out[-120:])
     tmp.unlink()
 

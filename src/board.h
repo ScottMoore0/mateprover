@@ -343,23 +343,33 @@ std::optional<RouteKind> parse_route_kind(const std::string& name) {
 // that just moved is left in check.
 bool in_check(const Board& b, Color c);
 
-// The optional fifth Forsyth field, carrying the x-check state.
+// The optional fifth Forsyth field, carrying the variant state.
 //
 // Two spellings, told apart by the leading '+':
 //
-//   3+3     checks REMAINING for white and black. The primary spelling, because
-//           it states the position rather than its history and it expresses an
-//           asymmetric allowance -- 5+2 -- without needing a limit alongside.
-//   +1+2    checks DELIVERED, the Lichess spelling. Only well defined against a
-//           limit, and Lichess only ever uses three, so it is read as three.
+//   3+3        checks REMAINING for white and black. The primary spelling,
+//              because it states the position rather than its history and it
+//              expresses an asymmetric allowance -- 5+2 -- without a limit
+//              alongside. Kept bare and untagged for compatibility: it is the
+//              spelling x-check shipped with, and corpora hold it.
+//   +1+2       checks DELIVERED, the Lichess spelling. Only well defined against
+//              a limit, and Lichess only uses three, so it is read as three.
+//   chk3+3     the same, tagged.
+//   cap5+2     capture quotas, remaining, for white and black.
+//   chk3+3,cap5+2   both rules at once.
+//
+// TAGGED RATHER THAN POSITIONAL. A sixth Forsyth field for the second rule would
+// be brittle and would have to be extended again for the third; a tagged list
+// extends by vocabulary, which is the same reason the counters themselves are
+// indexed by rule.
 //
 // Returns false for anything else, INCLUDING plain junk, because a fifth token
 // is not necessarily a check field: corpora here routinely carry annotations
 // after the four Forsyth fields, and tests/smoke.epd puts `bm #1` exactly there.
 // A parser that claimed those would break every existing corpus, so an
 // unrecognised token is ignored precisely as it is today.
-inline bool parse_check_field(const std::string& token,
-                              std::array<std::uint8_t, 2>& out) {
+inline bool parse_quota_pair(const std::string& token, int rule,
+                             std::array<std::uint8_t, 2 * VR_COUNT>& out) {
     const bool delivered = !token.empty() && token[0] == '+';
     const std::string body = delivered ? token.substr(1) : token;
     const std::size_t plus = body.find('+');
@@ -376,15 +386,43 @@ inline bool parse_check_field(const std::string& token,
     const int a = std::atoi(left.c_str()), c = std::atoi(right.c_str());
     if (delivered) {
         const int limit = 3;                 // the only limit the spelling has
-        if (a > limit || c > limit) return false;
-        out[WHITE] = static_cast<std::uint8_t>(limit - a);
-        out[BLACK] = static_cast<std::uint8_t>(limit - c);
+        if (rule != VR_CHECK || a > limit || c > limit) return false;
+        out[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] =
+            static_cast<std::uint8_t>(limit - a);
+        out[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] =
+            static_cast<std::uint8_t>(limit - c);
         return true;
     }
-    if (a > kMaxCheckLimit || c > kMaxCheckLimit) return false;
-    out[WHITE] = static_cast<std::uint8_t>(a);
-    out[BLACK] = static_cast<std::uint8_t>(c);
+    if (a > kMaxQuota || c > kMaxQuota) return false;
+    out[static_cast<std::size_t>(WHITE) * VR_COUNT + rule] = static_cast<std::uint8_t>(a);
+    out[static_cast<std::size_t>(BLACK) * VR_COUNT + rule] = static_cast<std::uint8_t>(c);
     return true;
+}
+
+inline bool parse_variant_field(const std::string& token,
+                                std::array<std::uint8_t, 2 * VR_COUNT>& out) {
+    out.fill(kNoQuota);
+    std::size_t start = 0;
+    bool any = false;
+    while (start <= token.size()) {
+        const std::size_t comma = token.find(',', start);
+        const std::string term = token.substr(
+            start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (term.empty()) return false;
+        int rule = VR_CHECK;
+        std::string body = term;
+        if (term.rfind("chk", 0) == 0) {
+            body = term.substr(3);
+        } else if (term.rfind("cap", 0) == 0) {
+            rule = VR_CAPTURE;
+            body = term.substr(3);
+        }
+        if (!parse_quota_pair(body, rule, out)) return false;
+        any = true;
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return any;
 }
 
 std::optional<Board> parse_fen4(const std::string& line) {
@@ -491,9 +529,9 @@ std::optional<Board> parse_fen4(const std::string& line) {
         return std::nullopt;
     }
     if (tokens.size() >= 5) {
-        std::array<std::uint8_t, 2> checks{};
-        if (parse_check_field(tokens[4], checks)) {
-            b.checks_left = checks;
+        std::array<std::uint8_t, 2 * VR_COUNT> quota{};
+        if (parse_variant_field(tokens[4], quota)) {
+            b.quota = quota;
         }
     }
     return b;
@@ -526,12 +564,30 @@ std::string fen4(const Board& b) {
     if (b.castling & 8) c.push_back('q');
     out << (c.empty() ? "-" : c) << ' ';
     out << (b.ep >= 0 ? sq_name(b.ep) : "-");
-    // Emitted ONLY when the rule is in force, so every standard-chess result
+    // Emitted ONLY when some rule is in force, so every standard-chess result
     // line stays byte-identical. The corpora, the suite's differentials and the
     // harness's strict parser all compare these strings.
-    if (check_limit_active(b)) {
-        out << ' ' << static_cast<int>(b.checks_left[WHITE])
-            << '+' << static_cast<int>(b.checks_left[BLACK]);
+    //
+    // A check-only position emits the bare `3+3` it always did, for the same
+    // reason: that spelling is already in corpora and in the suite.
+    if (variant_active(b)) {
+        const bool checks_only =
+            quota_of(b, WHITE, VR_CAPTURE) == kNoQuota &&
+            quota_of(b, BLACK, VR_CAPTURE) == kNoQuota;
+        const char* tags[VR_COUNT] = {"chk", "cap"};
+        out << ' ';
+        bool first = true;
+        for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (quota_of(b, WHITE, rule) == kNoQuota &&
+                quota_of(b, BLACK, rule) == kNoQuota) {
+                continue;
+            }
+            if (!first) out << ',';
+            if (!checks_only) out << tags[rule];
+            out << static_cast<int>(quota_of(b, WHITE, rule)) << '+'
+                << static_cast<int>(quota_of(b, BLACK, rule));
+            first = false;
+        }
     }
     return out.str();
 }

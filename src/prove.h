@@ -207,16 +207,17 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth);
 constexpr int kFailAnyDepth = 1 << 20;
 
 
-// The x-check terminal, read against the goal in force.
+// The variant terminal, read against the goal in force.
 //
 // The rule ends the GAME. Whether that ending SATISFIES THE STIPULATION is a
 // separate question, and the answer differs by goal -- which is the whole reason
 // x-check is a variant here rather than a seventh goal:
 //
 //   mate            The attacker is asked to force a win, and under these rules
-//                   exhausting the defender's allowance is a win. So his last
-//                   check proves the goal. `--no-check-win` asks for checkmate
-//                   specifically instead, for the problemist who means mate.
+//                   filling his quota is a win. So his last check -- or last
+//                   capture -- proves the goal. `--no-check-win` and
+//                   `--no-capture-win` ask for checkmate specifically instead,
+//                   for the problemist who means mate.
 //
 //   everything else Stalemate, selfmate, selfstalemate and the cooperative goals
 //                   each name a terminal POSITION. A game that ended by check
@@ -230,12 +231,12 @@ constexpr int kFailAnyDepth = 1 << 20;
 // and it means "no solution from this POSITION at any depth". This is a
 // statement about a finished game, which is stronger but differently shaped, and
 // the depth field already carries everything the parent needs.
-inline bool check_limit_terminal(const Search& s, const Board& b, Proof& out) {
-    if (!check_limit_active(b)) {
+inline bool variant_terminal(const Search& s, const Board& b, Proof& out) {
+    if (!variant_active(b)) {
         return false;
     }
-    const int winner = check_winner(b);
-    if (winner < 0) {
+    const VariantWin won = variant_winner(b);
+    if (won.side < 0) {
         return false;
     }
     // THE ORDINARY TERMINAL WINS THE TIE. A move can be checkmate and the final
@@ -254,11 +255,11 @@ inline bool check_limit_terminal(const Search& s, const Board& b, Proof& out) {
         return false;
     }
     out = Proof{};
-    if (s.goal == Goal::Mate && s.check_win &&
-        winner == static_cast<int>(s.attacker)) {
+    if (s.goal == Goal::Mate && s.rule_wins[won.rule] &&
+        won.side == static_cast<int>(s.attacker)) {
         out.ok = true;
         if (s.emit_proof) {
-            out.cert = "{\"checkwin\":true}";
+            out.cert = std::string("{\"") + variant_win_key(won.rule) + "\":true}";
         }
         return true;
     }
@@ -344,7 +345,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     }
     ++s.stats.nodes;
     Proof check_end;
-    if (check_limit_terminal(s, b, check_end)) {
+    if (variant_terminal(s, b, check_end)) {
         return check_end;
     }
     ++s.stats.attacker_nodes;
@@ -395,7 +396,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     // Placed after the terminal test above, so a position that is ALREADY
     // selfmate is reported before any bound can look at it.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        !check_limit_active(b) &&
+        !variant_active(b) &&
         mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
@@ -837,11 +838,11 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
-    // x-check: has the game already ended by check count? Tested at every node
+    // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
     Proof check_end;
-    if (check_limit_terminal(s, b, check_end)) {
+    if (variant_terminal(s, b, check_end)) {
         return check_end;
     }
     ++s.stats.defender_nodes;
@@ -855,7 +856,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     // to arrive at this node. Overstating it would be safe, understating it
     // would not, so it is written out rather than approximated.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        !check_limit_active(b) &&
+        !variant_active(b) &&
         mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth - 1)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
@@ -1162,11 +1163,11 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         return {};
     }
     ++s.stats.nodes;
-    // x-check: has the game already ended by check count? Tested at every node
+    // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
     Proof check_end;
-    if (check_limit_terminal(s, b, check_end)) {
+    if (variant_terminal(s, b, check_end)) {
         return check_end;
     }
     if (plies <= 0) {
@@ -1190,7 +1191,7 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         const Color mated = (plies % 2 == 0) ? b.stm : other(b.stm);
         const Color mating = other(mated);
         const int our_moves = (mating == b.stm) ? (plies + 1) / 2 : plies / 2;
-        if (!check_limit_active(b) &&
+        if (!variant_active(b) &&
             mate_out_of_reach(b, mating, mated, our_moves, plies - our_moves)) {
             ++s.stats.help_unreachable_prunes;
             return {};
@@ -1230,7 +1231,8 @@ Proof prove_help(Search& s, const Board& b, int plies) {
     const bool last_ply_prune = plies == 1 && scored && s.score_checks && !s.score_mates;
     for (const Move& m : moves) {
         ++s.stats.attacker_candidates;
-        if (last_ply_prune && !move_can_reach_goal(m.score, s.goal)) {
+        if (last_ply_prune && last_ply_win_needs_check(s.rule_wins, b, s.attacker) &&
+            !move_can_reach_goal(m.score, s.goal)) {
             continue;
         }
         const Board nb = make_move(b, m);
@@ -1286,7 +1288,8 @@ void collect_help_solutions(Search& s, const Board& b, int plies,
         if (out.size() >= limit) {
             return;
         }
-        if (last_ply_prune && !move_can_reach_goal(m.score, s.goal)) {
+        if (last_ply_prune && last_ply_win_needs_check(s.rule_wins, b, s.attacker) &&
+            !move_can_reach_goal(m.score, s.goal)) {
             continue;
         }
         line.push_back(m);
@@ -1303,11 +1306,11 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
-    // x-check: has the game already ended by check count? Tested at every node
+    // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
     Proof check_end;
-    if (check_limit_terminal(s, b, check_end)) {
+    if (variant_terminal(s, b, check_end)) {
         return check_end;
     }
     ++s.stats.defender_nodes;
@@ -1479,6 +1482,15 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b) {
         return false;                 // inert by construction
     }
     if (s.goal == Goal::Mate) {
+        // NOT under a capture quota. The axiom is "a lone king cannot mate",
+        // which held for x-check because a lone king cannot give check either.
+        // A lone king CAN capture, so under capture-win this would report a won
+        // position as having no solution -- silently, which is the third time a
+        // goal-specific shortcut has had to be gated for exactly this reason.
+        if (s.rule_wins[VR_CAPTURE] &&
+            (quota_of(b, s.attacker, VR_CAPTURE) != kNoQuota)) {
+            return false;
+        }
         const std::uint64_t attacker_men = b.by_color[s.attacker];
         return attacker_men == (attacker_men & b.by_type[PT_KING]);
     }
@@ -1507,11 +1519,11 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
-    // x-check: has the game already ended by check count? Tested at every node
+    // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
     Proof check_end;
-    if (check_limit_terminal(s, b, check_end)) {
+    if (variant_terminal(s, b, check_end)) {
         return check_end;
     }
     ++s.stats.attacker_nodes;
@@ -1562,7 +1574,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // final check also wins -- and the node it would discard could hold one.
     if (s.coverage_exit && !s.coverage_observer && depth == 1 &&
         s.goal == Goal::Mate && !s.any_depth_refutations &&
-        !check_limit_active(b)) {
+        !variant_active(b)) {
         ++s.stats.coverage_nodes;
         if (mate1_impossible_by_coverage(b)) {
             ++s.stats.coverage_exits;
@@ -1623,7 +1635,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // three moved the same way, so the honest figure is the one below and not
     // that one.
     if (s.coverage_observer && depth == 1 && s.goal == Goal::Mate &&
-        !check_limit_active(b)) {
+        !variant_active(b)) {
         ++s.stats.coverage_nodes;
         if (mate1_impossible_by_coverage(b)) {
             ++s.stats.coverage_exits;
@@ -1648,6 +1660,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         // the child board; with any-depth refutations off, which is the default,
         // nothing else at depth 1 does.
         if (depth == 1 && can_use_ordered_check_shortcut && !all_moves_refuted &&
+            last_ply_win_needs_check(s.rule_wins, b, s.attacker) &&
             !move_can_reach_goal(amove.score, s.goal)) {
             ++s.stats.mate1_generator_skips;
             continue;
@@ -1658,7 +1671,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         // under the mate goal that IS the win being forced. Tested here beside
         // the mate test rather than left to the child node, because at depth 1
         // there is no child -- the loop returns or continues without recursing.
-        const bool check_win = check_win_reached(nb, s.goal, s.attacker, s.check_win);
+        const int win_rule = variant_win_reached(nb, s.goal, s.attacker, s.rule_wins);
         ++s.stats.immediate_mate_tests;
         bool mate = false;
         if (can_use_ordered_check_shortcut) {
@@ -1678,14 +1691,16 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         } else {
             mate = is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
         }
-        if (mate || check_win) {
+        if (mate || win_rule >= 0) {
             ++s.stats.immediate_mates;
             std::vector<Move> pv{amove};
             std::string cert;
             if (s.emit_proof) {
-                const char* how = (check_win && !mate) ? ",\"checkwin\":true}"
-                                : (s.goal == Goal::Stalemate) ? ",\"stalemate\":true}"
-                                                              : ",\"mate\":true}";
+                std::string how = (s.goal == Goal::Stalemate) ? ",\"stalemate\":true}"
+                                                             : ",\"mate\":true}";
+                if (win_rule >= 0 && !mate) {
+                    how = std::string(",\"") + variant_win_key(win_rule) + "\":true}";
+                }
                 cert = "{\"a\":" + json_quote(move_uci(amove)) + how;
             }
             if (s.proof_hints) {

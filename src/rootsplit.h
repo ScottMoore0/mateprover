@@ -432,12 +432,13 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             // a mate-in-1 must not be accepted as a stalemate.
             bool mate = false;
             if (shortcut) {
-                if (move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, probe.goal)) {
+                if (!last_ply_win_needs_check(probe.rule_wins, b, probe.attacker) ||
+                    move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, probe.goal)) {
                     mate = !has_legal_move(nb, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo);
                 }
             } else {
                 mate = is_goal(nb, probe.goal, probe.move_reserve, probe.move_reserve_capacity, probe.static_pseudo) ||
-                       check_win_reached(nb, probe.goal, probe.attacker, probe.check_win);
+                       variant_win_reached(nb, probe.goal, probe.attacker, probe.rule_wins) >= 0;
             }
 
             Proof found;
@@ -508,12 +509,13 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
             bool mate = false;
             if (shortcut) {
-                if (move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, ws.goal)) {
+                if (!last_ply_win_needs_check(ws.rule_wins, b, ws.attacker) ||
+                    move_can_reach_goal(moves[static_cast<std::size_t>(i)].score, ws.goal)) {
                     mate = !has_legal_move(nb, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo);
                 }
             } else {
                 mate = is_goal(nb, ws.goal, ws.move_reserve, ws.move_reserve_capacity, ws.static_pseudo) ||
-                       check_win_reached(nb, ws.goal, ws.attacker, ws.check_win);
+                       variant_win_reached(nb, ws.goal, ws.attacker, ws.rule_wins) >= 0;
             }
 
             Proof found;

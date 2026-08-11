@@ -220,7 +220,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-483 automated checks covering:
+500 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -249,7 +249,7 @@ python tests/run_tests.py --engine build/mateprover
 - **differentials for every exact pruning switch**: the same verdicts, moves and
   variations with each one on and off, run single-threaded so the comparison can
   be on the whole line rather than the depth alone;
-- **x-check chess**, as a variant orthogonal to all six goals: the allowance
+- **the variant rules** -- x-check and x-capture -- orthogonal to all six goals: the allowance
   round-trips through the FEN in both accepted spellings, the win is found at
   every depth, a move that is both mate and the final check is certified as
   mate, the allowance is part of the transposition key, and a forged check-win

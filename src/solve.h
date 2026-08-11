@@ -119,10 +119,10 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // fifth Forsyth field. The line wins when it has one, on the same principle
     // as -Z against a line's own depth token: what the position states about
     // itself beats what the invocation assumed about it.
-    if (!check_limit_active(b)) {
-        for (int c = 0; c < 2; ++c) {
-            if (config.check_limit[c] >= 0) {
-                b.checks_left[c] = static_cast<std::uint8_t>(config.check_limit[c]);
+    if (!variant_active(b)) {
+        for (std::size_t i = 0; i < config.quota_limit.size(); ++i) {
+            if (config.quota_limit[i] >= 0) {
+                b.quota[i] = static_cast<std::uint8_t>(config.quota_limit[i]);
             }
         }
     }
