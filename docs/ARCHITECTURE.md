@@ -179,6 +179,7 @@ did. If you are reading it for the first time:
 - [99. Proof Numbers Measure The Wrong Game Under A Quota](#99-proof-numbers-measure-the-wrong-game-under-a-quota)
 - [100. A Shared Table Makes The PV Stop Being A Function Of The Position](#100-a-shared-table-makes-the-pv-stop-being-a-function-of-the-position)
 - [101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else](#101-finding-only-mode-is-a-frontier-tool-and-costs-on-everything-else)
+- [102. Quota Dominance: The Design, And The Two Ways To Get It Wrong](#102-quota-dominance-the-design-and-the-two-ways-to-get-it-wrong)
 
 ## Impact-Ordered Architecture
 
@@ -7588,3 +7589,52 @@ exactly the situation -- nineteen of twenty are refuted outright and the
 twentieth resists every unrestricted attempt. Everywhere short of that, it is
 seven-eighths overhead, and the default of `--no-portfolio` for measurement work
 is right.
+
+### 102. Quota Dominance: The Design, And The Two Ways To Get It Wrong
+
+Not implemented. Written down because the reasoning is the hard part and the
+failure mode is a silent false proof, so it should not be reconstructed from
+scratch under time pressure.
+
+A board carries, per side, the number of captures still OWED. Call it the
+remaining quota `r`. The dominance is:
+
+- **A proof at remaining `r` proves every `r' <= r`.** If the attacker can force
+  `r` more captures within the depth budget, the same line reaches the `(r-1)`th
+  capture no later, and under `r'` the game ends there in his favour. A line
+  ending in mate short of the quota is a mate either way.
+- **A disproof at remaining `r` disproves every `r'' >= r`.** Contrapositive of
+  the same statement.
+
+`tt_key` already puts both quotas in the context word, seven bits each from bit
+25, so entries are quota-specific and none of this is currently exploited. The
+probe becomes a short scan: on a miss at `r`, look for a stored proof at `r+1,
+r+2, ...` and a stored disproof at `r-1, r-2, ...`, capped at a small window so
+the extra hash lookups stay cheap.
+
+It pays INSIDE one search, which is the part worth being clear about -- the
+obvious reading is that it only helps a ladder across separate runs at different
+quotas. It does not. Two lines reaching the same board having made different
+numbers of captures arrive with different remaining quotas and today get
+different entries, so the search re-proves the same position once per capture
+count.
+
+Two ways to get it wrong, both silent:
+
+1. **The direction.** Smaller `r` is EASIER for the attacker, so a proof
+   generalises DOWNWARD and a disproof UPWARD. Reversing either yields a false
+   proof rather than a crash, and no existing test would catch it, since every
+   verdict-based check would still pass on positions where the two quotas happen
+   to agree. This needs the differential gate -- identical verdicts, differing
+   node counts -- across the whole corpus before it defaults on.
+2. **The certificate.** A cached proof from `r'' > r` is a tree in which the
+   attacker forces `r''` captures. Handed back for a query at `r`, it is a valid
+   win but the WRONG DOCUMENT: a verifier replaying it for `r` sees a game that
+   should have ended earlier, at the `r`th capture. Either truncate the tree at
+   the `r`th capture or refuse the substitution while `--emit-proof` is set. The
+   second is trivial and costs nothing on disproofs, which carry no certificate
+   and are the bulk of this workload.
+
+The disproof half alone is the safer first increment: it is where the work is in
+capture-quota search, it needs no certificate handling, and it can be gated
+behind a flag and measured before it becomes the default.
