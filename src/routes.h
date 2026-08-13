@@ -403,9 +403,17 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         // the whole search, and clearing  past it would restart a
         // search that has no time left.
         s.aborted = false;
+        // A live variant win rule stands the preconditioner down. Proof numbers
+        // estimate how hard the MATE is to prove and know nothing about a
+        // capture or check quota, so under a quota they steer the search by a
+        // measure of the wrong game. This was the whole of the missing
+        // parallelism: on the x-capture bench the preconditioner was 96% of the
+        // wall clock and every second of it single-threaded, which is why
+        // splitting the exact pass underneath it appeared to buy nothing.
         const bool precondition = depth >= s.dfpn_min_depth &&
                                   (s.dfpn_min_men == 0 || men_on_board(b) >= s.dfpn_min_men) &&
-                                  (!s.dfpn_final_depth_only || depth >= max_depth);
+                                  (!s.dfpn_final_depth_only || depth >= max_depth) &&
+                                  (s.dfpn_under_variant || !variant_win_live(b, s.rule_wins));
         if (precondition) {
             dfpn_attacker(s, b, depth, DFPN_INF, DFPN_INF);
         }

@@ -158,6 +158,20 @@ struct SearchConfig {
     bool dfpn_final_depth_only = true;
     // Absolute floor, retained for experiments. 1 means no floor.
     int dfpn_min_depth = 1;
+    // Run the preconditioner when a VARIANT win rule is live? Default no.
+    //
+    // Proof numbers estimate how hard a node is to prove, and the estimate is
+    // built entirely from the mate goal: it counts moves and replies and knows
+    // nothing about a capture or check quota. Under a live quota that estimate
+    // is not merely uninformative, it is actively misleading -- the search is
+    // steered by a measure of the wrong game.
+    //
+    // Measured on the fourteen-position x-capture bench, with the verdict
+    // identical in every case: the preconditioner costs between 9x and 30x the
+    // wall clock and up to 10x the nodes. On plain directmates it PAYS (2x on
+    // tests/mates.epd), so this stands the preconditioner down exactly where it
+    // loses and nowhere else. See architecture 32.
+    bool dfpn_under_variant = false;
     // Material floor for the preconditioner: it runs only when the position has
     // at least this many men. 0 disables the floor.
     //

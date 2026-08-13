@@ -271,6 +271,19 @@ inline bool variant_active(const Board& b) {
     return false;
 }
 
+// Is a variant win rule actually in play -- both enabled by the caller AND
+// carrying a quota on this board? Either half alone is not enough: a rule
+// switched on with every quota absent can never fire, and a quota sitting on
+// the board is inert while the rule that reads it is off.
+inline bool variant_win_live(const Board& b, const std::array<bool, VR_COUNT>& rule_wins) {
+    for (int rule = 0; rule < VR_COUNT; ++rule) {
+        if (rule_wins[static_cast<std::size_t>(rule)]) {
+            return variant_active(b);
+        }
+    }
+    return false;
+}
+
 // Who has already won outright, and under which rule. `side` is -1 when nobody
 // has. Two quotas cannot both be spent: the game ends on the first.
 struct VariantWin {

@@ -813,6 +813,122 @@ def test_pv_and_certificates(engine: Path, res: Results) -> None:
         res.check(f"certificate #{dm} {fen[:24]}", ok, why)
 
 
+def test_preconditioner_stands_down_under_a_variant(engine: Path, res: Results) -> None:
+    """The DFPN preconditioner must not run while a variant win rule is live.
+
+    Proof numbers estimate how hard the MATE is to prove. They are built from
+    move and reply counts and know nothing about a capture or check quota, so
+    under a live quota they steer the search by a measure of the wrong game.
+    Measured across the x-capture bench that cost 8x to 32x the wall clock and
+    up to 10x the nodes, with the verdict identical every time -- and because
+    the preconditioner is single-threaded it was also 96% of a run's wall clock,
+    which is why splitting the exact pass underneath it appeared to buy nothing.
+
+    Two things are pinned here, and the second matters as much as the first: the
+    gate must fire under a quota, and it must NOT fire without one. On plain
+    directmates the preconditioner pays for itself (2x on mates.epd), so a gate
+    that switched it off everywhere would be a large silent regression that no
+    verdict-based test would catch.
+    """
+    print("\n[dfpn] the preconditioner stands down under a live variant rule")
+
+    start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    base = ["--no-portfolio", "--single-thread", "-M", "512", "--time-limit", "120"]
+
+    def measure(extra, stdin):
+        line = next((l for l in run(engine, [*base, *extra, "-"], stdin).splitlines() if l.strip()), "")
+        nodes = re.search(r"acn (\d+)", line)
+        found = re.search(r"dm \d+", line)
+        return ("timeout" if "timeout" in line else found.group(0) if found else "nowin",
+                int(nodes.group(1)) if nodes else -1)
+
+    for quota, depth in ((2, 5), (3, 5), (4, 4)):
+        stdin = f"{start} bm #{depth};\n"
+        args = ["-z", str(depth), "--direct-depth", "--captures", f"{quota}:126"]
+        gated, gated_n = measure(args, stdin)
+        forced, forced_n = measure([*args, "--dfpn-under-variant"], stdin)
+        res.check(f"capture quota {quota} depth {depth}: the gate keeps the verdict",
+                  gated == forced, f"{gated} vs {forced}")
+        res.check(f"capture quota {quota} depth {depth}: the gate cuts the node count",
+                  0 <= gated_n < forced_n, f"{gated_n} vs {forced_n}")
+
+    # Without a quota the preconditioner must still run, or this gate has
+    # quietly disabled the default route's whole reason for existing.
+    plain = "".join(f"{fen} bm #{dm};\n" for fen, dm in load_epd(HERE / "mates.epd"))
+    total = lambda text: sum(int(n) for n in re.findall(r"acn (\d+)", text))
+    on = total(run(engine, [*base, "-"], plain))
+    off = total(run(engine, [*base, "--dfpn-min-depth", "99", "-"], plain))
+    res.check("without a variant rule the preconditioner still runs",
+              on < off, f"{on} vs {off} nodes")
+
+
+def test_root_split_proves_the_same_answer(engine: Path, res: Results) -> None:
+    """--root-split may report a different PV, and it must still be a proof.
+
+    The split shares one proof table across workers, so the worker proving the
+    accepted root move can probe a subtree a SIBLING proved and continue down
+    it. The key move and the distance are unaffected -- root indices are still
+    accepted lowest-first -- but the principal variation stops being a function
+    of the position alone. On 6k1/8/8/8/8/5K2/5Q1N/8 the sequential search plays
+    2.Ng4 and the split plays 2.Nf1. Both mate in 5.
+
+    That is a loss of reproducibility, not of soundness, and it is the whole
+    reason the flag is off by default. This pins the part that is not
+    negotiable: whatever line the split reports, the certificate under it must
+    verify against an independent move generator.
+    """
+    print("\n[split] --root-split keeps the answer and proves the PV it reports")
+    if not HAVE_CHESS:
+        res.skip("root-split certificate verification", "python-chess not installed")
+        return
+
+    fen, dm = "6k1/8/8/8/8/5K2/5Q1N/8 w - -", 5
+    stdin = f"{fen} bm #{dm};\n"
+    base = ["--no-portfolio", "--emit-proof", "-z", str(dm)]
+
+    def verify(board, node):
+        move = chess.Move.from_uci(node["a"])
+        if move not in board.legal_moves:
+            return False, f"illegal attacker move {node['a']}"
+        board.push(move)
+        try:
+            if node.get("mate"):
+                return (board.is_checkmate(), "" if board.is_checkmate()
+                        else f"leaf after {node['a']} is not checkmate")
+            branches = node.get("d")
+            if branches is None:
+                return False, "non-leaf attacker node has no defender branches"
+            if sorted(b["r"] for b in branches) != sorted(m.uci() for m in board.legal_moves):
+                return False, "defender branches do not match the legal replies"
+            for branch in branches:
+                board.push(chess.Move.from_uci(branch["r"]))
+                ok, why = verify(board, branch["p"])
+                board.pop()
+                if not ok:
+                    return False, why
+            return True, ""
+        finally:
+            board.pop()
+
+    def one(extra):
+        line = next(l for l in run(engine, [*base, *extra, "-"], stdin).splitlines() if l.strip())
+        key = re.search(r"bm (\S+?);", line)
+        got = re.search(r"dm (\d+)", line)
+        cert = re.search(r"proof (\{.*\})", line)
+        return (key.group(1) if key else ""), (got.group(1) if got else ""), cert
+
+    seq_bm, seq_dm, seq_cert = one(["--single-thread"])
+    for threads in ("8", "32"):
+        got_bm, got_dm, got_cert = one(["--root-split", "--threads", threads])
+        res.check(f"--root-split x{threads} reports the same key move and distance",
+                  (got_bm, got_dm) == (seq_bm, seq_dm),
+                  f"{got_bm}/{got_dm} vs {seq_bm}/{seq_dm}")
+        ok, why = verify(chess.Board(fen), json.loads(got_cert.group(1))) if got_cert else (False, "no certificate")
+        res.check(f"--root-split x{threads} certificate verifies", ok, why)
+    ok, why = verify(chess.Board(fen), json.loads(seq_cert.group(1))) if seq_cert else (False, "no certificate")
+    res.check("the sequential certificate verifies", ok, why)
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3081,6 +3197,8 @@ def main() -> int:
     test_shipped_verifier(args.engine, res)
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
+    test_preconditioner_stands_down_under_a_variant(args.engine, res)
+    test_root_split_proves_the_same_answer(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

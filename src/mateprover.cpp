@@ -383,6 +383,14 @@ void print_usage() {
 "  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
 "                                iterative deepening its work cannot carry\n"
 "                                across depths (default 1, no skipping)\n"
+"  --dfpn-under-variant | --no-dfpn-under-variant\n"
+"                                default: --no-dfpn-under-variant. Proof numbers\n"
+"                                measure the MATE and know nothing about a\n"
+"                                capture or check quota, so under a live variant\n"
+"                                rule they steer by the wrong game: measured 9x\n"
+"                                to 30x SLOWER on the x-capture bench, verdicts\n"
+"                                unchanged. On plain directmates it pays, and\n"
+"                                there it still runs\n"
 "  --dfpn-sort | --dfpn-no-sort  sort moves at DFPN nodes (default: no)\n"
 "  --dfpn-epsilon-64 N           1+epsilon threshold widening, in 1/64ths\n"
 "  --dfpn-node-limit N           cap preconditioner nodes (0 = unlimited)\n"
@@ -499,6 +507,8 @@ const BoolOption kBoolOptions[] = {
     {"--iterative-depth", &SearchConfig::direct_depth, false},
     {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
     {"--dfpn-every-depth", &SearchConfig::dfpn_final_depth_only, false},
+    {"--dfpn-under-variant", &SearchConfig::dfpn_under_variant, true},
+    {"--no-dfpn-under-variant", &SearchConfig::dfpn_under_variant, false},
     {"--dfpn-sort", &SearchConfig::dfpn_sort, true},
     {"--dfpn-no-sort", &SearchConfig::dfpn_sort, false},
     {"--dfpn-hints-only", &SearchConfig::dfpn_share_disproofs, false},

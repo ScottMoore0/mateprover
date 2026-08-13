@@ -109,6 +109,7 @@ did. If you are reading it for the first time:
 - [30. What Promoting DFPN Invalidated](#30-what-promoting-dfpn-invalidated)
 - [31. How Deep It Actually Goes, And How It Compares](#31-how-deep-it-actually-goes-and-how-it-compares)
 - [32. Root-Split Parallelism Now Contributes Nothing](#32-root-split-parallelism-now-contributes-nothing)
+- [32a. Retracted: The Threads Were Never Engaged](#32a-retracted-the-threads-were-never-engaged)
 - [33. Parallelism Across Positions](#33-parallelism-across-positions)
 - [34. Two Budgets, Two Different Batch Trades](#34-two-budgets-two-different-batch-trades)
 - [35. The Third Explanation Was The Right One](#35-the-third-explanation-was-the-right-one)
@@ -175,6 +176,8 @@ did. If you are reading it for the first time:
 - [96. x-check As A Variant, Not A Seventh Goal](#96-x-check-as-a-variant-not-a-seventh-goal)
 - [97. The Second Variant Rule, And What The First One Cost To Generalise](#97-the-second-variant-rule-and-what-the-first-one-cost-to-generalise)
 - [98. A Disproof Wants The Opposite Configuration To A Proof](#98-a-disproof-wants-the-opposite-configuration-to-a-proof)
+- [99. Proof Numbers Measure The Wrong Game Under A Quota](#99-proof-numbers-measure-the-wrong-game-under-a-quota)
+- [100. A Shared Table Makes The PV Stop Being A Function Of The Position](#100-a-shared-table-makes-the-pv-stop-being-a-function-of-the-position)
 
 ## Impact-Ordered Architecture
 
@@ -2876,6 +2879,50 @@ Not acted on. `--threads` is inert rather than harmful, removing root splitting 
 a large change to working code, and the case for keeping it is that it costs
 nothing and may matter on hardware or problems unlike these. But the
 documentation should not imply it buys anything here, and it now does not.
+
+#### 32a. Retracted: The Threads Were Never Engaged
+
+Every number above was measured on the DFPN route, and **the DFPN route had no
+root split**. `run_root_split_depth` had exactly one caller, in the depth-first
+route, and the DFPN route is the default. So `--threads 32` on a default run
+allocated no workers and split nothing: the three identical rows in each half of
+the table were not evidence that splitting fails to pay, they were the same
+sequential search reported three times. A later twelve-hour capture-quota search
+at `--threads 30` ran its whole life on one OS thread.
+
+The reasoning here was therefore correct about a mechanism that was not running.
+The paragraph blaming DFPN for leaving the workers nothing to do named the right
+culprit for the wrong reason: DFPN was not starving the workers of work, it was
+standing between them and the work.
+
+Wiring the split into the DFPN route did not, on its own, change anything -- the
+node count moved by 19 and the wall clock did not move at all. That looked like
+confirmation of the original finding, and it was not. The preconditioner runs
+*before* the exact pass and is single-threaded, so where it dominates,
+parallelising the exact pass parallelises the cheap half. Under a capture quota
+it dominates completely: 96% of the wall clock. Standing it down there (99)
+exposes the rest.
+
+| x-capture bench, geometric mean over 14 positions | wall clock |
+|---|---|
+| preconditioner on, 1 thread (as shipped before) | baseline |
+| preconditioner off, 1 thread | **23.6x faster** |
+| preconditioner off, `--root-split --threads 16` | **83.4x faster** |
+
+Verdicts are identical across all fourteen positions in all three
+configurations. The split contributes the 3.5x between the second row and the
+third, so **root-split parallelism does not contribute nothing** -- it
+contributes a factor of three and a half, once it is both wired up and not
+hidden behind a sequential preconditioner.
+
+What survives is narrower and still true: on plain directmates at the mate-in-16
+frontier, where the preconditioner earns its keep, root splitting is worth
+little, and lane-level and position-level parallelism (33) remain the
+parallelism that pays there. What does not survive is the general claim. The
+table above does not cover variant search and must not be read as if it does.
+
+`--root-split` is nonetheless still **off by default**, for a reason unrelated to
+speed: it changes the reported PV. See 100.
 
 ### 33. Parallelism Across Positions
 
@@ -7427,3 +7474,84 @@ that moves first is the side that has committed one. White's first move creates
 Black's target. Moving second is not a handicap in a capture race; if anything
 it is an advantage, and the third game confirms it from the other direction:
 giving Black the same winning condition changes White's answer not at all.
+
+### 99. Proof Numbers Measure The Wrong Game Under A Quota
+
+The DFPN preconditioner is the default route's whole reason for existing, and
+on plain directmates it earns that: `tests/mates.epd` costs 90,276 nodes with it
+and 273,752 without, a 2x saving in wall clock as well as nodes. Nothing here
+disturbs that.
+
+Under a variant win rule it is a catastrophe, and the reason is not subtle once
+stated. A proof number is an estimate of how hard a node is to PROVE, built
+entirely from branching -- how many moves the attacker has, how many replies the
+defender has. It contains no term for a capture quota or a check quota. Under
+`--captures 3:126` the engine is searching a game in which White wins by
+capturing three times, and the preconditioner is ranking nodes by how close they
+look to a *mate*. It is not merely uninformative, it is a confident measure of a
+question nobody asked, and the search follows it.
+
+Measured on the fourteen-position x-capture bench, single-threaded, verdicts
+identical in every row:
+
+| | preconditioner on | off | ratio |
+|---|---|---|---|
+| start, quota 3, depth 5 | 3.03 s, 1,370,923 nodes | 0.137 s, 140,717 nodes | 22x, 9.7x |
+| start, quota 4, depth 5 | 3.30 s | 0.128 s | 26x |
+| ply-2 e3 Nh6, quota 3, depth 4 | 0.92 s | 0.030 s | 31x |
+| geometric mean, 14 positions | -- | -- | **23.6x** |
+
+The spread is 8x to 32x and the direction never reverses. So the preconditioner
+now stands down whenever a variant win rule is live -- meaning both that the rule
+is enabled AND that a quota is present on the board, since either half alone is
+inert. `--dfpn-under-variant` restores the old behaviour for measurement.
+
+Two things make this worth more than its own 23.6x. First, it was invisible:
+verdicts were correct throughout, so no correctness test could have found it, and
+every x-capture measurement in this document that predates it was taken through a
+23x handicap. Second, it was the load-bearing half of a different mystery -- 32
+concluded that root-split threading contributes nothing, and one reason it looked
+that way is that the preconditioner was 96% of the wall clock and every second of
+it single-threaded. Remove it and the split is worth 3.5x. See 32a.
+
+The general lesson is about scope, and it is the fourth time this codebase has
+learned it: a heuristic written for one goal was left switched on for a goal it
+had never been evaluated against. The axioms in `prove.h` carry explicit goal
+guards for exactly this reason. The preconditioner did not, because it is not
+unsound -- it is only wrong.
+
+### 100. A Shared Table Makes The PV Stop Being A Function Of The Position
+
+`--root-split` gives every worker a pointer to one shared proof table. That is
+what makes it fast, and it has a consequence that took a failing test to notice:
+the worker proving the accepted root move can probe a subtree that a SIBLING
+worker proved, and continue down it. On `6k1/8/8/8/8/5K2/5Q1N/8`:
+
+```
+--single-thread         bm f2a7; dm 5; pv f2a7 g8f8 h2g4 f8g8 g4h6 g8h8 h6f5 h8g8 a7g7
+--root-split --threads 8  bm f2a7; dm 5; pv f2a7 g8f8 h2f1 f8e8 f1e3 e8d8 e3d5 d8c8 a7c7
+```
+
+Same key move, same distance, different second move. Both certificates verify
+against python-chess: every attacker move legal, every defender branch exhaustive
+against an independent generator, every leaf a real checkmate, depth exactly 5.
+Two genuine mates in five; the engine reports whichever one the table handed it.
+
+This is worth being precise about, because "the parallel search gives a different
+answer" and "the parallel search gives a different proof of the same answer" are
+very different findings. The lowest-index acceptance rule (8v) guarantees the
+first: whichever worker finishes first, the reported root move is the one the
+sequential loop would have returned. It says nothing about the interior of the
+tree, and nothing needs it to -- a proof is a proof.
+
+What is lost is reproducibility. The PV stops being a function of the position
+and becomes a function of the position and the thread count, which for a tool
+whose output is meant to be checkable by someone else is a real cost even though
+it is not a soundness cost. `--root-split` therefore stays off by default, and
+the suite pins what actually matters: at 8 and 32 threads the split must report
+the same key move and distance as the sequential search, and whatever PV it does
+report must carry a certificate that verifies.
+
+The alternative -- private tables per worker -- would restore determinism and
+give up most of the speed. That trade is available and has not been taken,
+because the flag is opt-in and a user who asks for it has asked for the speed.
