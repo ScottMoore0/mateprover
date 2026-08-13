@@ -65,10 +65,21 @@ int check_term(bool gives_check, Goal goal) {
 //
 // This is the sixth shortcut to need gating for a variant rule, and the first
 // that was not behind a named predicate. It is one now.
+//
+// The gate was originally "a capture quota is in force at all", which is far too
+// coarse. ONE move can fill a quota only when exactly ONE capture is still
+// outstanding. With two or more left, no single move can win by the quota, so
+// the only win available on the last ply is mate -- and a mate is a check, so
+// the prune is sound again. The interesting searches spend nearly their whole
+// tree with two or more outstanding, so gating on the quota's mere existence
+// surrendered the prune almost everywhere it was still valid.
 inline bool last_ply_win_needs_check(const std::array<bool, VR_COUNT>& rule_wins,
                                      const Board& b, Color attacker) {
-    return !(rule_wins[VR_CAPTURE] &&
-             quota_of(b, attacker, VR_CAPTURE) != kNoQuota);
+    if (!rule_wins[VR_CAPTURE]) {
+        return true;
+    }
+    // kNoQuota is 127, so an absent quota is not 1 and keeps the prune.
+    return quota_of(b, attacker, VR_CAPTURE) != 1;
 }
 
 bool move_can_reach_goal(int score, Goal goal) {
@@ -145,6 +156,24 @@ void stable_bucket_order(std::vector<Move>& moves) {
     moves.swap(ordered);
 }
 
+// When the side to move needs exactly ONE more capture, a capture IS the win,
+// and it should be searched before anything else.
+//
+// This reorders WITHOUT touching scores, deliberately. The score encoding is
+// load-bearing elsewhere: `move_can_reach_goal` reads `score >= 50000` as "this
+// move gives check", and rootsplit then concludes mate from the absence of a
+// legal reply without re-testing for check. A capture bonus large enough to
+// matter for ordering would cross that threshold and let a STALEMATE be reported
+// as a mate. Ordering is soundness-neutral; scores are not.
+inline void quota_filling_captures_first(const Board& b, std::vector<Move>& moves) {
+    if (quota_of(b, b.stm, VR_CAPTURE) != 1) {
+        return;
+    }
+    std::stable_partition(moves.begin(), moves.end(), [&b](const Move& m) {
+        return b.sq[m.to] != '.' || m.ep;
+    });
+}
+
 void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, bool score_checks, Goal goal, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo, bool inplace_order, bool bucket_order) {
     if (moves.size() < 2) {
         return;
@@ -155,11 +184,13 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
         }
         if (bucket_order) {
             stable_bucket_order(moves);
+            quota_filling_captures_first(b, moves);
             return;
         }
         std::stable_sort(moves.begin(), moves.end(), [](const Move& a, const Move& c) {
             return a.score > c.score;
         });
+        quota_filling_captures_first(b, moves);
         return;
     }
     struct ScoredMove {
@@ -177,6 +208,7 @@ void order_moves(const Board& b, std::vector<Move>& moves, bool score_mates, boo
     for (std::size_t i = 0; i < scored.size(); ++i) {
         moves[i] = scored[i].move;
     }
+    quota_filling_captures_first(b, moves);
 }
 
 // The goal is part of the key. Tables are per-search and a run has one goal, so

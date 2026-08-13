@@ -25,6 +25,11 @@ struct PortfolioEntry {
     // route to be worth no lane for directmates; the stalemate and selfmate
     // goals disagree, and section 54 has the measurement.
     RouteKind route = RouteKind::Dfpn;
+    // 0 = off, 1 = attacker plays only captures, 2 = only captures or checks.
+    // The shipped eight lanes were derived by set cover over MATE problems and
+    // none of them knows a capture from a quiet move, which is why they find
+    // nothing under a capture quota.
+    int forcing = 0;
 };
 
 // Derived by greedy set cover over a 20-candidate restriction sweep, measured
@@ -57,6 +62,51 @@ const std::vector<PortfolioEntry>& restriction_portfolio() {
         {"Rq2",                0,    0,      0,     -2,  0.041},
     };
     return entries;
+}
+
+// The portfolio for a live CAPTURE quota.
+//
+// The eight shipped lanes were derived by greedy set cover over matetrack
+// mate-in-8 problems, where the only win is mate. Not one of them can express
+// "this move captures", so under a capture quota they search hard for the wrong
+// thing: measured on four replies to 1.e3 at quota 3, all eight exhausted within
+// minutes and found nothing.
+//
+// These lanes are the same idea aimed at the right target. They remain pure
+// ATTACKER restrictions, so a win found under one is a real forced win and
+// verifies against the same certificate checker; they are incomplete, which is
+// why lane 0 is still the unrestricted search.
+//
+// `cap-or-check` is the shape of the only quota win found so far -- the quota-2
+// solution 3.Bxf7+ Kxf7 4.Qh5+ Ke6 5.Qxh7 lies entirely inside it, every White
+// move being a capture or a check.
+const std::vector<PortfolioEntry>& capture_portfolio() {
+    static const std::vector<PortfolioEntry> entries = {
+        //  name            checks king maxdef threat  weight  route            forcing
+        {"unrestricted",         0,   0,     0,     0,  0.300, RouteKind::Dfpn, 0},
+        {"cap-or-check",         0,   0,     0,     0,  0.180, RouteKind::Dfpn, 2},
+        {"cap-only",             0,   0,     0,     0,  0.130, RouteKind::Dfpn, 1},
+        {"cap-or-check-K3",      0,   3,     0,     0,  0.100, RouteKind::Dfpn, 2},
+        {"K2",                   0,   2,     0,     0,  0.100, RouteKind::Dfpn, 0},
+        {"K3",                   0,   3,     0,     0,  0.080, RouteKind::Dfpn, 0},
+        {"cap-or-check-X2",      0,   0,     2,     0,  0.060, RouteKind::Dfpn, 2},
+        {"X2",                   0,   0,     2,     0,  0.050, RouteKind::Dfpn, 0},
+    };
+    return entries;
+}
+
+// Is a capture quota live for either side? Decides which portfolio to run.
+inline bool capture_quota_live(const SearchConfig& c) {
+    if (!c.rule_wins[VR_CAPTURE]) {
+        return false;
+    }
+    for (int colour = 0; colour < 2; ++colour) {
+        const int q = c.quota_limit[quota_index(colour, VR_CAPTURE)];
+        if (q > 0 && q <= kMaxQuota) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // What a cooperative goal's single table is worth in lanes.
@@ -94,7 +144,7 @@ const std::size_t kMinLaneMb = 64;
 // is charged only where it buys something.
 bool lane_is_unrestricted(const PortfolioEntry& e) {
     return e.checks_mask == 0 && e.king_squares == 0 &&
-           e.max_defender_moves == 0 && e.threat_depth == 0;
+           e.max_defender_moves == 0 && e.threat_depth == 0 && e.forcing == 0;
 }
 
 // Solve one position, writing the result line to `out`.
@@ -229,6 +279,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             out.king_squares = entry->king_squares;
             out.max_defender_moves = entry->max_defender_moves;
             out.threat_depth = entry->threat_depth;
+            out.forcing_mode = entry->forcing;
         }
         if (seconds > 0.0) {
             out.has_deadline = true;
@@ -287,7 +338,11 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             v.push_back(df);
             return v;
         }();
-        const auto& all_entries = config.goal == Goal::Mate ? restriction_portfolio() : with_route;
+        // A live capture quota changes what a good restriction IS, so it
+        // changes the lane set rather than merely reweighting the old one.
+        const auto& mate_entries =
+            capture_quota_live(config) ? capture_portfolio() : restriction_portfolio();
+        const auto& all_entries = config.goal == Goal::Mate ? mate_entries : with_route;
 
         // An optional cap on how many lanes run at once.
         //
@@ -452,6 +507,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
+            t.forcing_mode = entries[static_cast<std::size_t>(i)].forcing;
             t.route = entries[static_cast<std::size_t>(i)].route;
             // A RESTRICTED lane searches the final depth only, even under
             // iterative deepening.

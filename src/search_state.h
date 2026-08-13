@@ -231,6 +231,11 @@ struct SearchConfig {
     // Positive means the threat search uses check-moves only ("check threats");
     // negative allows any move ("quiet threats"). 0 is off.
     int threat_depth = 0;
+
+    // Forcing restriction for a capture quota: 0 off, 1 captures only, 2
+    // captures or checks. Attacker-side, so sound for proving and unable to
+    // settle a disproof -- the same contract as every other lane restriction.
+    int forcing_mode = 0;
     // Root mate depth, needed because WinChest caps ThreatDepth at depth - 2.
     int root_depth = 0;
     // Try a sequence of restricted searches within the time budget, falling

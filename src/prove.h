@@ -72,6 +72,7 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
     const int cm = s.checks_mask;
     const bool needs_child = s.king_squares > 0 || s.piece_limit > 0 ||
                              s.max_defender_moves > 0 || (cm & 2) != 0 || (cm & 4) != 0;
+    const int forcing = s.forcing_mode;
     // WinChest disables ThreatDepth internally when ChecksOnly is 1 (or 3),
     // because threats add nothing once every move must already be a check.
     int threat = (cm & 1) ? 0 : s.threat_depth;
@@ -89,7 +90,7 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
             threat = 0;
         }
     }
-    if (cm == 0 && !needs_child && threat == 0) {
+    if (cm == 0 && !needs_child && threat == 0 && forcing == 0) {
         return;
     }
     const Color them = other(b.stm);
@@ -104,6 +105,20 @@ void restrict_attacker_moves(Search& s, const Board& b, std::vector<Move>& moves
         // applying it to 8 as well: with -C 8 it solves mate-in-1 positions
         // whose only move is a capture, which a literal "no own captures"
         // reading forbids.
+        // Forcing lanes for a capture quota. Like bits 8 and 16, a move that
+        // ENDS the game is exempt: discarding the winning move because it is
+        // quiet is the bug that cost six call sites when x-capture landed.
+        if (forcing != 0) {
+            const bool is_capture = b.sq[m.to] != '.' || m.ep;
+            const bool forced = is_capture ||
+                                (forcing == 2 && move_gives_check_fast(b, m));
+            if (!forced) {
+                const Board probe = make_move(b, m);
+                if (has_legal_move(probe, s.move_reserve, s.move_reserve_capacity, s.static_pseudo)) {
+                    return true;
+                }
+            }
+        }
         const bool bans_capture = (cm & 8) && (b.sq[m.to] != '.' || m.ep);
         const bool bans_check = (cm & 16) && gives_check;
         if (bans_capture || bans_check) {
