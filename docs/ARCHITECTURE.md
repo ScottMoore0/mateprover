@@ -178,6 +178,7 @@ did. If you are reading it for the first time:
 - [98. A Disproof Wants The Opposite Configuration To A Proof](#98-a-disproof-wants-the-opposite-configuration-to-a-proof)
 - [99. Proof Numbers Measure The Wrong Game Under A Quota](#99-proof-numbers-measure-the-wrong-game-under-a-quota)
 - [100. A Shared Table Makes The PV Stop Being A Function Of The Position](#100-a-shared-table-makes-the-pv-stop-being-a-function-of-the-position)
+- [101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else](#101-finding-only-mode-is-a-frontier-tool-and-costs-on-everything-else)
 
 ## Impact-Ordered Architecture
 
@@ -7555,3 +7556,35 @@ report must carry a certificate that verifies.
 The alternative -- private tables per worker -- would restore determinism and
 give up most of the speed. That trade is available and has not been taken,
 because the flag is opt-in and a user who asks for it has asked for the speed.
+
+### 101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else
+
+The restriction portfolio runs eight lanes: one unrestricted search plus seven
+that ban attacker moves outside some class. A restricted lane can FIND a win --
+restricting the attacker never manufactures one -- but it can never settle a
+disproof, because a lane that fails has only shown that the win is not in the
+class it was allowed to look at. Only lane 0 can say "no solution".
+
+That asymmetry is the whole of its cost profile, and the x-capture bench makes
+it plain. Fourteen positions, eight lanes at `-M 512` against a single
+unrestricted search at the same budget, verdicts identical throughout:
+
+| | normal | finding-only | cost |
+|---|---|---|---|
+| start, quota 3, depth 5 (no win) | 0.145 s | 0.805 s | 5.6x |
+| start, quota 2, depth 5 (**win**) | 0.223 s | 0.258 s | 1.15x |
+| ply-2 e3 Nh6, quota 3, depth 4 (no win) | 0.032 s | 0.187 s | 5.9x |
+
+Finding-only is slower on all fourteen. Thirteen of them are disproofs, where
+seven of the eight lanes are structurally incapable of contributing and spend
+the budget anyway; the single position with a win is the cheapest row in the
+table, because the unrestricted lane finds it about as fast on its own.
+
+This is not an argument against the portfolio, it is a statement of where it
+belongs. Its value is entirely at the frontier: a position the unrestricted
+search cannot resolve inside any budget you are willing to give it, where a
+restricted lane may still surface a win. On the quota-3 first moves that is
+exactly the situation -- nineteen of twenty are refuted outright and the
+twentieth resists every unrestricted attempt. Everywhere short of that, it is
+seven-eighths overhead, and the default of `--no-portfolio` for measurement work
+is right.
