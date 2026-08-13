@@ -239,6 +239,30 @@ inline void set_quota(Board& b, int colour, int rule, std::uint8_t value) {
     b.quota[quota_index(colour, rule)] = value;
 }
 
+// Can any variant quota still be FILLED within `moves` moves?
+//
+// A quota needs one qualifying event per unit and a side produces at most one
+// per move, so a quota standing above the move budget cannot be reached however
+// the game goes. When that is true of every live quota the position is a plain
+// chess problem again, and every shortcut the variant forced off becomes sound.
+//
+// `moves` must be an UPPER bound on the moves either side still has. Over-
+// estimating is the safe direction: the claim is only made when even a generous
+// count falls short.
+inline bool variant_reachable_within(const Board& b,
+                                     const std::array<bool, VR_COUNT>& rule_wins,
+                                     int moves) {
+    for (int colour = 0; colour < 2; ++colour) {
+        for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (!rule_wins[static_cast<std::size_t>(rule)]) continue;
+            const std::uint8_t q = quota_of(b, colour, rule);
+            if (q == kNoQuota) continue;
+            if (static_cast<int>(q) <= moves) return true;
+        }
+    }
+    return false;
+}
+
 // Is ANY variant rule in force? The guard that keeps standard chess free.
 inline bool variant_active(const Board& b) {
     for (std::uint8_t q : b.quota) {

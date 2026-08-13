@@ -17,7 +17,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth);
 
 // GAP-1's axioms. Defined below with their proofs; declared here because the
 // selfmate node routines come first in this file.
-inline bool position_is_refuted_axiomatically(const Search& s, const Board& b);
+inline bool position_is_refuted_axiomatically(const Search& s, const Board& b, int moves);
 
 // The shared reachability/coverage bound. Defined below, next to the helpmate
 // caller; declared here because the selfmate node routines come first.
@@ -364,7 +364,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         return check_end;
     }
     ++s.stats.attacker_nodes;
-    if (position_is_refuted_axiomatically(s, b)) {
+    if (position_is_refuted_axiomatically(s, b, depth)) {
         Proof out;
         out.refuted = true;
         // A refutation holds at EVERY depth, so it is the strongest failure
@@ -411,7 +411,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     // Placed after the terminal test above, so a position that is ALREADY
     // selfmate is reported before any bound can look at it.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        !variant_active(b) &&
+        !variant_reachable_static(b, s.rule_wins, depth) &&
         mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
@@ -871,7 +871,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
     // to arrive at this node. Overstating it would be safe, understating it
     // would not, so it is written out rather than approximated.
     if (s.goal == Goal::Selfmate && s.selfmate_bound &&
-        !variant_active(b) &&
+        !variant_reachable_static(b, s.rule_wins, depth) &&
         mate_out_of_reach(b, other(s.attacker), s.attacker, depth, depth - 1)) {
         ++s.stats.selfmate_unreachable_prunes;
         return {};
@@ -1206,7 +1206,7 @@ Proof prove_help(Search& s, const Board& b, int plies) {
         const Color mated = (plies % 2 == 0) ? b.stm : other(b.stm);
         const Color mating = other(mated);
         const int our_moves = (mating == b.stm) ? (plies + 1) / 2 : plies / 2;
-        if (!variant_active(b) &&
+        if (!variant_reachable_static(b, s.rule_wins, plies) &&
             mate_out_of_reach(b, mating, mated, our_moves, plies - our_moves)) {
             ++s.stats.help_unreachable_prunes;
             return {};
@@ -1492,7 +1492,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
 // king can absolutely force stalemate, and under selfmate the attacker is trying
 // to be mated rather than to mate, so the argument does not transfer. Goal
 // scope is the first thing to get wrong here.
-inline bool position_is_refuted_axiomatically(const Search& s, const Board& b) {
+inline bool position_is_refuted_axiomatically(const Search& s, const Board& b, int moves) {
     if (!s.any_depth_refutations) {
         return false;                 // inert by construction
     }
@@ -1502,8 +1502,11 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b) {
         // A lone king CAN capture, so under capture-win this would report a won
         // position as having no solution -- silently, which is the third time a
         // goal-specific shortcut has had to be gated for exactly this reason.
+        // A lone king cannot mate -- but it CAN capture, so the axiom stands
+        // down only while the capture quota is still REACHABLE. Past that point
+        // the king is back to needing a mate it cannot deliver.
         if (s.rule_wins[VR_CAPTURE] &&
-            (quota_of(b, s.attacker, VR_CAPTURE) != kNoQuota)) {
+            static_cast<int>(quota_of(b, s.attacker, VR_CAPTURE)) <= moves) {
             return false;
         }
         const std::uint64_t attacker_men = b.by_color[s.attacker];
@@ -1542,7 +1545,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         return check_end;
     }
     ++s.stats.attacker_nodes;
-    if (position_is_refuted_axiomatically(s, b)) {
+    if (position_is_refuted_axiomatically(s, b, depth)) {
         Proof out;
         out.refuted = true;
         return out;
@@ -1589,7 +1592,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // final check also wins -- and the node it would discard could hold one.
     if (s.coverage_exit && !s.coverage_observer && depth == 1 &&
         s.goal == Goal::Mate && !s.any_depth_refutations &&
-        !variant_active(b)) {
+        !variant_reachable_static(b, s.rule_wins, 1)) {
         ++s.stats.coverage_nodes;
         if (mate1_impossible_by_coverage(b)) {
             ++s.stats.coverage_exits;
@@ -1650,7 +1653,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // three moved the same way, so the honest figure is the one below and not
     // that one.
     if (s.coverage_observer && depth == 1 && s.goal == Goal::Mate &&
-        !variant_active(b)) {
+        !variant_reachable_static(b, s.rule_wins, 1)) {
         ++s.stats.coverage_nodes;
         if (mate1_impossible_by_coverage(b)) {
             ++s.stats.coverage_exits;
@@ -1757,7 +1760,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 std::cerr << "\n";
             }
         }
-        if (all_moves_refuted && !position_is_refuted_axiomatically(s, nb)) {
+        if (all_moves_refuted && !position_is_refuted_axiomatically(s, nb, depth)) {
             // Only a child that is itself Refuted keeps the claim alive. At
             // depth 1 no child is searched, so nothing below is Refuted and the
             // claim lapses -- which is correct: "no mate in 1" is not "no mate".

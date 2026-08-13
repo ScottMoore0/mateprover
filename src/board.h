@@ -696,6 +696,65 @@ bool is_attacked(const Board& b, int target, Color by) {
     return attacked_on_planes(b.occ, b.by_color, b.by_type, target, by);
 }
 
+// Does this side attack anything to capture RIGHT NOW?
+//
+// The first half of the capture-distance estimator. If a side attacks nothing,
+// its first capture cannot be this move, so q captures need at least q+1 moves.
+//
+// Contact is read off the attack map rather than by generating moves, so it
+// ignores pins and legality and OVER-states what is available. Over-stating is
+// the safe direction here: it can only make the estimator concede reachability
+// it might otherwise have denied, never claim an unreachability that is false.
+inline bool side_has_capture_contact(const Board& b, Color by) {
+    std::uint64_t enemy = b.by_color[other(by)];
+    while (enemy) {
+        const int sq = lsb_index(enemy);
+        enemy &= enemy - 1;
+        if (is_attacked(b, sq, by)) {
+            return true;
+        }
+    }
+    // An en-passant target may be capturable; assume it is rather than prove it.
+    return b.ep >= 0;
+}
+
+// `variant_reachable_within` sharpened by contact.
+//
+// The arithmetic test asks only whether the quota fits in the move budget. This
+// adds the move it takes to REACH something, and only where that extra move can
+// change the verdict -- when a capture quota exactly equals the budget. Anywhere
+// else the answer is already settled, so the attack-map scan never runs.
+inline bool variant_reachable_static(const Board& b,
+                                     const std::array<bool, VR_COUNT>& rule_wins,
+                                     int moves) {
+    if (!variant_reachable_within(b, rule_wins, moves)) {
+        return false;
+    }
+    if (!rule_wins[VR_CAPTURE]) {
+        return true;
+    }
+    // Is a capture quota the ONLY thing keeping this reachable, and is it exactly
+    // at the budget? Only then does one more move of setup decide it.
+    bool decided_by_capture_at_limit = false;
+    for (int colour = 0; colour < 2; ++colour) {
+        for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (!rule_wins[static_cast<std::size_t>(rule)]) continue;
+            const std::uint8_t q = quota_of(b, colour, rule);
+            if (q == kNoQuota) continue;
+            if (static_cast<int>(q) > moves) continue;
+            if (rule != VR_CAPTURE || static_cast<int>(q) != moves) {
+                return true;   // something else reaches with room to spare
+            }
+            if (!side_has_capture_contact(b, static_cast<Color>(colour))) {
+                decided_by_capture_at_limit = true;
+            } else {
+                return true;
+            }
+        }
+    }
+    return !decided_by_capture_at_limit;
+}
+
 bool in_check(const Board& b, Color c) {
     int k = king_square(b, c);
     return k < 0 || is_attacked(b, k, other(c));

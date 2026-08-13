@@ -304,7 +304,7 @@ Proof prove_shallow_mate2(Search& s, const Board& b) {
 RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
     ++s.stats.shallow_fast_attempts;
     RouteResult result;
-    if (variant_active(b)) {
+    if (variant_reachable_static(b, s.rule_wins, max_depth)) {
         ++s.stats.shallow_fast_fallbacks;
         return result;
     }
@@ -753,7 +753,7 @@ RouteResult run_route(Search& s, const Board& b, int max_depth) {
     // reports "not found within budget" rather than "no solution".
     //
     // Inert when the gate is off: the predicate returns false immediately.
-    if (position_is_refuted_axiomatically(s, b)) {
+    if (position_is_refuted_axiomatically(s, b, max_depth)) {
         RouteResult refuted;
         refuted.proof.refuted = true;
         return refuted;
