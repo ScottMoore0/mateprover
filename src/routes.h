@@ -340,6 +340,52 @@ RouteResult run_shallow_fast_route(Search& s, const Board& b, int max_depth) {
 // already settled subtrees and identified proof moves.
 RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
     RouteResult result;
+    // Root split for the DEFAULT route.
+    //
+    // This route had none, and it is the one almost every search takes: the
+    // depth-first route owned the only call to run_root_split_depth, so
+    // `--threads` on a default run allocated nothing and split nothing. A
+    // twelve-hour quota-3 search at `--threads 30` ran on ONE OS thread for its
+    // whole life, and section 32's "root-split parallelism contributes nothing"
+    // was measured against this same route -- identical times at 1, 8 and 32
+    // threads because the threads were never engaged, not because splitting
+    // fails to pay.
+    //
+    // The exact pass below is `prove_attacker`, which is precisely what
+    // run_root_split_depth parallelises, so this is a wiring change rather than
+    // a new algorithm. Workers are built lazily, so a position that resolves
+    // without splitting pays nothing.
+    std::vector<std::unique_ptr<Search>> workers;
+    std::vector<std::unique_ptr<WorkerSlot>> slots;
+    std::unique_ptr<SharedProofTable> shared_table;
+    const int thread_count = std::max(1, s.threads);
+    auto ensure_workers = [&]() {
+        if (!workers.empty()) {
+            return;
+        }
+        if (s.shared_tt) {
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb)));
+        }
+        workers.reserve(static_cast<std::size_t>(thread_count));
+        slots.reserve(static_cast<std::size_t>(thread_count));
+        for (int w = 0; w < thread_count; ++w) {
+            slots.emplace_back(new WorkerSlot());
+            auto ws = std::unique_ptr<Search>(new Search());
+            static_cast<SearchConfig&>(*ws) = static_cast<const SearchConfig&>(s);
+            ws->has_deadline = s.has_deadline;
+            ws->deadline = s.deadline;
+            ws->cancel = &slots.back()->cancel;
+            ws->external_cancel = s.cancel;
+            ws->shared_table = shared_table.get();
+            if (ws->shared_table == nullptr) {
+                ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                if (ws->tt_reserve > 0) {
+                    ws->tt.map.reserve(ws->tt_reserve);
+                }
+            }
+            workers.push_back(std::move(ws));
+        }
+    };
     // Honour --direct-depth like the depth-first route does. This was hardcoded
     // to 1, so the flag silently did nothing here: a comparison against the
     // other routes under --direct-depth was measuring iterative deepening
@@ -369,9 +415,23 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         }
         s.aborted = false;
 
-        result.proof = goal_is_self(s.goal)
-                         ? prove_selfmate_attacker(s, b, depth)
-                         : prove_attacker(s, b, depth);
+        // Selfmate keeps its own exact route, which has no root split of this
+        // shape; everything else splits when there is more than one worker and
+        // more than one ply to split.
+        if (goal_is_self(s.goal)) {
+            result.proof = prove_selfmate_attacker(s, b, depth);
+        } else if (s.root_split && thread_count > 1 && depth > 1) {
+            ensure_workers();
+            if (shared_table != nullptr) {
+                shared_table->import_from(s.tt);
+            }
+            Proof split;
+            if (run_root_split_depth(s, workers, slots, b, depth, split)) {
+                result.proof = std::move(split);
+            }
+        } else {
+            result.proof = prove_attacker(s, b, depth);
+        }
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);
             break;

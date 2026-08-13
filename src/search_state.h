@@ -131,6 +131,16 @@ struct SearchConfig {
     std::uint64_t dfpn_node_limit = 0; // 0 = unlimited
     // Root moves searched sequentially before the split. 0 splits everything.
     int root_sequential_first = 0;
+
+    // Split the root across workers on the DFPN route. OFF by default.
+    //
+    // The split engages correctly -- node counts move with the thread count,
+    // which they never did before -- but the suite's sequential-agreement check
+    // finds a case where the parallel answer differs from the single-threaded
+    // one, and an answer that depends on the thread count is not an answer this
+    // engine is allowed to give. Opt in with --root-split; the default stays
+    // bit-identical to the sequential search until that divergence is explained.
+    bool root_split = false;
     // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
     // working instead of bouncing straight back. Expressed in 1/64ths.
     // Precondition only the deepest iteration.

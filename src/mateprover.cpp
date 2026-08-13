@@ -507,6 +507,8 @@ const BoolOption kBoolOptions[] = {
     {"--eager-defender", &SearchConfig::lazy_defender, false},
     {"--fused-order", &SearchConfig::fused_order, true},
     {"--split-order", &SearchConfig::fused_order, false},
+    {"--root-split", &SearchConfig::root_split, true},
+    {"--no-root-split", &SearchConfig::root_split, false},
     {"--shared-tt", &SearchConfig::shared_tt, true},
     {"--private-tt", &SearchConfig::shared_tt, false},
 };
