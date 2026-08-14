@@ -336,6 +336,11 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"owner_wait_micros\":" << st.owner_wait_micros
               << ",\"root_work_micros\":" << st.root_work_micros
               << ",\"worker_micros\":" << st.worker_micros
+              << ",\"teardown_shared_micros\":" << st.teardown_shared_micros
+              << ",\"teardown_worker_micros\":" << st.teardown_worker_micros
+              << ",\"teardown_search_micros\":" << st.teardown_search_micros
+              << ",\"cross_lane_stores\":" << st.cross_lane_stores
+              << ",\"cross_lane_hits\":" << st.cross_lane_hits
               << ",\"dfpn_movegen\":" << st.dfpn_movegen
               << ",\"dfpn_mate_tests\":" << st.dfpn_mate_tests
               << ",\"timed_out\":" << (s.timed_out ? "true" : "false")

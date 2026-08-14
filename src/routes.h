@@ -500,6 +500,31 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
     if (shared_table != nullptr) {
         s.tt.evictions += shared_table->evictions();
     }
+    // Freeing is timed explicitly rather than left to scope exit, because 115
+    // found this was 44% of a deep run and "is any of it left" is a question
+    // only a counter can answer.
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        shared_table.reset();
+        const auto t1 = std::chrono::steady_clock::now();
+        // The workers' own maps are the other half of it: with a shared table
+        // their `tt` is empty, but each still carries a dfpn table and two hint
+        // maps that grew all search. They are independent objects, so they free
+        // concurrently for the same reason the shards do.
+        parallel_for_teardown(workers.size(), [&workers](std::size_t i) {
+            workers[i]->tt.map.clear();
+            workers[i]->dfpn_tt.clear();
+            workers[i]->attacker_proofs.clear();
+            workers[i]->defender_refutations.clear();
+        });
+        workers.clear();
+        slots.clear();
+        const auto t2 = std::chrono::steady_clock::now();
+        s.stats.teardown_shared_micros += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
+        s.stats.teardown_worker_micros += static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count());
+    }
     return result;
 }
 

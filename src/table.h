@@ -170,6 +170,47 @@ struct BoundedTable {
 // Storage is sharded so concurrent probes and stores on unrelated keys do not
 // serialise. The shard is chosen from the high bits of the key hash, which are
 // independent of the low bits an unordered_map uses for bucketing.
+// Run `body(i)` for i in [0, n) across up to `hardware_concurrency` threads.
+//
+// Only ever used for FREEING, which is why it can be this blunt: there is no
+// ordering, no result, no verdict and nothing to cancel, so a refused thread
+// costs time and nothing else. Deallocation is the one part of this program
+// where parallelism is embarrassing rather than speculative.
+template <typename Body>
+inline void parallel_for_teardown(std::size_t n, Body body) {
+    const unsigned hw = std::thread::hardware_concurrency();
+    const std::size_t lanes = std::min<std::size_t>(n, hw == 0 ? 1u : hw);
+    if (lanes <= 1 || n <= 1) {
+        for (std::size_t i = 0; i < n; ++i) {
+            body(i);
+        }
+        return;
+    }
+    std::atomic<std::size_t> next{0};
+    auto worker = [&] {
+        for (;;) {
+            const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+            if (i >= n) {
+                return;
+            }
+            body(i);
+        }
+    };
+    std::vector<std::thread> pool;
+    pool.reserve(lanes - 1);
+    for (std::size_t i = 1; i < lanes; ++i) {
+        try {
+            pool.emplace_back(worker);
+        } catch (const std::system_error&) {
+            break;      // this thread finishes the rest; only speed is lost
+        }
+    }
+    worker();
+    for (std::thread& t : pool) {
+        t.join();
+    }
+}
+
 class SharedProofTable {
 public:
     // FREE THE SHARDS IN PARALLEL.
@@ -191,35 +232,7 @@ public:
     // A refused thread is not an error here -- the remaining shards are freed
     // on this thread, exactly as before, and the only cost is time.
     ~SharedProofTable() {
-        const std::size_t n = shards_.size();
-        unsigned hw = std::thread::hardware_concurrency();
-        std::size_t lanes = std::min<std::size_t>(n, hw == 0 ? 1u : hw);
-        if (lanes <= 1 || n <= 1) {
-            return;
-        }
-        std::atomic<std::size_t> next{0};
-        auto body = [&] {
-            for (;;) {
-                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
-                if (i >= n) {
-                    return;
-                }
-                shards_[i].reset();
-            }
-        };
-        std::vector<std::thread> pool;
-        pool.reserve(lanes - 1);
-        for (std::size_t i = 1; i < lanes; ++i) {
-            try {
-                pool.emplace_back(body);
-            } catch (const std::system_error&) {
-                break;      // coverage is unaffected: this thread frees the rest
-            }
-        }
-        body();
-        for (std::thread& t : pool) {
-            t.join();
-        }
+        parallel_for_teardown(shards_.size(), [this](std::size_t i) { shards_[i].reset(); });
     }
 
     SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total) {

@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 564 automated checks cover perft against
+sharing no code with the engine. 567 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -664,3 +664,29 @@ almost nothing to recover at 256 MB.
 New `--profile` counters: `worker_micros`, `root_work_micros`,
 `split_work_micros`, `split_park_micros`, `owner_wait_micros`. See
 architecture 115.
+
+### Portfolio lanes now share their proofs
+
+The lanes solve different problems, so they cannot share a table in general.
+They can share proofs: a restriction only removes attacker options, so a mate
+forced with fewer options available is a mate forced with more. A restricted
+lane's proof is therefore valid unrestricted, while its disproof is valid for
+nothing but its own problem. One table carries proofs between every lane;
+nothing on the disproof side is written to it or read from it, enforced at both
+call sites rather than assumed.
+
+The hazard is minimality rather than validity -- a restricted lane can prove a
+longer mate than exists, and a wrong `dm N` is a wrong answer even when the mate
+is real -- so the gate compares (position, depth) pairs and permits only one
+kind of difference: a position that was unsolved becoming solved. Over 72
+positions no depth moved and none stopped being solved; 30 mate-in-8s at a 5 s
+cap went from 18 to 19 solved. On by default.
+
+### The rest of the teardown
+
+115 left 0.58 s of freeing unaccounted for. The workers' own DFPN and hint maps
+were the other half; they free concurrently now too, sharing one helper with the
+shard destructor. Depth 7 at 4 GB and 24 threads: 6.01 s to 3.89 s, with
+teardown down to 13% of the run from 44%. The single-threaded case is not fixed
+and is not instrumented -- with no root split there is no shared table, and the
+private one is freed outside the route.

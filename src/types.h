@@ -447,6 +447,14 @@ struct Stats {
     // figure: threads x wall clock over-counts, because a worker that has left
     // worker_body is not idle, it is gone.
     std::uint64_t worker_micros = 0;
+    // Time spent handing memory back after the verdict is known, split by what
+    // is being freed. 115 found this was 44% of a deep run; these say whether
+    // any of it is left and which container it is in.
+    std::uint64_t teardown_shared_micros = 0;
+    std::uint64_t teardown_worker_micros = 0;
+    std::uint64_t teardown_search_micros = 0;
+    std::uint64_t cross_lane_stores = 0;
+    std::uint64_t cross_lane_hits = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t deadline_checks = 0;
@@ -538,6 +546,11 @@ struct Stats {
         owner_wait_micros += o.owner_wait_micros;
         root_work_micros += o.root_work_micros;
         worker_micros += o.worker_micros;
+        teardown_shared_micros += o.teardown_shared_micros;
+        teardown_worker_micros += o.teardown_worker_micros;
+        teardown_search_micros += o.teardown_search_micros;
+        cross_lane_stores += o.cross_lane_stores;
+        cross_lane_hits += o.cross_lane_hits;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
         deadline_checks += o.deadline_checks;
@@ -566,7 +579,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 82 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 87 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

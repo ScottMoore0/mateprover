@@ -1229,6 +1229,55 @@ def test_splits_do_not_move_the_output(engine: Path, res: Results) -> None:
                       f"off={off!r} on={on!r}")
 
 
+def test_cross_lane_proofs_do_not_move_the_depth(engine: Path, res: Results) -> None:
+    """Sharing proofs between portfolio lanes may ADD verdicts, never change one.
+
+    The lanes solve DIFFERENT problems -- each restriction is a different
+    question -- so they cannot share a table in general. They can share proofs,
+    because a proof is the one statement that survives the difference: a
+    restriction only removes attacker options, so a mate forced with fewer
+    options available is a mate forced with more. Disproofs never leave the lane
+    that made them, and nothing on the disproof side is ever read.
+
+    The hazard this pins is not validity, it is MINIMALITY. The proof table's
+    stated precondition is that a proof depth is minimal, and a restricted lane
+    can prove a LONGER mate than exists because its restriction forbids the
+    short one. A non-minimal bound still answers "is there a mate within d"
+    correctly, so no verdict can be wrong -- what could move is the reported
+    DEPTH, and a wrong `dm N` is a wrong answer even when the mate is real.
+
+    So this compares the (position, depth) pairs and permits exactly one kind of
+    difference: a position that was unsolved becoming solved. Which LANE wins is
+    a race and the principal variation follows it, so neither is compared.
+    """
+    print("\n[portfolio] cross-lane proof sharing adds verdicts and changes none")
+
+    raw = (HERE / "mates.epd").read_text(encoding="utf-8")
+    depth_re = re.compile(r"^([^;]*);.*?(dm \d+)", re.M)
+
+    def verdicts(extra):
+        out = run(engine, ["--threads", "8", "--time-limit", "20", extra, "-"], raw)
+        found = {}
+        for line in out.splitlines():
+            if ";" not in line:
+                continue
+            fen = line.split(";", 1)[0].strip()
+            m = re.search(r"(dm \d+)", line)
+            found[fen] = m.group(1) if m else None
+        return found
+
+    off = verdicts("--no-cross-lane-proofs")
+    on = verdicts("--cross-lane-proofs")
+
+    res.check("cross-lane sharing reports on the same positions",
+              set(off) == set(on), f"{set(off) ^ set(on)}")
+    changed = [k for k in off if k in on and off[k] is not None and on[k] != off[k]]
+    res.check("no position's depth changes", not changed,
+              "; ".join(f"{k}: {off[k]} -> {on[k]}" for k in changed))
+    lost = [k for k in off if k in on and off[k] is not None and on[k] is None]
+    res.check("no position stops being solved", not lost, "; ".join(lost))
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3523,6 +3572,7 @@ def main() -> int:
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)
     test_splits_do_not_move_the_output(args.engine, res)
+    test_cross_lane_proofs_do_not_move_the_depth(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

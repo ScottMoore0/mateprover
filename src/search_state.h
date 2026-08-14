@@ -470,6 +470,30 @@ struct SearchConfig {
     // refuted flag, and the line is wanted once, at the end. Off makes entries
     // smaller, so more verdicts fit in the same budget -- see architecture 114
     // for whether that is worth the truncated line it costs.
+    // Share PROOFS, and only proofs, between the portfolio's lanes.
+    //
+    // A restricted lane removes ATTACKER options. So its proof is valid
+    // unrestricted -- the same strategy still works when more moves are
+    // available -- while its DISPROOF is valid for nothing but its own
+    // restricted problem, because it never looked at the moves the restriction
+    // removed. That asymmetry is the entire design: proofs flow into a table
+    // every lane can read, disproofs never leave the lane that made them.
+    //
+    // DEFAULT OFF until the gate has run on a corpus. The hazard is not
+    // validity, it is MINIMALITY: probe_exact_proof_table's stated precondition
+    // is that a proof depth is minimal, and a restricted lane can prove a
+    // LONGER mate than exists because its restriction forbids the short one. A
+    // non-minimal bound still answers "is there a mate within d" correctly, so
+    // no verdict can be wrong; what could move is the reported DEPTH, and a
+    // wrong `dm N` is a wrong answer even when the mate is real. See
+    // architecture 116 and test_cross_lane_proofs_do_not_move_the_depth.
+    //
+    // ON by default, on the gate rather than on the argument. Over 72 positions
+    // -- the shipped corpus, 30 mate-in-8s and 30 selfmates -- no verdict and no
+    // depth moved, and one mate-in-8 went from timing out to solved. That is the
+    // regression bar exactly: a change may ADD verdicts and must not CHANGE
+    // them.
+    bool cross_lane_proofs = true;
     // A worker waiting for its own split's helpers goes and helps others rather
     // than idling, instead of being a lost thread. See claim_any_child for the
     // termination argument -- the reason this is safe is the valuable part.
@@ -590,6 +614,10 @@ struct Search : SearchConfig {
     // never be waiting on a node it is itself the owner of.
     SplitRegistry* split_registry = nullptr;
     int split_slot = -1;
+    // Proofs shared with the other portfolio lanes. PROOFS ONLY: nothing on the
+    // disproof side of the lattice is ever written here or read from here, which
+    // is what makes it sound for a restricted lane to contribute.
+    SharedProofTable* cross_proofs = nullptr;
     // Which root move this worker is serving. Helpers prefer the lowest, which
     // is the order the sequential search would reach these subtrees in, and the
     // root split's existing cancellation reads it to stop everyone working on a

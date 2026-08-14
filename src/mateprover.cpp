@@ -604,6 +604,8 @@ const BoolOption kBoolOptions[] = {
     {"--no-root-split", &SearchConfig::root_split, false},
     {"--reply-split", &SearchConfig::reply_split, true},
     {"--no-reply-split", &SearchConfig::reply_split, false},
+    {"--cross-lane-proofs", &SearchConfig::cross_lane_proofs, true},
+    {"--no-cross-lane-proofs", &SearchConfig::cross_lane_proofs, false},
     {"--owner-helps", &SearchConfig::owner_helps, true},
     {"--no-owner-helps", &SearchConfig::owner_helps, false},
     {"--tt-lines", &SearchConfig::tt_lines, true},

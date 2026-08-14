@@ -511,6 +511,23 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             }
         }
 
+        // ONE PROOF TABLE FOR EVERY LANE, holding proofs and nothing else.
+        //
+        // The lanes solve DIFFERENT problems -- each restriction is a different
+        // question -- so they cannot share a table in general. They can share
+        // this one, because a proof is the one statement that survives the
+        // difference: a restriction only removes attacker options, so a mate
+        // forced with fewer options available is a mate forced with more.
+        //
+        // Sized like a lane's own table rather than the whole budget: it holds
+        // only the proved positions, which the counters put at about 7% of
+        // stores.
+        std::unique_ptr<SharedProofTable> cross_proofs;
+        if (config.cross_lane_proofs) {
+            cross_proofs.reset(new SharedProofTable(
+                config.shared_tt_shards, 0,
+                entry_capacity_for_mb(memory_share(static_cast<std::size_t>(lanes)))));
+        }
         std::vector<std::unique_ptr<Search>> searches;
         std::vector<std::unique_ptr<std::atomic<bool>>> cancels;
         std::vector<RouteResult> results(static_cast<std::size_t>(lanes));
@@ -535,6 +552,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.root_depth = max_depth;
             t.portfolio = false;
             t.portfolio_parallel = false;
+            t.cross_proofs = cross_proofs.get();
             t.threads = lane_threads[static_cast<std::size_t>(i)];
             t.checks_mask = entries[static_cast<std::size_t>(i)].checks_mask;
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;

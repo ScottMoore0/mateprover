@@ -193,6 +193,7 @@ did. If you are reading it for the first time:
 - [113. Supply Follows Demand, And The Deeper Decomposition Was Right After All](#113-supply-follows-demand-and-the-deeper-decomposition-was-right-after-all)
 - [114. Four Leads, One Bug, And Three Rejections](#114-four-leads-one-bug-and-three-rejections)
 - [115. The Idle Time Was Not Idle Time. It Was The Free.](#115-the-idle-time-was-not-idle-time-it-was-the-free)
+- [116. Sharing Proofs Between Lanes, And The Last Of The Free](#116-sharing-proofs-between-lanes-and-the-last-of-the-free)
 
 ## Impact-Ordered Architecture
 
@@ -8701,3 +8702,82 @@ were spent proposing fixes for a parallel loss that was, in the end, 44% a call
 to `operator delete` -- and the instrument that would have shown it was four
 counters and an afternoon. Measure the denominator before optimising the
 numerator.
+
+### 116. Sharing Proofs Between Lanes, And The Last Of The Free
+
+Two items from 115, both landed.
+
+#### The rest of the teardown
+
+115 parallelised the shared table's destructor and left 0.58 s unaccounted.
+Timing the teardown by container, depth 7 at 4 GB and 24 threads:
+
+| | before | after |
+|---|---:|---:|
+| shared table | 2.65 s | 0.43 s |
+| worker searches | 0.20 s | 0.07 s |
+| wall clock | 6.01 s | **3.89 s** |
+
+The workers' own maps were the other half: with a shared table their `tt` is
+empty, but each still carries a DFPN table and two hint maps that grew all
+search. They are independent objects, so they free concurrently for the same
+reason the shards do, and the shard destructor and this now share one
+`parallel_for_teardown`.
+
+What is left is 0.50 s of 3.89 s -- 13%, against 44% before -- and most of it is
+the shards themselves, which are already running on every core. The
+single-threaded case is NOT fixed: with no root split there is no shared table,
+the private one is freed by the `Search` destructor outside the route, and the
+counters read zero because nothing instruments it. Stated rather than left to be
+discovered.
+
+#### Proofs cross lane boundaries; disproofs do not
+
+The portfolio's lanes solve DIFFERENT problems -- each restriction is a different
+question -- so they cannot share a table in general. They can share proofs,
+because a proof is the one statement that survives the difference:
+
+> A restriction only removes ATTACKER options. A mate forced with fewer options
+> available is a mate forced with more, so a restricted lane's proof is valid
+> unrestricted at the same depth bound. Its DISPROOF is valid for nothing but its
+> own problem, because it never looked at the moves the restriction removed.
+
+So there is one table every lane can write proofs to and read proofs from, and
+nothing on the disproof side is ever written to it or read from it. Both halves
+are enforced at the call sites rather than relied upon: the store path takes only
+`proof.ok`, and the probe path takes only the `depth >= min_proved` branch.
+
+**The hazard is minimality, not validity.** `probe_exact_proof_table`'s stated
+precondition is that a proof depth is minimal, and a restricted lane can prove a
+LONGER mate than exists, because its restriction forbids the short one. A
+non-minimal bound still answers "is there a mate within d" correctly, so no
+verdict can be wrong; what could move is the reported DEPTH, and a wrong `dm N`
+is a wrong answer even when the mate is real.
+
+That is why the gate compares (position, depth) pairs and nothing else. Over 72
+positions -- the shipped corpus, 30 mate-in-8s and 30 selfmates -- no depth moved
+and no position stopped being solved. One mate-in-8 went from timing out to
+`dm 8`. Selfmate, where the restricted lanes do most of the work, was 30/30 both
+ways with identical depths.
+
+| corpus | without | with |
+|---|---|---|
+| tests/mates.epd | all solved, identical depths | identical |
+| 30 mate-in-8, 5 s cap | 18/30 | **19/30** |
+| 30 selfmate, 5 s cap | 30/30 | 30/30, identical depths |
+
+Which LANE wins does change, and the principal variation follows it -- the lanes
+race, and warming one changes who gets there first. That is the same contract the
+root split has carried since 100: the answer is a function of the position, the
+line is not. Neither is compared by the gate.
+
+On by default, on the gate rather than on the argument: it adds a verdict and
+changes none, which is the standing regression bar.
+
+#### What the counters say about headroom
+
+18 proof stores and 0 cross-lane hits on a mate-in-5 that resolves in
+milliseconds -- the lanes finish before they can help each other. The gain is at
+the other end, on positions near the time limit, which is exactly where the one
+recovered mate-in-8 came from. Anyone tuning this should look at
+`cross_lane_hits` on long positions and ignore it on short ones.

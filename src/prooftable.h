@@ -28,12 +28,30 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
     }
     ++s.stats.tt_probes;
     TTEntry entry;
+    bool have = false;
     if (s.shared_table != nullptr) {
-        if (!s.shared_table->probe(key, entry)) {
+        have = s.shared_table->probe(key, entry);
+    } else {
+        have = s.tt.probe(key, entry);
+    }
+    if (!have) {
+        // Fall back to the cross-lane PROOF table, and take only the proof
+        // branch from it. An entry there may have been written by a lane
+        // searching a restricted problem, whose disproofs mean nothing here --
+        // so nothing on the disproof side is consulted, and by construction
+        // nothing on the disproof side was ever written.
+        if (s.cross_proofs == nullptr || !s.cross_proofs->probe(key, entry)) {
             return false;
         }
-    } else if (!s.tt.probe(key, entry)) {
-        return false;
+        if (entry.min_proved == TTEntry::NO_PROOF || depth < entry.min_proved) {
+            ++s.stats.tt_known_weaker;
+            return false;
+        }
+        ++s.stats.tt_hits;
+        ++s.stats.exact_tt_proof_hits;
+        ++s.stats.cross_lane_hits;
+        out = {true, std::move(entry.pv), std::move(entry.cert)};
+        return true;
     }
     // Refuted is depth-independent by construction, so it answers any query
     // regardless of the depth asked for. It is checked FIRST: it is the
@@ -105,6 +123,13 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
         s.shared_table->merge(key, bound, proof.ok, line, cert, proof.refuted);
     } else {
         s.tt.merge(key, bound, proof.ok, line, cert, proof.refuted);
+    }
+    // Publish PROOFS to the other lanes. Never a disproof and never the refuted
+    // flag: those are statements about the restricted problem this lane is
+    // solving, and no other lane is solving that problem.
+    if (s.cross_proofs != nullptr && proof.ok) {
+        ++s.stats.cross_lane_stores;
+        s.cross_proofs->merge(key, depth, true, line, cert, false);
     }
 }
 
