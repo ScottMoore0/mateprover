@@ -96,8 +96,8 @@ struct SearchConfig {
     // overrides the lot. `rule_wins` decides what reaching a quota MEANS under a
     // mate goal: a win in the variant's own terms, or -- switched off -- nothing,
     // for the problemist who stipulated checkmate.
-    std::array<int, kQuotaSlots> quota_limit{{-1, -1, -1, -1}};
-    std::array<bool, VR_COUNT> rule_wins{{true, true}};
+    std::array<int, kQuotaSlots> quota_limit{{-1, -1, -1, -1, -1, -1}};
+    std::array<bool, VR_COUNT> rule_wins{{true, true, true}};
     // Act on the rejection test rather than merely counting it.
     bool attacker_reject = true;
     // Remaining depth at or above which replies are ordered. Below it the

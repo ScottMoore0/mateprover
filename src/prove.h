@@ -1509,6 +1509,16 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b, i
             static_cast<int>(quota_of(b, s.attacker, VR_CAPTURE)) <= moves) {
             return false;
         }
+        // ESCAPE stands the axiom down outright. "A lone king cannot mate" is
+        // true and irrelevant here: a lone king can capture the man shielding
+        // the enemy king, and raising the enemy's E is the win. No move-budget
+        // test can rescue it either, because E has no per-move ceiling to bound
+        // it with -- see variant_reachable_within.
+        if (s.rule_wins[VR_ESCAPE] &&
+            (quota_of(b, WHITE, VR_ESCAPE) != kNoQuota ||
+             quota_of(b, BLACK, VR_ESCAPE) != kNoQuota)) {
+            return false;
+        }
         const std::uint64_t attacker_men = b.by_color[s.attacker];
         return attacker_men == (attacker_men & b.by_type[PT_KING]);
     }

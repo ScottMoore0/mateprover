@@ -414,6 +414,9 @@ inline bool parse_variant_field(const std::string& token,
         } else if (term.rfind("cap", 0) == 0) {
             rule = VR_CAPTURE;
             body = term.substr(3);
+        } else if (term.rfind("esc", 0) == 0) {
+            rule = VR_ESCAPE;
+            body = term.substr(3);
         }
         if (!parse_quota_pair(body, rule, out)) return false;
         any = true;
@@ -576,10 +579,18 @@ std::string fen4(const Board& b) {
     // A check-only position emits the bare `3+3` it always did, for the same
     // reason: that spelling is already in corpora and in the suite.
     if (variant_active(b)) {
-        const bool checks_only =
-            quota_of(b, WHITE, VR_CAPTURE) == kNoQuota &&
-            quota_of(b, BLACK, VR_CAPTURE) == kNoQuota;
-        const char* tags[VR_COUNT] = {"chk", "cap"};
+        // The untagged '3+3' shorthand means CHECKS, so it may be used only when
+        // checks are the only rule in force. Adding a third rule without adding
+        // it here would have printed an escape limit in the shorthand, where a
+        // reader -- and this engine's own parser -- would read it as checks.
+        bool checks_only = true;
+        for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (rule == VR_CHECK) continue;
+            if (quota_of(b, WHITE, rule) != kNoQuota || quota_of(b, BLACK, rule) != kNoQuota) {
+                checks_only = false;
+            }
+        }
+        const char* tags[VR_COUNT] = {"chk", "cap", "esc"};
         out << ' ';
         bool first = true;
         for (int rule = 0; rule < VR_COUNT; ++rule) {

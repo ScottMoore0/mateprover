@@ -123,6 +123,22 @@ void print_usage() {
 "                                two sides. Range 1..126. A fifth Forsyth field\n"
 "                                states quotas tagged, 'chk3+3,cap5+2'; an\n"
 "                                untagged '3+3' still means checks\n"
+"  --escape N | W:B              x-escape chess: a side LOSES when its own king\n"
+"                                reaches an escape count of N. E is how many\n"
+"                                squares that king could legally step to, so a\n"
+"                                king walled in by its own men has E 0, and the\n"
+"                                starting array is 0 for both sides. The THIRD\n"
+"                                variant rule, and unlike the first two it is not\n"
+"                                a countdown: E is measured afresh at every\n"
+"                                position, can rise or fall, and reaching the\n"
+"                                limit LOSES rather than wins -- so the winner is\n"
+"                                the other side. W:B differs the two sides.\n"
+"                                Range 1..8; a king's ring holds at most 8\n"
+"                                squares, and a limit of 0 would end every game\n"
+"                                at once. See also --escape-count\n"
+"  --escape-win | --no-escape-win\n"
+"                                default: on. Whether reaching the escape limit\n"
+"                                ends the game at all\n"
 "  --check-win | --no-check-win  default: on. Under --goal mate, whether filling\n"
 "                                the CHECK quota counts as forcing the win. Off\n"
 "                                demands checkmate specifically\n"
@@ -830,6 +846,33 @@ int main(int argc, char** argv) {
             }
             config.quota_limit[quota_index(WHITE, rule)] = w;
             config.quota_limit[quota_index(BLACK, rule)] = bl;
+        } else if (arg == "--escape") {
+            const char* v = need_value(i);
+            if (v == nullptr) return usage_error("option '--escape' requires a value");
+            std::string text(v);
+            const std::size_t colon = text.find(':');
+            const std::string left = text.substr(0, colon);
+            const std::string right = colon == std::string::npos ? left
+                                                                 : text.substr(colon + 1);
+            for (const std::string* part : {&left, &right}) {
+                if (part->empty() || part->find_first_not_of("0123456789") != std::string::npos) {
+                    return usage_error("option '--escape' wants N or W:B");
+                }
+            }
+            const int w = std::atoi(left.c_str()), bl = std::atoi(right.c_str());
+            // 1..8, not 1..126. E counts a king's ring, which holds eight squares
+            // in the interior and fewer at an edge, so a limit above 8 can never
+            // be reached and a limit of 0 is reached by every position at once.
+            // Refused rather than clamped, as the quotas are.
+            if (w < 1 || w > 8 || bl < 1 || bl > 8) {
+                return usage_error("option '--escape' wants 1..8 a side");
+            }
+            config.quota_limit[quota_index(WHITE, VR_ESCAPE)] = w;
+            config.quota_limit[quota_index(BLACK, VR_ESCAPE)] = bl;
+        } else if (arg == "--escape-win") {
+            config.rule_wins[VR_ESCAPE] = true;
+        } else if (arg == "--no-escape-win") {
+            config.rule_wins[VR_ESCAPE] = false;
         } else if (arg == "--check-win") {
             config.rule_wins[VR_CHECK] = true;
         } else if (arg == "--no-check-win") {

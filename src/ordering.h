@@ -75,6 +75,15 @@ int check_term(bool gives_check, Goal goal) {
 // surrendered the prune almost everywhere it was still valid.
 inline bool last_ply_win_needs_check(const std::array<bool, VR_COUNT>& rule_wins,
                                      const Board& b, Color attacker) {
+    // A winning move need not be a check under ESCAPE either: withdrawing a
+    // piece, or capturing a shield, wins while giving no check at all. Tested
+    // before the capture rule because it is unconditional -- there is no
+    // equivalent of the quota-of-one narrowing below.
+    if (rule_wins[VR_ESCAPE] &&
+        (quota_of(b, WHITE, VR_ESCAPE) != kNoQuota ||
+         quota_of(b, BLACK, VR_ESCAPE) != kNoQuota)) {
+        return false;
+    }
     if (!rule_wins[VR_CAPTURE]) {
         return true;
     }
@@ -259,8 +268,23 @@ TTKey tt_key(const Board& b, int depth, char kind, Color attacker, Goal goal) {
     // side are exactly the men the other has lost since the root. They are keyed
     // anyway: that derivation holds only while a table never spans two roots,
     // which is true today and enforced nowhere.
+    // Six slots at seven bits each would run to bit 66 and wrap, so the escape
+    // slots are skipped -- and skipping them is not a compromise, it is correct.
+    //
+    // A key exists to separate two positions that differ in STATE. The check and
+    // capture quotas are state: the same board can be reached having given a
+    // different number of checks. An escape threshold is a CONSTANT of the
+    // search, identical at every node a table ever holds, so keying it would
+    // separate nothing. And E itself needs no bits either: it is a pure function
+    // of the position, so `k.board` already distinguishes every value it can
+    // take. Two nodes agreeing on the board agree on E.
     for (std::size_t i = 0; i < b.quota.size(); ++i) {
-        k.context |= static_cast<std::uint64_t>(b.quota[i] & 0x7fu) << (25 + 7 * i);
+        if (static_cast<int>(i % static_cast<std::size_t>(VR_COUNT)) == VR_ESCAPE) {
+            continue;
+        }
+        const std::size_t slot = (i / static_cast<std::size_t>(VR_COUNT)) * 2u
+                               + (i % static_cast<std::size_t>(VR_COUNT));
+        k.context |= static_cast<std::uint64_t>(b.quota[i] & 0x7fu) << (25 + 7 * slot);
     }
     return k;
 }

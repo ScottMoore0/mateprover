@@ -189,7 +189,24 @@ inline PieceType type_of(char p) {
 // that must stand down, and -- worst -- a third hunt for the five separate
 // places that decide "this move ends the game now". Adding a rule here should be
 // adding a vocabulary entry.
-enum VariantRule { VR_CHECK = 0, VR_CAPTURE = 1, VR_COUNT = 2 };
+// VR_ESCAPE is a rule of a DIFFERENT KIND from the first two, and the slot it
+// occupies in this enumerator is the only thing it shares with them.
+//
+// A check quota and a capture quota count EVENTS a side produces, decrement
+// toward zero, and are filled by the side that wins. An escape threshold counts
+// nothing: E is recomputed from the position at every node, can rise as well as
+// fall, and the number stored is a fixed LIMIT rather than a remaining balance.
+// A side LOSES when its own king reaches it, so the winner is the other side --
+// the reverse of both existing rules. The array is still called `quota` because
+// renaming it would touch every rule; read the escape slots as "the E this side
+// may not reach".
+enum VariantRule { VR_CHECK = 0, VR_CAPTURE = 1, VR_ESCAPE = 2, VR_COUNT = 3 };
+
+// E, the escape count, is defined in board.h -- it needs attack generation. The
+// declaration lives here so the terminal predicate below can call it; one
+// translation unit, so the definition arriving later is enough.
+struct Board;
+inline int escape_count(const Board& b, Color side);
 
 // Seven bits a side per rule in the transposition key's context word, so 126 is
 // the largest quota and 127 means the rule is not in force. Refused above that
@@ -228,7 +245,7 @@ struct Board {
     // Boards are constructed as scratch probes in several places and every one of
     // them means standard chess.
     std::array<std::uint8_t, kQuotaSlots> quota{
-        {kNoQuota, kNoQuota, kNoQuota, kNoQuota}};
+        {kNoQuota, kNoQuota, kNoQuota, kNoQuota, kNoQuota, kNoQuota}};
 };
 
 inline std::uint8_t quota_of(const Board& b, int colour, int rule) {
@@ -257,6 +274,19 @@ inline bool variant_reachable_within(const Board& b,
             if (!rule_wins[static_cast<std::size_t>(rule)]) continue;
             const std::uint8_t q = quota_of(b, colour, rule);
             if (q == kNoQuota) continue;
+            // ESCAPE HAS NO SUCH BOUND, and claiming one would be unsound.
+            //
+            // The whole argument here is that a side produces at most one
+            // qualifying event per move, so a quota above the move budget is out
+            // of reach. E is not produced, it is MEASURED: a single capture of a
+            // piece shielding the king, or the withdrawal of a piece that was
+            // covering three ring squares, can move it by several at once, and it
+            // can move in either direction. There is no per-move ceiling to lean
+            // on, so a live escape rule always reports "reachable" and every
+            // shortcut resting on this stands down. Conservative and slow, which
+            // is the only safe direction for a predicate whose false positives
+            // discard real solutions.
+            if (rule == VR_ESCAPE) return true;
             if (static_cast<int>(q) <= moves) return true;
         }
     }
@@ -294,7 +324,33 @@ struct VariantWin {
 inline VariantWin variant_winner(const Board& b) {
     for (int colour = 0; colour < 2; ++colour) {
         for (int rule = 0; rule < VR_COUNT; ++rule) {
+            if (rule == VR_ESCAPE) {
+                continue;   // not a countdown; handled below
+            }
             if (quota_of(b, colour, rule) == 0) return VariantWin{colour, rule};
+        }
+    }
+    // Escape is checked last and reads the opposite way: the side whose own king
+    // has reached its limit LOSES, so the winner is its opponent.
+    //
+    // The side to move is tested FIRST, which is the tie-break for the case both
+    // kings are over their limit at once -- reachable, since one move can both
+    // expose your king and stop covering the enemy's. A player is answerable for
+    // the position after their own move, the same principle that makes leaving
+    // your own king in check your problem rather than your opponent's. Note the
+    // side to move here is the side that is ABOUT to move, so this attributes the
+    // loss to whoever created the position: the previous mover's opponent is on
+    // move, and their king being over the limit is the previous mover's doing.
+    // `other()` is declared later in the unit, so the colour flip is written out.
+    const int mover = 1 - static_cast<int>(b.stm);
+    for (int i = 0; i < 2; ++i) {
+        const int colour = (i == 0) ? mover : static_cast<int>(b.stm);
+        const std::uint8_t limit = quota_of(b, colour, VR_ESCAPE);
+        if (limit == kNoQuota) {
+            continue;
+        }
+        if (escape_count(b, static_cast<Color>(colour)) >= static_cast<int>(limit)) {
+            return VariantWin{1 - colour, VR_ESCAPE};
         }
     }
     return VariantWin{};
@@ -304,7 +360,9 @@ inline VariantWin variant_winner(const Board& b) {
 // than shared, because docs/PROOF_FORMAT.md promises an existing field's meaning
 // will not change -- so `checkwin` stays what it was and captures get their own.
 inline const char* variant_win_key(int rule) {
-    return rule == VR_CAPTURE ? "capturewin" : "checkwin";
+    if (rule == VR_CAPTURE) return "capturewin";
+    if (rule == VR_ESCAPE) return "escapewin";
+    return "checkwin";
 }
 
 struct Stats {

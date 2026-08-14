@@ -307,8 +307,23 @@ inline int variant_win_reached(const Board& nb, Goal goal, Color attacker,
         return -1;
     }
     for (int rule = 0; rule < VR_COUNT; ++rule) {
+        if (rule == VR_ESCAPE) {
+            continue;   // not a countdown; read the other way round below
+        }
         if (rule_wins[rule] && quota_of(nb, attacker, rule) == 0) {
             return rule;
+        }
+    }
+    // Escape reads inverted: the attacker wins when the DEFENDER's own king has
+    // reached ITS limit, not when the attacker fills a quota of his own. Getting
+    // this backwards would hand the attacker a win for exposing his own king,
+    // which is the losing condition, so the asymmetry is written out rather than
+    // folded into the loop above.
+    if (rule_wins[VR_ESCAPE]) {
+        const Color defender = other(attacker);
+        const std::uint8_t limit = quota_of(nb, defender, VR_ESCAPE);
+        if (limit != kNoQuota && escape_count(nb, defender) >= static_cast<int>(limit)) {
+            return VR_ESCAPE;
         }
     }
     return -1;
