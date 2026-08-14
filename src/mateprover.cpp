@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -217,6 +218,19 @@ void print_usage() {
 "  --root-sequential-first N     search N root moves sequentially before\n"
 "                                splitting; cuts wasted parallel work\n"
 "  --root-split-all              default; split every root move\n"
+"  --reply-split                 take the split a second ply down: a worker\n"
+"                                that runs out of root moves helps prove\n"
+"                                another root move's DEFENDER replies. OFF by\n"
+"                                default because it LOSES -- a defender node\n"
+"                                that ends up refuted stops at its first\n"
+"                                refuting reply, so helpers prove replies the\n"
+"                                sequential search never visits. Measured at\n"
+"                                4.4x slower on a depth-7 capture quota. The\n"
+"                                answer, the line and the certificate are\n"
+"                                unchanged either way. See architecture 111\n"
+"  --reply-split-min-proved N    replies a node must have proved before helpers\n"
+"                                may join it (default 2). 0 is the ungated\n"
+"                                mechanism the measurement above rejected\n"
 "  --shared-tt | --private-tt    share one exact proof table across workers\n"
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
 "  --tt-reserve N                pre-reserve N table buckets\n"
@@ -569,6 +583,8 @@ const BoolOption kBoolOptions[] = {
     {"--split-order", &SearchConfig::fused_order, false},
     {"--root-split", &SearchConfig::root_split, true},
     {"--no-root-split", &SearchConfig::root_split, false},
+    {"--reply-split", &SearchConfig::reply_split, true},
+    {"--no-reply-split", &SearchConfig::reply_split, false},
     {"--shared-tt", &SearchConfig::shared_tt, true},
     {"--private-tt", &SearchConfig::shared_tt, false},
 };
@@ -751,6 +767,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--root-sequential-first' expects a number");
             config.root_sequential_first = static_cast<int>(value);
+        } else if (arg == "--reply-split-min-proved") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--reply-split-min-proved' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--reply-split-min-proved' expects a number");
+            config.reply_split_min_proved = static_cast<int>(value);
         } else if (arg == "--root-split-all") {
             config.root_sequential_first = 0;
         } else if (arg == "--portfolio-parallel") {

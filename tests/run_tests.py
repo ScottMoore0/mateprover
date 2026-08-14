@@ -1172,6 +1172,54 @@ def test_root_split_proves_the_same_answer(engine: Path, res: Results) -> None:
     res.check("the sequential certificate verifies", ok, why)
 
 
+def test_reply_split_does_not_move_the_output(engine: Path, res: Results) -> None:
+    """--reply-split shares a defender node's replies out. It must change NOTHING.
+
+    A stronger contract than the root split's, deliberately. The root split is
+    allowed to report a different principal variation, because a worker can walk
+    into a subtree a sibling proved (100). The reply split is allowed no such
+    licence: it composes its per-reply results back in REPLY-INDEX order, so the
+    branch certificates, the representative line and -- above all -- which reply
+    is treated as the refutation are exactly what prove_defender's sequential
+    loop would have produced.
+
+    That contract is the only gate worth having here, because the failure mode is
+    not a crash. A composition that accepted a proof while one branch had merely
+    been ABANDONED would emit a certificate for a mate that does not exist, in
+    the same shape as a true one. So this compares the whole output line, byte
+    for byte, against the run without the mechanism.
+
+    Both arms fix the thread count, since the root split above may legally move
+    the PV between thread counts and that would mask what is being tested.
+    """
+    print("\n[split] --reply-split leaves the answer, the line and the proof alone")
+
+    cases = [
+        ("6k1/8/8/8/8/5K2/5Q1N/8 w - -", ["-z", "5"], "a directmate"),
+        ("8/2k5/8/4K1R1/8/8/6Q1/8 w - -", ["-z", "3"], "a shallow directmate"),
+        # No solution at the requested depth: the arm that exercises the
+        # refutation composition rather than the proof one.
+        ("8/8/8/4k3/8/8/8/4K2R w - -", ["-z", "2"], "a position with no mate"),
+        # Under a capture quota, the workload the mechanism was built for.
+        ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - -",
+         ["--captures", "2", "-z", "5"], "an x-capture win"),
+    ]
+    # acn and acs are the two fields that MAY move: helpers change how much work
+    # is done and how long it takes, which is the entire point of them. Nothing
+    # else on the line is allowed to.
+    effort = re.compile(r"ac[ns] [0-9.]+;\s*")
+
+    for fen, extra, label in cases:
+        base = ["--no-portfolio", "--emit-proof", "--threads", "8", *extra]
+        off = effort.sub("", run(engine, [*base, "--no-reply-split", "-"], f"{fen}\n").strip())
+        # min-proved 0 is the ungated mechanism: helpers pile in from the first
+        # reply, so it is the setting under which a composition bug would show.
+        on = effort.sub("", run(engine, [*base, "--reply-split", "--reply-split-min-proved", "0", "-"],
+                                f"{fen}\n").strip())
+        res.check(f"--reply-split output is unchanged on {label}", off == on,
+                  f"off={off!r} on={on!r}")
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3465,6 +3513,7 @@ def main() -> int:
     test_progress_publishes_only_proven_bounds(args.engine, res)
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)
+    test_reply_split_does_not_move_the_output(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

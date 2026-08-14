@@ -329,6 +329,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"dfpn_table_size\":" << st.dfpn_table_size
               << ",\"root_sequential_tried\":" << st.root_sequential_tried
               << ",\"root_sequential_hits\":" << st.root_sequential_hits
+              << ",\"reply_split_claims\":" << st.reply_split_claims
+              << ",\"reply_split_helped\":" << st.reply_split_helped
               << ",\"dfpn_movegen\":" << st.dfpn_movegen
               << ",\"dfpn_mate_tests\":" << st.dfpn_mate_tests
               << ",\"timed_out\":" << (s.timed_out ? "true" : "false")

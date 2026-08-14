@@ -427,6 +427,13 @@ struct Stats {
     std::uint64_t dfpn_abandoned = 0;
     std::uint64_t root_sequential_tried = 0;
     std::uint64_t root_sequential_hits = 0;
+    // Second-ply split: defender replies claimed in total, and the share of
+    // them claimed by a worker that did not own the node. The second number is
+    // the whole point -- it is work that would otherwise have been done by one
+    // thread while the rest idled -- and if it is zero the mechanism did not
+    // engage, whatever the wall clock says.
+    std::uint64_t reply_split_claims = 0;
+    std::uint64_t reply_split_helped = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t deadline_checks = 0;
@@ -511,6 +518,8 @@ struct Stats {
         dfpn_abandoned += o.dfpn_abandoned;
         root_sequential_tried += o.root_sequential_tried;
         root_sequential_hits += o.root_sequential_hits;
+        reply_split_claims += o.reply_split_claims;
+        reply_split_helped += o.reply_split_helped;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
         deadline_checks += o.deadline_checks;
@@ -539,7 +548,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 75 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 77 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

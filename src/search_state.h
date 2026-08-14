@@ -156,6 +156,41 @@ struct SearchConfig {
     // alone, which is what a caller diffing output against a stored expectation
     // wants.
     bool root_split = true;
+    // The SECOND ply of the split: share out one root move's defender replies.
+    //
+    // DEFAULT OFF, on measurement, and the measurement refuted the argument
+    // that motivated the mechanism rather than merely its tuning.
+    //
+    // The argument: splitting the root alone saturates at 4.75x, and Amdahl
+    // says why -- one root move owns about a fifth of the tree, 1/0.21 = 4.76,
+    // and at the tail one worker grinds on that move while the rest have no
+    // index left to claim. Give them the move's defender REPLIES. A defender
+    // node is a conjunction, the attacker needs the goal after every reply, so
+    // helpers there are not speculative.
+    //
+    // The flaw: that conjunction only has to be COMPLETED when the node ends up
+    // proved. A node that ends up refuted early-exits at its first refuting
+    // reply -- which reply ordering and the refutation-hint table between them
+    // make the first reply most of the time -- so it costs one subtree
+    // sequentially and helpers charge in to prove twenty more that sequential
+    // never looks at. On a no-solution position EVERY node is refuted, and a
+    // no-solution position is precisely the workload the 4.75x was measured on.
+    //
+    // Measured, 24 threads: depth-7 capture quota 7.08 s -> 31.7 s and 21.1M
+    // nodes -> 57.1M; twelve mate-in-10s 141.6 s -> 153.2 s and one fewer
+    // solved. Gating helpers behind `reply_split_min_proved` removes the
+    // damage exactly by never firing -- 120 replies claimed, 0 by a helper --
+    // which is the finding stated as a counter.
+    //
+    // The mechanism is sound and stays: it composes its results in reply-index
+    // order, so the verdict, the line and the certificate are bit-identical to
+    // the sequential loop's, and the suite checks that. What is wrong with it
+    // is the ply it splits, not the way it splits. See architecture 111.
+    bool reply_split = false;
+    // How many replies a defender node must have PROVED before helpers may
+    // join it. The gate that decides whether the mechanism above pays; see
+    // claim_any_reply and architecture 111.
+    int reply_split_min_proved = 2;
     // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
     // working instead of bouncing straight back. Expressed in 1/64ths.
     // Precondition only the deepest iteration.

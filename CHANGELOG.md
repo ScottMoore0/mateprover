@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 552 automated checks cover perft against
+sharing no code with the engine. 556 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -544,3 +544,25 @@ nodes, and near the leaves where the subtree beneath is already almost free) and
 a bitboard rewrite (measured: no concentrated hotspot to justify it). Each is
 recorded with its numbers in `docs/ARCHITECTURE.md` rather than left as
 an implied roadmap.
+
+### Two-ply decomposition: built, measured, rejected
+
+`--reply-split` takes the parallel split a second ply down. A worker that runs
+out of root moves helps prove another root move's defender replies, on the
+argument that a defender node is a conjunction -- every reply must be proved --
+so the extra threads cannot be speculative.
+
+The argument is wrong, and the measurement says so plainly: 24 threads on a
+depth-7 capture quota went from 7.08 s to 31.70 s, and from 21.1M nodes to
+56.9M. A defender node that ends up REFUTED stops at its first refuting reply,
+which the reply ordering puts first most of the time, so helpers prove twenty
+subtrees the sequential search never visits. On a position with no solution
+every node is refuted -- and that is the workload the 4.75x ceiling was measured
+on in the first place.
+
+Ships OFF, with the mechanism, the gate (`--reply-split-min-proved`) and a
+differential test that pins the one property worth keeping: the composition
+reads results back in reply-index order, so the verdict, the line and the
+certificate are byte-identical to the sequential loop's. See architecture 111
+for the general form -- the node type that is safe to split depends on the
+verdict, which is what the search is trying to find out.

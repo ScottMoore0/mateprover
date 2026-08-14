@@ -188,6 +188,7 @@ did. If you are reading it for the first time:
 - [108. What x-escape Actually Costs, And One Hypothesis That Was Wrong](#108-what-x-escape-actually-costs-and-one-hypothesis-that-was-wrong)
 - [109. The Root Split Saturates Because One Move Owns The Tree](#109-the-root-split-saturates-because-one-move-owns-the-tree)
 - [110. Memory Is Not A Lever Until The Depth Makes It One](#110-memory-is-not-a-lever-until-the-depth-makes-it-one)
+- [111. Two-Ply Decomposition, And Why The Conjunction Argument Is Wrong](#111-two-ply-decomposition-and-why-the-conjunction-argument-is-wrong)
 
 ## Impact-Ordered Architecture
 
@@ -8171,3 +8172,107 @@ never a property of X; it is a property of X ON THE WORKLOAD MEASURED. 32 said
 root splitting contributed nothing and was measured on a route where it was
 never called; 39 said memory contributed nothing and was measured where the
 working set already fitted. Both were sound reports of the wrong regime.
+
+### 111. Two-Ply Decomposition, And Why The Conjunction Argument Is Wrong
+
+109 left one lever: the root split saturates at 4.75x because a single root move
+owns about a fifth of the tree, so split that move's own subtree at the next ply.
+The design note wrote itself, and it was wrong in a way worth keeping.
+
+#### The argument
+
+A defender node is a conjunction. The attacker must reach the goal after EVERY
+reply, so every reply has to be proved whatever order they are taken in. That
+makes it the one node type in an AND/OR search where extra threads are not
+speculative -- unlike an OR node, where the first move that proves ends the node
+and everything computed for the others is discarded. Workers that run out of root
+indices should therefore take another root move's defender replies, and nothing
+they compute can be wasted.
+
+`--reply-split` implements exactly that. Owners publish their reply list to a
+registry, idle workers claim from it, and the owner composes the per-reply
+results back **in reply-index order**, so the branch certificates, the
+representative line and which reply counts as the refutation are all identical to
+what `prove_defender`'s sequential loop would have produced. That contract is
+stronger than the root split's, which is allowed to move the PV (100), and it is
+checked byte-for-byte by `test_reply_split_does_not_move_the_output`.
+
+#### The measurement
+
+Depth 7, capture quota 3, 24 threads, `-M 4096`:
+
+| configuration | wall clock | nodes |
+|---|---|---|
+| 1 thread | 39.55 s | 20,443,117 |
+| 24 threads, root split only | **7.08 s** | 21,137,589 |
+| 24 threads, + reply split | 31.70 s | 56,931,750 |
+
+**4.4x slower, and 2.7x the nodes.** Not a tuning miss -- a refutation of the
+argument.
+
+#### Why
+
+"Every reply must be proved" is true of a defender node that ends up PROVED and
+false of one that ends up refuted. A refuted node stops at its first refuting
+reply, and the reply ordering and the refutation-hint table between them put that
+reply first most of the time -- which is what 88's fatal-anti-check observer
+already measured and what made that mechanism worthless too. So such a node costs
+ONE subtree sequentially, and helpers charge in to prove twenty more that the
+sequential search never looks at.
+
+On a position with no solution, every node is refuted. And a position with no
+solution is precisely the workload 109's 4.75x was measured on.
+
+The general form is worth stating, because it is not specific to this engine:
+
+> **Parallelise the node type whose children must all be visited, and which one
+> that is depends on the verdict, which is what you are trying to find out.**
+> Proving needs every AND child and one OR child. Disproving needs every OR child
+> and one AND child. There is no node type that is safe to split unconditionally.
+
+The root split escapes this only because it is at the root of a search that is
+usually going to fail: every root move must be refuted before "no solution" can
+be said, so the root's OR children genuinely all get visited.
+
+#### The gate, and what it proves
+
+If `next` is how many replies the owner has already resolved without refuting,
+then `next` is direct evidence about which kind of node this is -- a refutation
+closes the node, so a high `next` means the node is heading for a proof.
+`--reply-split-min-proved N` withholds helpers until then. It removes the damage
+completely, and the counters say how:
+
+| gate | wall clock | nodes | replies claimed | claimed by a helper |
+|---|---|---|---|---|
+| 0 (ungated) | 32.95 s | 56,906,885 | 192 | 72 |
+| 2 (default) | 7.22 s | 21,131,853 | 120 | **0** |
+| 4 | 7.15 s | 21,154,698 | 120 | 0 |
+
+Zero. The gate does not make the mechanism cheap, it makes it inert: on this
+workload no defender node ever proves two replies before dying. That is the
+finding restated as a counter, which is the strongest form it comes in.
+
+Deep directmates, the other regime, twelve mate-in-10s at a 30 s cap:
+141.6 s and 10/12 solved without, 153.2 s and 9/12 with. A loss there too.
+
+#### What ships
+
+`--reply-split`, default OFF, with the gate and the differential test. The
+mechanism is sound and the code is kept: what is wrong with it is the PLY it
+splits, not the way it splits, and the machinery -- the registry, the helper
+loop, the index-ordered composition, the abandoned-branch rule -- is what any
+correct version needs.
+
+The lever 109 identified is still there and still unclaimed. The work that must
+be completed exhaustively in a disproof lives in the ATTACKER nodes below the
+refuting reply, not in the defender node itself, so the split has to go down an
+OR node rather than an AND node. That is young-brothers-wait applied recursively:
+search the first child sequentially, and split the rest only once it has failed
+to settle the node. It is a real algorithm rather than an increment, and
+`prove_attacker` -- 250 lines of coverage exits, restrictions, GAP-1 axioms and
+`fail_depth` composition -- is a great deal more to reproduce faithfully than
+`prove_defender`'s reply loop was.
+
+The prediction that opened this section was mine, it was specific, and it was
+measured to be backwards within an hour of being implemented. That is the
+cheapest way this document has found to learn anything.
