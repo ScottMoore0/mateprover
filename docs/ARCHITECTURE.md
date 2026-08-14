@@ -179,7 +179,7 @@ did. If you are reading it for the first time:
 - [99. Proof Numbers Measure The Wrong Game Under A Quota](#99-proof-numbers-measure-the-wrong-game-under-a-quota)
 - [100. A Shared Table Makes The PV Stop Being A Function Of The Position](#100-a-shared-table-makes-the-pv-stop-being-a-function-of-the-position)
 - [101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else](#101-finding-only-mode-is-a-frontier-tool-and-costs-on-everything-else)
-- [102. Quota Dominance: The Design, And The Two Ways To Get It Wrong](#102-quota-dominance-the-design-and-the-two-ways-to-get-it-wrong)
+- [102. Quota Dominance Is Sound, And Cannot Pay](#102-quota-dominance-is-sound-and-cannot-pay)
 
 ## Impact-Ordered Architecture
 
@@ -7590,51 +7590,71 @@ twentieth resists every unrestricted attempt. Everywhere short of that, it is
 seven-eighths overhead, and the default of `--no-portfolio` for measurement work
 is right.
 
-### 102. Quota Dominance: The Design, And The Two Ways To Get It Wrong
+### 102. Quota Dominance Is Sound, And Cannot Pay
 
-Not implemented. Written down because the reasoning is the hard part and the
-failure mode is a silent false proof, so it should not be reconstructed from
-scratch under time pressure.
+Built, measured, and rejected. The reasoning is sound and the mechanism is
+inert, which is a more interesting combination than either alone.
 
-A board carries, per side, the number of captures still OWED. Call it the
-remaining quota `r`. The dominance is:
+A board carries, per side, the number of captures still OWED -- the remaining
+quota. A disproof at remaining `r` disproves every larger remaining quota:
 
-- **A proof at remaining `r` proves every `r' <= r`.** If the attacker can force
-  `r` more captures within the depth budget, the same line reaches the `(r-1)`th
-  capture no later, and under `r'` the game ends there in his favour. A line
-  ending in mate short of the quota is a mate either way.
-- **A disproof at remaining `r` disproves every `r'' >= r`.** Contrapositive of
-  the same statement.
+  Suppose the attacker COULD force a win needing `r'' > r` more captures, within
+  the depth budget. That strategy reaches the `r`-th capture no later than the
+  `r''`-th, and under the smaller quota the game ends there in his favour. It
+  cannot instead end in a DEFENDER win, because ending earlier only removes the
+  defender's opportunities, never adds one. So a win at `r''` implies a win at
+  `r`, contradicting the stored disproof.
 
-`tt_key` already puts both quotas in the context word, seven bits each from bit
-25, so entries are quota-specific and none of this is currently exploited. The
-probe becomes a short scan: on a miss at `r`, look for a stored proof at `r+1,
-r+2, ...` and a stored disproof at `r-1, r-2, ...`, capped at a small window so
-the extra hash lookups stay cheap.
+The contrapositive is the usable form: on a table miss at `r''`, consult
+`r''-1`, `r''-2`, ... and accept a disproof. That was implemented, behind
+`--quota-dominance`, with the proof half deliberately left out -- it generalises
+the other way and carries a certificate problem, since a proof borrowed from a
+higher quota is a valid win but the WRONG DOCUMENT, describing a game that
+should have ended earlier.
 
-It pays INSIDE one search, which is the part worth being clear about -- the
-obvious reading is that it only helps a ladder across separate runs at different
-quotas. It does not. Two lines reaching the same board having made different
-numbers of captures arrive with different remaining quotas and today get
-different entries, so the search re-proves the same position once per capture
-count.
+**It never fires.** Across the fourteen-position x-capture bench: 900,000 probes,
+**zero hits**, and a cost of roughly 10%.
 
-Two ways to get it wrong, both silent:
+The reason was already written down twelve lines above `tt_key`, in the comment
+explaining why the quotas are keyed at all:
 
-1. **The direction.** Smaller `r` is EASIER for the attacker, so a proof
-   generalises DOWNWARD and a disproof UPWARD. Reversing either yields a false
-   proof rather than a crash, and no existing test would catch it, since every
-   verdict-based check would still pass on positions where the two quotas happen
-   to agree. This needs the differential gate -- identical verdicts, differing
-   node counts -- across the whole corpus before it defaults on.
-2. **The certificate.** A cached proof from `r'' > r` is a tree in which the
-   attacker forces `r''` captures. Handed back for a query at `r`, it is a valid
-   win but the WRONG DOCUMENT: a verifier replaying it for `r` sees a game that
-   should have ended earlier, at the `r`th capture. Either truncate the tree at
-   the `r`th capture or refuse the substitution while `--emit-proof` is set. The
-   second is trivial and costs nothing on disproofs, which carry no certificate
-   and are the bulk of this workload.
+> Capture quotas are in fact derivable from material, since captures by one side
+> are exactly the men the other has lost since the root.
 
-The disproof half alone is the safer first increment: it is where the work is in
-capture-quota search, it needs no certificate handling, and it can be gated
-behind a flag and measured before it becomes the default.
+Within a single root the board therefore FIXES the remaining capture quota. Two
+lines reaching the same position have made exactly the same captures, so a
+neighbouring entry cannot exist to be found. The design note this section
+replaced asserted the opposite -- "two lines reaching the same board having made
+different numbers of captures arrive with different remaining quotas" -- and
+that is simply false. The engine records the fact that refutes it, and it took
+900,000 probes returning nothing to go back and read it.
+
+A CHECK quota is different in exactly the way that matters: checks leave no
+trace on the board, so the same position genuinely can be reached having given
+different numbers of them. So the probe was generalised to the check rule, where
+the neighbours can exist, and measured on x-check openings from the starting
+array:
+
+| position | hits / probes | cost |
+|---|---|---|
+| 1 check, depth 3 and 4 | 0 / 36,544 | none |
+| 2 checks, depth 5 | 0 / 202,095 | 1.4x |
+| 2 checks, depth 6 | **3** / 2,265,741 | 1.08x |
+| 3 checks, depth 6 | **3** / 2,039,839 | 1.17x |
+
+Three hits in 2.3 million probes. Transpositions that reach one position with
+differing check counts are possible, and at these depths they are vanishingly
+rare, so the window is a pure tax: a hash lookup at every missing node, which is
+most nodes, paying for an event that happens three times.
+
+Rejected and removed rather than left switched off. A mechanism whose failure
+mode is a silent false "no win" -- reverse the direction and disproofs
+generalise the wrong way, with correct-looking output and no test able to see it
+-- is not worth carrying as dead code on the strength of an argument that has
+been measured not to pay. The soundness argument is preserved here; the code is
+not.
+
+The general lesson is the cheaper one to have learned first: **before building a
+mechanism that exploits two states being distinguishable, check whether they are
+ever actually distinct.** The information needed to predict this result was a
+comment in the file the change was made in.
