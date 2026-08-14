@@ -535,6 +535,13 @@ std::optional<Board> parse_fen4(const std::string& line) {
     return b;
 }
 
+// One lock for every line the progress stream writes, so a bound published by
+// the main search and a root-move line from a worker cannot interleave.
+inline std::mutex& progress_stream_mutex() {
+    static std::mutex m;
+    return m;
+}
+
 std::string fen4(const Board& b) {
     std::ostringstream out;
     for (int rank = 7; rank >= 0; --rank) {
@@ -650,6 +657,31 @@ const AttackBitboards& attack_bb() {
         return out;
     }();
     return table;
+}
+
+// WHICH root move is being searched. A STATUS line, never a theorem.
+//
+// It asserts nothing about the position and is superseded the moment the next
+// move is taken, which is exactly what a playing engine's `info currmove` is.
+// That makes it the one line in this stream that behaves like Stockfish's, and
+// it is spelled `searching` rather than `proven` so the two can never be read
+// as the same kind of statement.
+//
+// Emitted per root move rather than on a timer: a timer would make the output
+// depend on the machine and could not be tested, and a root list is short --
+// twenty moves from the opening array, a few dozen at worst.
+inline void publish_root_move(const Search& s, const Board& b, int depth,
+                              int index, int total, const Move& m) {
+    if (!s.progress_moves || !s.progress_authority) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(progress_stream_mutex());
+    std::cerr << "progress " << fen4(b) << "; searching depth " << depth
+              << " root move " << index << "/" << total << " " << move_uci(m)
+              << "; acn " << s.stats.nodes << "; acs "
+              << std::chrono::duration<double>(std::chrono::steady_clock::now() - s.search_start).count()
+              << ";\n";
+    std::cerr.flush();
 }
 
 bool attacked_on_planes(std::uint64_t occ,

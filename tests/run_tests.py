@@ -942,6 +942,42 @@ def test_progress_publishes_only_proven_bounds(engine: Path, res: Results) -> No
     res.check("published bounds are strictly increasing",
               timed == sorted(set(timed)), f"got {timed}")
 
+    # Root-move status is a different KIND of line: it asserts nothing about the
+    # position and is superseded by the next move, which is why it reads
+    # "searching" and not "proven". The two must stay separable in the output
+    # and independently switchable.
+    def moves_of(args, stdin):
+        proc = subprocess.run([str(engine), *args], input=stdin.encode(),
+                              capture_output=True, timeout=600)
+        err = proc.stderr.decode(errors="replace")
+        return (re.findall(r"searching depth (\d+) root move (\d+)/(\d+) (\S+?);", err),
+                err.count("proven no solution"))
+
+    seq, seen_bounds = moves_of([*quota, "-z", "5", "--direct-depth", "--no-portfolio",
+                                 "--single-thread", "--progress-moves", "-"],
+                                f"{start} bm #5;\n")
+    res.check("every root move is reported, once, in order",
+              [m[1] for m in seq] == [str(i) for i in range(1, 21)], f"got {len(seq)} lines")
+    res.check("each line names the depth and the size of the root list",
+              bool(seq) and all(m[0] == "5" and m[2] == "20" for m in seq), f"got {seq[:2]}")
+    res.check("the first line names the first move actually searched",
+              bool(seq) and seq[0][3] == "b1c3", f"got {seq[0] if seq else None}")
+    res.check("--progress-moves alone publishes no bounds", seen_bounds == 0, f"got {seen_bounds}")
+
+    quiet, only_bounds = moves_of([*quota, "-z", "5", "--direct-depth", "--no-portfolio",
+                                   "--single-thread", "--progress", "-"], f"{start} bm #5;\n")
+    res.check("--progress alone publishes no move status",
+              not quiet and only_bounds > 0, f"{len(quiet)} moves, {only_bounds} bounds")
+
+    # Under a split the indices interleave across workers, but every root move
+    # must still be accounted for exactly once.
+    split, _ = moves_of([*quota, "-z", "5", "--direct-depth", "--no-portfolio",
+                         "--root-split", "--threads", "4", "--progress-moves", "-"],
+                        f"{start} bm #5;\n")
+    res.check("a split reports every root move exactly once",
+              sorted(int(m[1]) for m in split) == list(range(1, 21)),
+              f"got {sorted(int(m[1]) for m in split)}")
+
     # Restricted lanes stay silent: eight lanes, one lane's worth of bounds.
     lanes, _ = bounds([*quota, "-z", "5", "--portfolio", "--portfolio-parallel",
                        "--portfolio-lanes", "8", "--progress", "-"],

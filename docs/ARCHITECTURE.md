@@ -183,6 +183,7 @@ did. If you are reading it for the first time:
 - [103. The Quota Ladder: The Premise Was Right And The Arithmetic Was Not](#103-the-quota-ladder-the-premise-was-right-and-the-arithmetic-was-not)
 - [104. d(3) >= 9, Confirmed Twice](#104-d3--9-confirmed-twice)
 - [105. A Progress Stream That Publishes Theorems, Not Estimates](#105-a-progress-stream-that-publishes-theorems-not-estimates)
+- [106. The One Line In The Stream That Behaves Like Stockfish's](#106-the-one-line-in-the-stream-that-behaves-like-stockfishs)
 
 ## Impact-Ordered Architecture
 
@@ -7847,3 +7848,60 @@ test.** The question to ask of a new test is not "does it pass?" but "what
 change to the code makes it fail?" -- and if the answer is "none", it is
 measuring nothing. See the honest note on the thread-agreement arm in 8v, which
 has the same shape and is still unresolved.
+
+### 106. The One Line In The Stream That Behaves Like Stockfish's
+
+105 streams theorems. `--progress-moves` streams a STATUS, and the distinction
+is worth a section because it is the only place this engine emits something that
+can be superseded:
+
+```
+progress <fen4>; searching depth 5 root move 1/20 b1c3;  acn 1;      acs 0.00008;
+progress <fen4>; searching depth 5 root move 2/20 b1a3;  acn 14468;  acs 0.01644;
+...
+progress <fen4>; searching depth 5 root move 20/20 h2h4; acn 139620; acs 0.13801;
+progress <fen4>; proven no solution within 5;            acn 140717; acs 0.13877;
+```
+
+It asserts nothing about the position, so it cannot be false -- it is a report
+of what the search is doing, not of what it has established. That is precisely
+what a playing engine's `info currmove` is, and it is spelled `searching` rather
+than `proven` so the two can never be read as the same kind of statement. The
+flags are independent: a caller who wants a quiet stream of theorems and no
+chatter keeps `--progress` alone.
+
+The infrastructure was already there and unread. `WorkerSlot::current_root` has
+always published the claimed root index as an atomic, for the split's
+cancellation logic; nothing ever printed it. The sequential path needed one new
+idea: the route stamps `iteration_depth` once per pass, and the ROOT attacker
+node is the only one that can still have that much depth remaining, so the root
+is recognised by `depth == s.iteration_depth` without threading a flag down the
+recursion.
+
+The node counts are what make it worth having. Reading the deltas above,
+1.Nc3 cost 14,467 nodes and the last three moves cost about 1,600 between them
+-- the table is doing the work by then. On the twenty-nine-minute depth-8 run
+this would have shown which root move was being ground through and how fast the
+front was moving, instead of nothing at all for half an hour.
+
+Emission is per root move rather than on a timer. A timer would make the output
+depend on the machine and could not be tested; a root list is short. Under a
+split the lines interleave across workers and arrive out of order, which is
+honest -- that is what the search is actually doing -- and the suite asserts
+every index appears exactly once rather than that they appear in sequence.
+
+#### What was NOT built, and why
+
+A full improving PV, in the Stockfish shape, is the thing this most obviously
+suggests and it is not available. Iterative deepening searches UPWARD, so the
+first proof it finds is already the shortest and therefore already final: there
+is no window in which a preliminary proof exists to be refined. Getting one
+would mean searching DOWNWARD -- prove "mate within 12", publish it, then
+attempt 11, 10, 9 -- which is a different algorithm, not a reporting change.
+
+Every line of such a stream would be proven and certified, which would be
+strictly better than a playing engine's revisable PV. But 103 rejected the quota
+ladder on exactly the arithmetic that applies here: preparation that costs more
+than the work it prepares. Proving "mate within 12" on a position whose answer
+is 9 is not obviously cheaper than proving 9 outright, and may be dearer. That
+is a measurement, not a design, and it has not been taken.

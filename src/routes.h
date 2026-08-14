@@ -38,8 +38,7 @@ inline void publish_proven_bound(const Search& s, const Board& b, int depth) {
     if (!s.progress || !s.progress_authority || s.aborted || s.timed_out) {
         return;
     }
-    static std::mutex progress_mutex;
-    std::lock_guard<std::mutex> lock(progress_mutex);
+    std::lock_guard<std::mutex> lock(progress_stream_mutex());
     std::cerr << "progress " << fen4(b) << "; proven no solution within " << depth
               << "; acn " << s.stats.nodes << "; acs "
               << std::chrono::duration<double>(std::chrono::steady_clock::now() - s.search_start).count()
@@ -104,6 +103,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
         if (s.timed_out) {
             break;
         }
+        s.iteration_depth = depth;
         // Advance the aging generation so entries that go untouched during this
         // pass become the first candidates for eviction if the table is full.
         ++s.tt.generation;
@@ -430,6 +430,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         if (s.timed_out) {
             break;
         }
+        s.iteration_depth = depth;
         if (!s.keep_iter_tt) {
             s.tt.clear();
             s.dfpn_tt.clear();

@@ -499,6 +499,10 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
             slot.current_root.store(i, std::memory_order_release);
             slot.cancel.store(false, std::memory_order_release);
             ws.aborted = false;
+            // Indices are claimed from a shared counter, so these arrive out of
+            // order and interleaved across workers. That is honest reporting: it
+            // is what the search is actually doing.
+            publish_root_move(ws, b, depth, i + 1, n, moves[static_cast<std::size_t>(i)]);
             // Re-read after publishing our index: this closes the window where
             // a finishing worker scanned the slots before we announced this
             // move and so did not cancel us.

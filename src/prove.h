@@ -1640,6 +1640,14 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // terminal and the goal decides it, not composition.
     bool all_moves_refuted = s.any_depth_refutations && !moves.empty();
 
+    // Root-move status. `iteration_depth` is set by the route once per pass, and
+    // the root attacker node is the only one that can still have that much depth
+    // remaining, so this identifies the root without threading a flag down the
+    // recursion. Zero when no route set it, which no real depth ever equals.
+    const bool at_root_for_progress =
+        s.progress_moves && s.progress_authority && depth == s.iteration_depth && depth > 0;
+    int root_move_index = 0;
+
     // OBSERVER for the same predicate the mechanism above uses, sited after
     // generation so it can report Q2 -- the moves that would never have been
     // produced -- alongside Q1. Two flags for one predicate because they answer
@@ -1662,6 +1670,10 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     }
 
     for (const Move& amove : moves) {
+        if (at_root_for_progress) {
+            publish_root_move(s, b, depth, ++root_move_index,
+                              static_cast<int>(moves.size()), amove);
+        }
         // RESTRICTED MATING GENERATOR, in its cheapest sound form. A checkmate
         // is a check, so at depth 1 a move that gives no check cannot be a
         // solution -- which is chess, not a borrowed heuristic, and trivially

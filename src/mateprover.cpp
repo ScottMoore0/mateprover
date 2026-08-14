@@ -388,6 +388,13 @@ void print_usage() {
 "                                step to, counted with the king itself removed\n"
 "                                from the board so that sliding attacks THROUGH\n"
 "                                its square are seen. A diagnostic, not a search\n"
+"  --progress-moves | --no-progress-moves\n"
+"                                default: off. Also report WHICH root move is\n"
+"                                being searched, as it is taken up. A STATUS\n"
+"                                line, not a theorem: it asserts nothing about\n"
+"                                the position and is superseded by the next move,\n"
+"                                so it reads 'searching' where a bound reads\n"
+"                                'proven'. Independent of --progress\n"
 "  --progress | --no-progress    default: off. While the search runs, write a\n"
 "                                line to STDERR each time a depth completes\n"
 "                                without finding a solution. Every such line is a\n"
@@ -522,6 +529,10 @@ const BoolOption kBoolOptions[] = {
     {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
     {"--dfpn-every-depth", &SearchConfig::dfpn_final_depth_only, false},
     {"--escape-count", &SearchConfig::escape_count_only, true},
+    {"--progress-moves", &SearchConfig::progress_moves, true},
+    {"--no-progress-moves", &SearchConfig::progress_moves, false},
+    {"--progress-moves", &SearchConfig::progress_moves, true},
+    {"--no-progress-moves", &SearchConfig::progress_moves, false},
     {"--progress", &SearchConfig::progress, true},
     {"--no-progress", &SearchConfig::progress, false},
     {"--dfpn-under-variant", &SearchConfig::dfpn_under_variant, true},

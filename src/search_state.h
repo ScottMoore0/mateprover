@@ -185,6 +185,13 @@ struct SearchConfig {
     // Report E for both kings and stop. A diagnostic, so that the escape
     // count can be checked against hand-worked positions without a search.
     bool escape_count_only = false;
+    // Also report WHICH root move is being searched, as it is picked up.
+    //
+    // Separate from `progress` because it is a different KIND of line. A bound
+    // is a theorem; this is a status, superseded the moment the next move is
+    // taken, and it asserts nothing whatever about the position. Keeping the
+    // flags apart keeps a quiet stream of theorems available on its own.
+    bool progress_moves = false;
     // May THIS search publish a bound? False for every restricted portfolio
     // lane, because a restricted lane that fails has proved nothing whatever --
     // it never looked at the moves the restriction removed. Carried as an
@@ -360,6 +367,11 @@ struct PnDnFwd {
 // `s.<option>` access valid while making the option set independently
 // copyable.
 struct Search : SearchConfig {
+    // The depth of the iterative-deepening pass now running. The ROOT attacker
+    // node is the only one whose remaining depth equals it, which is how the
+    // root-move stream recognises the root without threading a flag down the
+    // recursion.
+    int iteration_depth = 0;
     // When this search began. Only the progress stream reads it, and only to
     // put a wall-clock figure beside each proven bound so the growth per depth
     // is visible as it happens. Nothing in the search depends on it.
