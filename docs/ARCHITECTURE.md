@@ -7429,6 +7429,13 @@ throughout. Measured on an opening position from the x-check work: **2.3 seconds
 with `--no-portfolio`, and not finished after 90 minutes without it.** Same
 binary, same position, same depth.
 
+Both halves of that comparison were taken through the preconditioner handicap
+that 99 removes, so the absolute numbers are stale -- the same family of
+position now resolves in about 0.15 s. The RATIO is what this section claims and
+it is unaffected, since the handicap applied equally to both arms. Re-measured
+after the gate, on the x-capture bench, the portfolio still costs 1.15x on a
+position with a win and up to 5.9x on disproofs; see 101.
+
 #### Why this is a documentation change and not a behavioural one
 
 The obvious fix is to have the engine notice. It cannot: whether a search will
@@ -7503,7 +7510,25 @@ identical in every row:
 | ply-2 e3 Nh6, quota 3, depth 4 | 0.92 s | 0.030 s | 31x |
 | geometric mean, 14 positions | -- | -- | **23.6x** |
 
-The spread is 8x to 32x and the direction never reverses. So the preconditioner
+The spread is 8x to 32x and the direction never reverses.
+
+The same holds for the FIRST variant rule, which is worth stating separately
+because the gate was designed against capture positions and could easily have
+been overfitted to them. It is not. Proof numbers know nothing about a check
+quota either, and x-check openings from the starting array pay the same tax,
+growing the same way with depth:
+
+| x-check, single-threaded | preconditioner on | off | ratio |
+|---|---|---|---|
+| 1 check, depth 3 | 0.0084 s | 0.0028 s | 3.0x |
+| 1 check, depth 4 | 0.247 s | 0.068 s | 3.7x |
+| 2 checks, depth 5 | 3.12 s | 0.148 s | 21x |
+| 3 checks, depth 5 | 3.62 s | 0.135 s | 27x |
+| 2 checks, depth 6 | **did not finish in 240 s** | 2.10 s | **>114x** |
+
+The last row is the shape of the whole finding: the handicap is not a constant
+factor, it grows with depth, so it did most of its damage exactly where the
+engine was being asked the hardest questions. So the preconditioner
 now stands down whenever a variant win rule is live -- meaning both that the rule
 is enabled AND that a quota is present on the board, since either half alone is
 inert. `--dfpn-under-variant` restores the old behaviour for measurement.
