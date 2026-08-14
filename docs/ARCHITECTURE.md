@@ -189,6 +189,7 @@ did. If you are reading it for the first time:
 - [109. The Root Split Saturates Because One Move Owns The Tree](#109-the-root-split-saturates-because-one-move-owns-the-tree)
 - [110. Memory Is Not A Lever Until The Depth Makes It One](#110-memory-is-not-a-lever-until-the-depth-makes-it-one)
 - [111. Two-Ply Decomposition, And Why The Conjunction Argument Is Wrong](#111-two-ply-decomposition-and-why-the-conjunction-argument-is-wrong)
+- [112. Young Brothers Wait, On The Node Type 111 Says To Split](#112-young-brothers-wait-on-the-node-type-111-says-to-split)
 
 ## Impact-Ordered Architecture
 
@@ -8276,3 +8277,92 @@ to settle the node. It is a real algorithm rather than an increment, and
 The prediction that opened this section was mine, it was specific, and it was
 measured to be backwards within an hour of being implemented. That is the
 cheapest way this document has found to learn anything.
+
+### 112. Young Brothers Wait, On The Node Type 111 Says To Split
+
+111 ended with a rule and an unclaimed lever. The rule: parallelise the node type
+whose children must ALL be visited, and which one that is depends on the verdict.
+The lever: the root split's 4.75x ceiling is one root move, whose cost is one
+defender reply, whose cost is the exhaustive refutation of every attacker move
+below it. That last list is an OR node, and a failing OR node visits every child.
+
+So this splits OR nodes, and it is the classical arrangement for the classical
+reason: **the eldest child is searched alone, and only if it fails to settle the
+node do the younger brothers go out to the other workers.** A node that is going
+to succeed stops at its first working move, so sharing the rest out is
+speculation -- 111's mistake, reached from the other side.
+
+#### Written inside prove_attacker, not beside it
+
+111's mechanism copied a 60-line loop and still needed a byte-for-byte
+differential test to be trusted. `prove_attacker` is 250 lines of coverage exits,
+restrictions, GAP-1 axioms and `fail_depth` composition, and a faithful second
+copy of it is not a thing anyone should maintain.
+
+So the split lives in the loop itself. The loop runs `ybw_first` children the way
+it always has, and then, if it has not returned, hands the remainder to a split
+point. The per-move work that CANNOT be reordered -- the immediate-win test --
+still runs in move order in the owner; a move that wins outright is recorded as a
+settling child at its own index rather than returned, because a lower index that
+also settles would still be preferred. That is the one rule the whole design
+rests on:
+
+> The node is settled by the LOWEST index that settles it, children above that
+> index are never claimed, and children below it are still worth finishing.
+
+Applied to an AND node it reads "the first reply that fails"; applied to an OR
+node, "the first move that works". Both are exactly where the sequential loop
+would have stopped, which is why both splits report the same move, the same line
+and the same certificate however the workers happen to interleave. Twelve
+differential checks pin it, at the most aggressive settings of both mechanisms.
+
+#### The split is flat, which disposes of the hard part
+
+One registry slot per WORKER, and splitting is confined to the plies just below
+the root (`--or-split-plies`, default 1). A worker publishes at most one node, so
+an owner waiting for its helpers is never itself a helper, and no owner can ever
+be waiting on another owner. The blocked-owner reasoning a general YBWC
+implementation needs does not arise. Deeper is measurably worse: depth 7, quota
+3, 24 threads gave 6.25 s at 1 ply, 7.07 s at 2 and 7.27 s at 3.
+
+#### What it buys
+
+Depth 7, capture quota 3, 24 threads, `-M 4096`, matched runs:
+
+| configuration | wall clock | nodes | speedup |
+|---|---:|---:|---:|
+| 1 thread | 36.54 s | 20,443,117 | 1.00x |
+| root split only | 6.22 s | 21,173,710 | 5.87x |
+| + OR split | **5.44 s** | 21,813,359 | **6.72x** |
+
+Helpers take 613 of the 2,125 children the split hands out -- 29% -- and the node
+count moves 3%, so they are sharing the table rather than re-searching.
+
+**1.14x, not the 2x predicted.** The prediction assumed the dominant root move's
+cost would divide evenly once opened up; it does not, because the ply-3 children
+are as unequal as the root moves were and one of them dominates in turn. The
+ceiling moves from 5.87x to 6.72x rather than to 11x. Amdahl does not stop
+applying just because the decomposition got finer -- it applies again, one ply
+down, and this is what "each ply of decomposition buys progressively less" looks
+like when measured rather than assumed.
+
+#### The wait is worth 3.5%, and it is free where it is not worth anything
+
+`ybw_first` defaults to 4 rather than 1, on measurement. Over twelve mate-in-10s,
+where nearly every node succeeds:
+
+| ybw_first | deep directmates | depth-7 capture quota |
+|---|---|---|
+| not splitting at all | 133.7 / 134.1 / 134.8 s | 6.22 s |
+| 1 | 138.6 / 138.7 / 140.0 s | 6.79 s |
+| 4 | **133.3 s** | 6.82 s |
+| 8 | 132.7 s | -- |
+
+One eldest child is not enough of a wait: at 1 the OR split costs 3.5% on proof
+workloads, which is the reply split's failure in miniature. At 4 it gives all of
+it back while costing nothing measurable on the disproof workload -- because a
+node that never succeeds has no early exit for the wait to protect. The wait is
+not a compromise between the two regimes; it is free on the one it does not help.
+
+Both corpora solve the same positions in every arm. The regression bar is that a
+change may ADD verdicts and must not CHANGE them, and this changes none.

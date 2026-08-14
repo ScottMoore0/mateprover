@@ -432,8 +432,8 @@ struct Stats {
     // the whole point -- it is work that would otherwise have been done by one
     // thread while the rest idled -- and if it is zero the mechanism did not
     // engage, whatever the wall clock says.
-    std::uint64_t reply_split_claims = 0;
-    std::uint64_t reply_split_helped = 0;
+    std::uint64_t split_claims = 0;
+    std::uint64_t split_helped = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t deadline_checks = 0;
@@ -518,8 +518,8 @@ struct Stats {
         dfpn_abandoned += o.dfpn_abandoned;
         root_sequential_tried += o.root_sequential_tried;
         root_sequential_hits += o.root_sequential_hits;
-        reply_split_claims += o.reply_split_claims;
-        reply_split_helped += o.reply_split_helped;
+        split_claims += o.split_claims;
+        split_helped += o.split_helped;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
         deadline_checks += o.deadline_checks;

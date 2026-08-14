@@ -1316,6 +1316,172 @@ void collect_help_solutions(Search& s, const Board& b, int plies,
     }
 }
 
+// ---------------------------------------------------------------------------
+// Split points: one node's children, opened up so that idle workers can take
+// them. Shared by both split shapes, because the COORDINATION is identical and
+// only the composition differs -- and the coordination is the part that is
+// difficult to get right twice.
+//
+// The two shapes, and the one rule that separates them:
+//
+//   AND node (defender replies). The attacker needs the goal after every
+//   reply, so a PROOF needs every child and a DISPROOF needs one. The node is
+//   settled by the first child that FAILS.
+//
+//   OR node (attacker moves). The attacker needs one move that works, so a
+//   PROOF needs one child and a DISPROOF needs every one. The node is settled
+//   by the first child that SUCCEEDS.
+//
+// "Settled" always means the lowest such index, which is exactly where the
+// sequential loop would have stopped. Children above it are never claimed and
+// children below it are still worth finishing, since a lower index would be
+// preferred if it also settles. That single rule makes both splits report the
+// same move, the same line and the same certificate as the sequential search,
+// whatever order the workers happen to finish in. See architecture 111 and 112.
+enum : std::uint8_t {
+    kChildUnresolved = 0,
+    kChildProved = 1,
+    kChildFailed = 2,
+    kChildIllegal = 3,      // lazy generation: pseudo-legal move, king left en prise
+    kChildAbandoned = 4,    // cancelled or out of time: NO verdict, by the abort invariant
+    kChildImmediate = 5,    // OR node: won outright, `results` already composed
+};
+
+// Every mutable field is guarded by the registry mutex. The critical sections
+// are a few instructions and are entered once per child SUBTREE, so the lock is
+// never on a hot path.
+struct NodeSplit {
+    Board board{};
+    int depth = 0;              // the splitting node's own remaining depth
+    int slot = 0;               // registry slot, which is the owner's worker index
+    int priority = 0;           // root move being served; helpers prefer the lowest
+    bool conjunctive = true;    // AND node (replies) or OR node (attacker moves)
+    bool lazy = false;          // AND only: children are pseudo-legal
+    std::vector<Move> moves;
+    std::vector<Proof> results;
+    std::vector<std::uint8_t> state;
+    int next = 0;               // lowest unclaimed child
+    int active = 0;             // claims in flight, the owner's included
+    int settled_at = -1;
+    bool settle_refuted = false;    // AND: the settling child's GAP-1 `refuted`
+    bool settle_is_check = false;   // AND: fatal-anti-check observer only
+    bool open = false;
+    int min_before_help = 0;    // AND: replies the owner must have proved first
+};
+
+struct SplitRegistry {
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<std::shared_ptr<NodeSplit>> open_splits;   // one slot per worker
+    int live_roots = 0;         // workers still inside a root move
+    const std::atomic<int>* best_index = nullptr;
+};
+
+struct NodeClaim {
+    std::shared_ptr<NodeSplit> split;
+    int index = -1;
+};
+
+// Take the next child of `sp`, or -1 if there is none worth taking.
+//
+// `next >= settled_at` rather than `settled_at >= 0`: a child BELOW the settling
+// index would still be preferred if it settled too, so it is real work, while
+// one above it can never be chosen and is not. Claims ascend, so this one test
+// covers both.
+int claim_child(SplitRegistry& reg, NodeSplit& sp) {
+    std::lock_guard<std::mutex> lock(reg.m);
+    if (!sp.open || sp.next >= static_cast<int>(sp.moves.size()) ||
+        (sp.settled_at >= 0 && sp.next >= sp.settled_at)) {
+        return -1;
+    }
+    const int j = sp.next++;
+    ++sp.active;
+    return j;
+}
+
+// Find work for an idle worker: the open node with the lowest priority -- the
+// root move the sequential search would have reached first -- that still has a
+// child to give.
+NodeClaim claim_any_child(SplitRegistry& reg) {
+    std::lock_guard<std::mutex> lock(reg.m);
+    const int best = reg.best_index != nullptr
+                         ? reg.best_index->load(std::memory_order_acquire)
+                         : std::numeric_limits<int>::max();
+    NodeSplit* chosen = nullptr;
+    std::shared_ptr<NodeSplit>* chosen_ptr = nullptr;
+    for (std::shared_ptr<NodeSplit>& sp : reg.open_splits) {
+        if (!sp || !sp->open) {
+            continue;
+        }
+        // A root move a lower index has already beaten cannot be the answer.
+        if (sp->priority > best) {
+            continue;
+        }
+        if (sp->next >= static_cast<int>(sp->moves.size()) ||
+            (sp->settled_at >= 0 && sp->next >= sp->settled_at)) {
+            continue;
+        }
+        // THE GATE, and on an AND node it is the whole difference between the
+        // mechanism paying and costing 2.7x the nodes (111).
+        //
+        // "Every reply must be proved, so no helper's work is speculative" is
+        // true of a defender node that ends up PROVED and false of one that ends
+        // up refuted -- and on a no-solution position every node is refuted.
+        // Such a node stops at its first refuting reply, which the reply
+        // ordering and the refutation-hint table between them make the first
+        // reply most of the time. `next` is direct evidence about which kind of
+        // node this is, because a settling child closes the node: past a couple
+        // of proved replies it very likely needs all of them.
+        //
+        // An OR node needs no such gate. Young brothers wait already searched
+        // the eldest child alone, which is where a proof would be if there were
+        // one, so the rest are being shared out precisely when the node looks
+        // like it is going to fail -- and a failing OR node needs every child.
+        if (sp->next < sp->min_before_help) {
+            continue;
+        }
+        if (chosen == nullptr || sp->priority < chosen->priority) {
+            chosen = sp.get();
+            chosen_ptr = &sp;
+        }
+    }
+    if (chosen == nullptr) {
+        return {};
+    }
+    NodeClaim claim;
+    claim.index = chosen->next++;
+    ++chosen->active;
+    claim.split = *chosen_ptr;
+    return claim;
+}
+
+// Counts a worker in for as long as it is inside a root move. A helper that
+// finds no work parks rather than going home while this is non-zero, because an
+// owner that has not finished generating its children has nothing to offer yet
+// and will in a moment.
+//
+// A guard rather than a pair of calls: the root loop leaves its body by
+// `continue` from three places, and an undercount here would send every helper
+// away at the exact moment the tail work appeared.
+struct LiveRootGuard {
+    SplitRegistry& reg;
+    explicit LiveRootGuard(SplitRegistry& r) : reg(r) {
+        std::lock_guard<std::mutex> lock(reg.m);
+        ++reg.live_roots;
+    }
+    ~LiveRootGuard() {
+        std::lock_guard<std::mutex> lock(reg.m);
+        --reg.live_roots;
+        reg.cv.notify_all();
+    }
+    LiveRootGuard(const LiveRootGuard&) = delete;
+    LiveRootGuard& operator=(const LiveRootGuard&) = delete;
+};
+
+// Prove one child and record the outcome. Defined after prove_attacker, since
+// it calls both searches; declared here because prove_attacker calls it.
+void run_child(SplitRegistry& reg, NodeSplit& sp, int j, Search& ws);
+
 Proof prove_defender(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
@@ -1679,7 +1845,29 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         }
     }
 
-    for (const Move& amove : moves) {
+    // YOUNG BROTHERS WAIT. The eldest child is searched alone; if it settles the
+    // node nothing was shared out and nothing was wasted, and if it does not,
+    // the node is probably going to need all its children and the rest go to
+    // whoever is idle. `searched` counts children actually handed to a subsearch,
+    // not moves stepped over, so a run of moves the depth-1 generator skips does
+    // not consume the wait.
+    //
+    // Gated to the plies just below the root: that is where the work the root
+    // split cannot reach lives (109), and keeping it there keeps the split FLAT.
+    // One slot per worker, one split per slot, so no owner is ever waiting on a
+    // node another owner is waiting on -- which disposes of the blocked-owner
+    // problem a general YBWC implementation has to reason about.
+    const bool may_split = s.or_split && s.split_registry != nullptr && s.split_slot >= 0 &&
+                           depth > 1 && s.iteration_depth > 0 &&
+                           depth >= s.iteration_depth - s.or_split_plies;
+    int searched = 0;
+    std::size_t move_index = 0;
+
+    for (; move_index < moves.size(); ++move_index) {
+        if (may_split && searched >= s.ybw_first) {
+            break;
+        }
+        const Move& amove = moves[move_index];
         if (at_root_for_progress) {
             publish_root_move(s, b, depth, ++root_move_index,
                               static_cast<int>(moves.size()), amove);
@@ -1795,6 +1983,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             if (s.aborted) {
                 return {};
             }
+            ++searched;
             if (!all_replies.refuted) {
                 all_moves_refuted = false;
             }
@@ -1819,10 +2008,243 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
     }
+
+    if (may_split && move_index < moves.size()) {
+        SplitRegistry& reg = *s.split_registry;
+        auto sp = std::make_shared<NodeSplit>();
+        sp->board = b;
+        sp->depth = depth;
+        sp->slot = s.split_slot;
+        sp->priority = s.split_priority;
+        sp->conjunctive = false;
+        sp->moves.assign(moves.begin() + static_cast<std::ptrdiff_t>(move_index), moves.end());
+        const int n = static_cast<int>(sp->moves.size());
+        sp->results.resize(static_cast<std::size_t>(n));
+        sp->state.assign(static_cast<std::size_t>(n), kChildUnresolved);
+
+        // The part of the loop body that CANNOT be shared out, run here in move
+        // order. A move that wins outright is a settling child like any other,
+        // recorded at its own index rather than returned -- because a LOWER
+        // index that also settles, by searching successfully, would still be
+        // preferred, and that is precisely what the sequential loop would do.
+        // Nothing after it can be preferred, so nothing after it is tested.
+        for (int j = 0; j < n; ++j) {
+            const Move& amove = sp->moves[static_cast<std::size_t>(j)];
+            if (at_root_for_progress) {
+                publish_root_move(s, b, depth, ++root_move_index,
+                                  static_cast<int>(moves.size()), amove);
+            }
+            ++s.stats.attacker_candidates;
+            const Board nb = make_move(b, amove);
+            const int win_rule = variant_win_reached(nb, s.goal, s.attacker, s.rule_wins);
+            ++s.stats.immediate_mate_tests;
+            bool mate = false;
+            if (can_use_ordered_check_shortcut) {
+                ++s.stats.ordered_check_shortcut_uses;
+                if (move_can_reach_goal(amove.score, s.goal)) {
+                    ++s.stats.ordered_check_shortcut_checks;
+                    mate = !has_legal_move(nb, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+                } else {
+                    ++s.stats.ordered_check_shortcut_skips;
+                }
+            } else {
+                mate = is_goal(nb, s.goal, s.move_reserve, s.move_reserve_capacity, s.static_pseudo);
+            }
+            if (mate || win_rule >= 0) {
+                ++s.stats.immediate_mates;
+                std::string how = (s.goal == Goal::Stalemate) ? ",\"stalemate\":true}"
+                                                             : ",\"mate\":true}";
+                if (win_rule >= 0 && !mate) {
+                    how = std::string(",\"") + variant_win_key(win_rule) + "\":true}";
+                }
+                Proof won{true, std::vector<Move>{amove},
+                          s.emit_proof ? "{\"a\":" + json_quote(move_uci(amove)) + how : std::string()};
+                sp->results[static_cast<std::size_t>(j)] = std::move(won);
+                sp->state[static_cast<std::size_t>(j)] = kChildImmediate;
+                sp->settled_at = j;
+                break;
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(reg.m);
+            sp->open = true;
+            reg.open_splits[static_cast<std::size_t>(s.split_slot)] = sp;
+            reg.cv.notify_all();
+        }
+        // The owner works the queue like anyone else, so a node nobody helps
+        // costs one atomic claim per child on top of the sequential loop.
+        for (;;) {
+            const int j = claim_child(reg, *sp);
+            if (j < 0) {
+                break;
+            }
+            run_child(reg, *sp, j, s);
+            if (s.aborted) {
+                break;      // unwinding; the composition below will see it
+            }
+        }
+        // Withdraw before waiting, so no further claim can be made, and then
+        // wait for the helpers already inside. Their shared_ptr copies keep the
+        // node alive regardless; it is their ANSWERS that are needed.
+        std::unique_lock<std::mutex> lock(reg.m);
+        sp->open = false;
+        reg.open_splits[static_cast<std::size_t>(s.split_slot)].reset();
+        reg.cv.notify_all();
+        reg.cv.wait(lock, [&] { return sp->active == 0; });
+        const int settled_at = sp->settled_at;
+        lock.unlock();
+
+        if (settled_at >= 0) {
+            const Move& amove = sp->moves[static_cast<std::size_t>(settled_at)];
+            Proof& child = sp->results[static_cast<std::size_t>(settled_at)];
+            Proof proof;
+            if (sp->state[static_cast<std::size_t>(settled_at)] == kChildImmediate) {
+                proof = std::move(child);
+            } else {
+                proof.ok = true;
+                proof.pv.push_back(amove);
+                proof.pv.insert(proof.pv.end(), child.pv.begin(), child.pv.end());
+                if (s.emit_proof) {
+                    proof.cert = "{\"a\":" + json_quote(move_uci(amove)) + ",\"d\":" + child.cert + "}";
+                }
+            }
+            if (s.proof_hints) {
+                ++s.stats.proof_hint_stores;
+                s.attacker_proofs[get_hint_key()] = amove;
+            }
+            store_exact_proof_table(s, key, depth, proof);
+            return proof;
+        }
+        // Nothing settled the node, so it fails only if EVERY child came back.
+        // One abandoned branch and there is no verdict here at all -- not a
+        // proof, not a disproof, and above all nothing to store. This is the
+        // abort invariant, and it is the line that decides whether a parallel
+        // prover is sound.
+        for (int j = 0; j < n; ++j) {
+            const std::uint8_t st = sp->state[static_cast<std::size_t>(j)];
+            if (st != kChildProved && st != kChildFailed) {
+                s.aborted = true;
+                return {};
+            }
+            if (!sp->results[static_cast<std::size_t>(j)].refuted) {
+                all_moves_refuted = false;
+            }
+        }
+    }
+
     Proof failed;
     failed.refuted = all_moves_refuted;
     store_exact_proof_table(s, key, depth, failed);
     return failed;
+}
+
+// Prove one child of a split node and record the outcome. Runs on whichever
+// worker claimed it, so its node counts land in that worker's own Stats and are
+// folded back with everyone else's when the root split finishes.
+//
+// The outcomes are exactly the sequential loops', in the same order and with
+// the same precedence. ABANDONED FIRST, in both shapes: a search that gave up
+// has proved nothing, and reading its empty result as a verdict is the single
+// mistake that would turn this machinery into a forged proof.
+void run_child(SplitRegistry& reg, NodeSplit& sp, int j, Search& ws) {
+    const Move& m = sp.moves[static_cast<std::size_t>(j)];
+    const Board nb = make_move(sp.board, m);
+    std::uint8_t st = kChildAbandoned;
+    Proof child;
+    bool settle_refuted = false;
+    bool is_check = false;
+
+    ++ws.stats.split_claims;
+    if (sp.conjunctive && sp.lazy && in_check(nb, other(nb.stm))) {
+        ++ws.stats.defender_lazy_skipped;
+        st = kChildIllegal;
+    } else if (sp.conjunctive) {
+        if (sp.lazy) {
+            ++ws.stats.defender_moves;
+        }
+        ++ws.stats.defender_replies_tried;
+        child = prove_attacker(ws, nb, sp.depth);
+        if (ws.aborted) {
+            st = kChildAbandoned;
+        } else if (!child.ok) {
+            st = kChildFailed;              // a failing reply SETTLES an AND node
+            settle_refuted = child.refuted;
+            ++ws.stats.defender_refutations;
+            if (ws.fac_observer) {
+                is_check = in_check(nb, other(sp.board.stm));
+            }
+            if (ws.debug) {
+                std::cerr << "defender_refutes depth=" << sp.depth << " move=" << move_uci(m)
+                          << " fen=" << fen4(nb) << "\n";
+            }
+        } else {
+            st = kChildProved;
+        }
+    } else {
+        child = prove_defender(ws, nb, sp.depth - 1);
+        if (ws.aborted) {
+            st = kChildAbandoned;
+        } else if (child.ok) {
+            st = kChildProved;              // a succeeding move SETTLES an OR node
+        } else {
+            st = kChildFailed;
+            if (ws.debug) {
+                std::cerr << "attacker_move_failed depth=" << sp.depth << " move=" << move_uci(m)
+                          << " fen=" << fen4(nb) << "\n";
+            }
+        }
+    }
+
+    const bool settles = sp.conjunctive ? (st == kChildFailed) : (st == kChildProved);
+    std::lock_guard<std::mutex> lock(reg.m);
+    sp.state[static_cast<std::size_t>(j)] = st;
+    sp.results[static_cast<std::size_t>(j)] = std::move(child);
+    if (settles && (sp.settled_at < 0 || j < sp.settled_at)) {
+        sp.settled_at = j;
+        sp.settle_refuted = settle_refuted;
+        sp.settle_is_check = is_check;
+    }
+    --sp.active;
+    reg.cv.notify_all();
+}
+
+// An idle worker's loop: take children from whatever nodes are still open until
+// there is nothing left anywhere. Entered only when the ROOT queue is empty, so
+// this thread has no work of its own to displace and owns no split anyone is
+// waiting on -- which is why the waits above cannot deadlock.
+void help_splits(SplitRegistry& reg, Search& ws, std::atomic<int>& current_root,
+                 std::atomic<bool>& cancel) {
+    for (;;) {
+        if (ws.timed_out ||
+            (ws.external_cancel != nullptr &&
+             ws.external_cancel->load(std::memory_order_relaxed))) {
+            return;
+        }
+        NodeClaim claim = claim_any_child(reg);
+        if (claim.index < 0) {
+            // Nothing to take. If every root move is finished there never will
+            // be; otherwise an owner is still generating its children and this
+            // waits to be told. The timeout is a backstop, not the mechanism.
+            std::unique_lock<std::mutex> lock(reg.m);
+            if (reg.live_roots == 0) {
+                return;
+            }
+            reg.cv.wait_for(lock, std::chrono::milliseconds(2));
+            continue;
+        }
+        // Announce which root move this thread is now serving, so the root
+        // split's existing cancellation reaches helpers too: when a lower root
+        // index proves, everyone above it is told to stop, owners and helpers
+        // alike. Publish, then clear, then let run_child re-check -- the same
+        // order, and the same window closed, as the root loop's.
+        current_root.store(claim.split->priority, std::memory_order_release);
+        cancel.store(false, std::memory_order_release);
+        ws.aborted = false;
+        ++ws.stats.split_helped;
+        run_child(reg, *claim.split, claim.index, ws);
+        current_root.store(std::numeric_limits<int>::max(), std::memory_order_release);
+    }
 }
 
 } // namespace mateprover

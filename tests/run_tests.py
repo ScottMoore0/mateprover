@@ -1172,8 +1172,8 @@ def test_root_split_proves_the_same_answer(engine: Path, res: Results) -> None:
     res.check("the sequential certificate verifies", ok, why)
 
 
-def test_reply_split_does_not_move_the_output(engine: Path, res: Results) -> None:
-    """--reply-split shares a defender node's replies out. It must change NOTHING.
+def test_splits_do_not_move_the_output(engine: Path, res: Results) -> None:
+    """The two sub-root splits must change NOTHING about the answer.
 
     A stronger contract than the root split's, deliberately. The root split is
     allowed to report a different principal variation, because a worker can walk
@@ -1192,7 +1192,7 @@ def test_reply_split_does_not_move_the_output(engine: Path, res: Results) -> Non
     Both arms fix the thread count, since the root split above may legally move
     the PV between thread counts and that would mask what is being tested.
     """
-    print("\n[split] --reply-split leaves the answer, the line and the proof alone")
+    print("\n[split] the sub-root splits leave the answer, the line and the proof alone")
 
     cases = [
         ("6k1/8/8/8/8/5K2/5Q1N/8 w - -", ["-z", "5"], "a directmate"),
@@ -1211,13 +1211,22 @@ def test_reply_split_does_not_move_the_output(engine: Path, res: Results) -> Non
 
     for fen, extra, label in cases:
         base = ["--no-portfolio", "--emit-proof", "--threads", "8", *extra]
-        off = effort.sub("", run(engine, [*base, "--no-reply-split", "-"], f"{fen}\n").strip())
-        # min-proved 0 is the ungated mechanism: helpers pile in from the first
-        # reply, so it is the setting under which a composition bug would show.
-        on = effort.sub("", run(engine, [*base, "--reply-split", "--reply-split-min-proved", "0", "-"],
-                                f"{fen}\n").strip())
-        res.check(f"--reply-split output is unchanged on {label}", off == on,
-                  f"off={off!r} on={on!r}")
+        off = effort.sub("", run(engine, [*base, "--no-reply-split", "--no-or-split", "-"],
+                                 f"{fen}\n").strip())
+        # Each mechanism is checked at its most aggressive setting, which is
+        # where a composition bug would show: min-proved 0 lets helpers pile into
+        # an AND node from its first reply, and ybw-first 0 shares out an OR
+        # node's children without searching the eldest alone first.
+        arms = [
+            ("--reply-split", ["--reply-split", "--reply-split-min-proved", "0", "--no-or-split"]),
+            ("--or-split", ["--or-split", "--ybw-first", "0", "--no-reply-split"]),
+            ("both splits", ["--reply-split", "--reply-split-min-proved", "0",
+                             "--or-split", "--ybw-first", "0"]),
+        ]
+        for name, flags in arms:
+            on = effort.sub("", run(engine, [*base, *flags, "-"], f"{fen}\n").strip())
+            res.check(f"{name} output is unchanged on {label}", off == on,
+                      f"off={off!r} on={on!r}")
 
 
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
@@ -3513,7 +3522,7 @@ def main() -> int:
     test_progress_publishes_only_proven_bounds(args.engine, res)
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)
-    test_reply_split_does_not_move_the_output(args.engine, res)
+    test_splits_do_not_move_the_output(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

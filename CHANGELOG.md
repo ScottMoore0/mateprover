@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 556 automated checks cover perft against
+sharing no code with the engine. 564 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -566,3 +566,27 @@ reads results back in reply-index order, so the verdict, the line and the
 certificate are byte-identical to the sequential loop's. See architecture 111
 for the general form -- the node type that is safe to split depends on the
 verdict, which is what the search is trying to find out.
+
+### Young brothers wait on the OR nodes below the root
+
+`--or-split` (on by default) takes the parallel split past the root. A worker
+that runs out of root moves helps refute the ATTACKER moves below another root
+move's refuting reply -- the node type 111 established is the safe one to split
+in a failing search, since disproving an OR node needs every child.
+
+The eldest four children are searched alone first. A node that is going to
+SUCCEED stops at its first working move, so sharing the rest out speculates, and
+one eldest child is not enough of a wait: at `--ybw-first 1` the split cost 3.5%
+on deep directmates, and at 4 it gives all of it back while costing nothing on
+the disproof workload it exists for.
+
+Written inside `prove_attacker`'s own move loop rather than as a second copy of
+it. The composition accepts the LOWEST-indexed child that settles the node --
+exactly where the sequential loop would have stopped -- so the answer, the line
+and the certificate are byte-identical to the single-threaded search. Twelve
+differential checks pin that, at the most aggressive settings of both splits.
+
+Depth 7 under a capture quota, 24 threads: 6.22 s to 5.44 s, lifting the ceiling
+from 5.87x to 6.72x over one thread. That is 1.14x, not the 2x predicted -- the
+ply-3 children turn out to be as unequal as the root moves were, so Amdahl
+applies again one ply down. See architecture 112.

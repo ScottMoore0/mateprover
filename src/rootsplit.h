@@ -20,226 +20,6 @@ struct WorkerSlot {
     std::atomic<bool> cancel{false};
 };
 
-// ---------------------------------------------------------------------------
-// The second ply of the split.
-//
-// Root splitting alone stops paying at 4.75x however many threads are added,
-// and the reason is arithmetic rather than mechanical: one root move owns about
-// 21% of the tree, 1/0.21 = 4.76, and at the tail of the search one worker is
-// grinding through that move while every other worker has run out of root
-// indices to claim. Adding threads adds idlers.
-//
-// A defender node is the right place to put them, and it is the ONLY place in
-// an AND/OR search where extra threads are not speculative. It is a
-// conjunction: the attacker must reach the goal after EVERY reply, so every
-// reply has to be proved whatever order they are taken in. Nothing a helper
-// computes is wasted unless some reply REFUTES the node, and a refutation ends
-// the node for every worker at once.
-//
-// The contract this structure exists to keep is stronger than the root split's.
-// The root split is allowed to change the reported line (100), because a worker
-// may walk into a subtree a sibling proved. This one is not allowed to change
-// ANYTHING: the composition below reads the per-reply results back in index
-// order, so the branch certificates, the representative PV and the refuting
-// reply are all identical to what the sequential loop in prove_defender would
-// have produced. That is what `test_reply_split_is_bit_identical` checks, and
-// it is what makes this safe to default on -- a mistake here would forge a
-// proof rather than crash, so "the output does not move" is the only gate
-// worth having.
-enum : std::uint8_t {
-    kReplyUnresolved = 0,
-    kReplyProved = 1,
-    kReplyRefuted = 2,
-    kReplyIllegal = 3,      // lazy generation: pseudo-legal move, king left en prise
-    kReplyAbandoned = 4,    // cancelled or out of time: NO verdict, by the abort invariant
-};
-
-// One defender node opened up for helpers. Every mutable field is guarded by
-// the registry mutex; the critical sections are a few instructions each and are
-// entered once per reply SUBTREE, so the lock is never on a hot path.
-struct ReplySplit {
-    Board board{};              // position after the attacker's root move
-    int depth = 0;              // depth handed to prove_attacker for each reply
-    int root_index = 0;
-    bool lazy = false;          // replies are pseudo-legal and need filtering
-    std::vector<Move> replies;
-    std::vector<Proof> results;
-    std::vector<std::uint8_t> state;
-    int next = 0;               // lowest unclaimed reply
-    int active = 0;             // claims in flight, owner's included
-    int refuted_at = -1;        // LOWEST refuting reply, which is the one the
-                                // sequential loop would have stopped at
-    bool refuted_flag = false;  // that child's GAP-1 `refuted`
-    bool refuted_is_check = false;  // fatal-anti-check observer only
-    bool open = false;
-};
-
-// Where owners publish and helpers look. One entry per root move index, so a
-// helper can prefer the lowest -- the same priority the sequential search has.
-struct SplitRegistry {
-    std::mutex m;
-    std::condition_variable cv;
-    std::vector<std::shared_ptr<ReplySplit>> open_splits;
-    int live_roots = 0;         // workers still inside a root move
-    const std::atomic<int>* best_index = nullptr;
-    // How many replies the owner must have proved before helpers may join.
-    // See claim_any_reply: this is what separates a node that needs all its
-    // replies from one that is about to die on the next one.
-    int min_replies_before_help = 2;
-};
-
-// Counts a worker in for as long as it is inside a root move. A helper that
-// finds no work parks rather than leaving while this is non-zero, because an
-// owner that has not yet finished generating its replies has nothing to offer
-// yet and will in a moment.
-//
-// A guard rather than a pair of calls: the root loop leaves its body by
-// `continue` from three places, and an undercount here would send every helper
-// home at the exact moment the tail work appears.
-struct LiveRootGuard {
-    SplitRegistry& reg;
-    explicit LiveRootGuard(SplitRegistry& r) : reg(r) {
-        std::lock_guard<std::mutex> lock(reg.m);
-        ++reg.live_roots;
-    }
-    ~LiveRootGuard() {
-        std::lock_guard<std::mutex> lock(reg.m);
-        --reg.live_roots;
-        reg.cv.notify_all();
-    }
-    LiveRootGuard(const LiveRootGuard&) = delete;
-    LiveRootGuard& operator=(const LiveRootGuard&) = delete;
-};
-
-// A claim: which node, and which of its replies. The shared_ptr is what makes
-// the lifetime safe -- an owner may withdraw its split and return while a
-// helper is still deep inside a reply, and the helper's copy keeps the node
-// alive until it has somewhere to write the answer.
-struct ReplyClaim {
-    std::shared_ptr<ReplySplit> split;
-    int index = -1;
-};
-
-// Take the next reply of `sp`, or -1 if there is none left to take. Returns -1
-// once the node is settled, so a refutation stops new work immediately.
-int claim_reply(SplitRegistry& reg, ReplySplit& sp) {
-    std::lock_guard<std::mutex> lock(reg.m);
-    if (!sp.open || sp.refuted_at >= 0 || sp.next >= static_cast<int>(sp.replies.size())) {
-        return -1;
-    }
-    const int j = sp.next++;
-    ++sp.active;
-    return j;
-}
-
-// Find work for an idle worker: the lowest-indexed open node with a reply left.
-// Lowest first because that is the order the sequential search would reach
-// these nodes in, so helpers spend their effort where it is most likely to
-// still matter.
-ReplyClaim claim_any_reply(SplitRegistry& reg) {
-    std::lock_guard<std::mutex> lock(reg.m);
-    const int best = reg.best_index != nullptr
-                         ? reg.best_index->load(std::memory_order_acquire)
-                         : std::numeric_limits<int>::max();
-    for (std::shared_ptr<ReplySplit>& sp : reg.open_splits) {
-        if (!sp) {
-            continue;
-        }
-        // A root move a lower index has already beaten cannot be the answer,
-        // so helping it is pure waste.
-        if (sp->root_index > best) {
-            continue;
-        }
-        if (!sp->open || sp->refuted_at >= 0 ||
-            sp->next >= static_cast<int>(sp->replies.size())) {
-            continue;
-        }
-        // THE GATE, and the whole difference between this mechanism paying and
-        // costing 2.7x the nodes.
-        //
-        // "Every reply must be proved, so no helper's work is speculative" is
-        // true of a defender node that ends up PROVED and false of one that
-        // ends up refuted -- and on a no-solution position every node is
-        // refuted. Such a node early-exits at its first refuting reply, which
-        // the reply ordering and the refutation-hint table between them make
-        // the FIRST reply most of the time, so a sequential node costs one
-        // subtree and helpers were charging in to prove twenty more that
-        // sequential would never have looked at.
-        //
-        // The owner has already resolved replies 0..next-1 without refuting,
-        // since a refutation closes the node. So `next` is direct evidence
-        // about which kind of node this is: past a couple of proved replies it
-        // is very likely to need all of them, and before that it is very likely
-        // to die on the next one.
-        if (sp->next < reg.min_replies_before_help) {
-            continue;
-        }
-        ReplyClaim claim;
-        claim.index = sp->next++;
-        ++sp->active;
-        claim.split = sp;
-        return claim;
-    }
-    return {};
-}
-
-// Prove one reply and record the outcome. Runs on whichever worker claimed it;
-// `ws` is that worker's own Search, so its node counts land in its own Stats
-// and are folded back with everyone else's at the end of the split.
-//
-// The three outcomes are exactly prove_defender's, in the same order and with
-// the same precedence. ABANDONED FIRST: a search that gave up has proved
-// nothing, and reading its empty result as a refutation is the single mistake
-// that would turn this into a false proof.
-void run_reply(SplitRegistry& reg, ReplySplit& sp, int j, Search& ws) {
-    const Move& dmove = sp.replies[static_cast<std::size_t>(j)];
-    const Board nb = make_move(sp.board, dmove);
-    std::uint8_t st = kReplyAbandoned;
-    Proof child;
-    bool refuted_flag = false;
-    bool is_check = false;
-
-    ++ws.stats.reply_split_claims;
-    if (sp.lazy && in_check(nb, other(nb.stm))) {
-        ++ws.stats.defender_lazy_skipped;
-        st = kReplyIllegal;
-    } else {
-        if (sp.lazy) {
-            ++ws.stats.defender_moves;
-        }
-        ++ws.stats.defender_replies_tried;
-        child = prove_attacker(ws, nb, sp.depth);
-        if (ws.aborted) {
-            st = kReplyAbandoned;
-        } else if (!child.ok) {
-            st = kReplyRefuted;
-            refuted_flag = child.refuted;
-            ++ws.stats.defender_refutations;
-            if (ws.fac_observer) {
-                is_check = in_check(nb, other(sp.board.stm));
-            }
-            if (ws.debug) {
-                std::cerr << "defender_refutes depth=" << sp.depth << " move=" << move_uci(dmove)
-                          << " fen=" << fen4(nb) << "\n";
-            }
-        } else {
-            st = kReplyProved;
-        }
-    }
-
-    std::lock_guard<std::mutex> lock(reg.m);
-    sp.state[static_cast<std::size_t>(j)] = st;
-    if (st == kReplyProved) {
-        sp.results[static_cast<std::size_t>(j)] = std::move(child);
-    } else if (st == kReplyRefuted && (sp.refuted_at < 0 || j < sp.refuted_at)) {
-        sp.refuted_at = j;
-        sp.refuted_flag = refuted_flag;
-        sp.refuted_is_check = is_check;
-    }
-    --sp.active;
-    reg.cv.notify_all();
-}
-
 // Prove a defender node with its replies shared out.
 //
 // The prologue and the composition are prove_defender's, line for line, and
@@ -251,8 +31,7 @@ void run_reply(SplitRegistry& reg, ReplySplit& sp, int j, Search& ws) {
 // refutation, which IS the sequential loop. That is deliberate: there is one
 // code path here, exercised by every single-threaded run, rather than a fast
 // path and a rarely-taken parallel one that could drift apart unnoticed.
-Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int depth,
-                           int root_index) {
+Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
     }
@@ -300,18 +79,21 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
         }
     }
 
-    auto sp = std::make_shared<ReplySplit>();
+    auto sp = std::make_shared<NodeSplit>();
     sp->board = b;
     sp->depth = depth;
-    sp->root_index = root_index;
+    sp->slot = s.split_slot;
+    sp->priority = s.split_priority;
+    sp->conjunctive = true;
+    sp->min_before_help = s.reply_split_min_proved;
     sp->lazy = lazy;
-    sp->replies = std::move(replies);
-    sp->results.resize(sp->replies.size());
-    sp->state.assign(sp->replies.size(), kReplyUnresolved);
+    sp->moves = std::move(replies);
+    sp->results.resize(sp->moves.size());
+    sp->state.assign(sp->moves.size(), kChildUnresolved);
     {
         std::lock_guard<std::mutex> lock(reg.m);
         sp->open = true;
-        reg.open_splits[static_cast<std::size_t>(root_index)] = sp;
+        reg.open_splits[static_cast<std::size_t>(s.split_slot)] = sp;
         reg.cv.notify_all();
     }
 
@@ -319,11 +101,11 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     // replies left to take, so a node with no helpers costs exactly one atomic
     // claim per reply on top of the sequential loop.
     for (;;) {
-        const int j = claim_reply(reg, *sp);
+        const int j = claim_child(reg, *sp);
         if (j < 0) {
             break;
         }
-        run_reply(reg, *sp, j, s);
+        run_child(reg, *sp, j, s);
         if (s.aborted) {
             break;      // this worker is unwinding; the composition will see it
         }
@@ -335,14 +117,14 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     // an AND node is not proved until every branch has come back.
     std::unique_lock<std::mutex> lock(reg.m);
     sp->open = false;
-    reg.open_splits[static_cast<std::size_t>(root_index)].reset();
+    reg.open_splits[static_cast<std::size_t>(s.split_slot)].reset();
     reg.cv.notify_all();
     reg.cv.wait(lock, [&] { return sp->active == 0; });
 
-    const int n = static_cast<int>(sp->replies.size());
-    const int refuted_at = sp->refuted_at;
-    const bool refuted_flag = sp->refuted_flag;
-    const bool refutation_is_check = sp->refuted_is_check;
+    const int n = static_cast<int>(sp->moves.size());
+    const int refuted_at = sp->settled_at;
+    const bool refuted_flag = sp->settle_refuted;
+    const bool refutation_is_check = sp->settle_is_check;
     // Everything read out of the node from here is stable: it is closed, and
     // no claim is outstanding. Drop the lock so the composition -- which
     // builds strings -- is not done under it.
@@ -365,7 +147,7 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
         }
         if (s.refutation_hints) {
             ++s.stats.refutation_hint_stores;
-            s.defender_refutations[get_hint_key()] = sp->replies[static_cast<std::size_t>(refuted_at)];
+            s.defender_refutations[get_hint_key()] = sp->moves[static_cast<std::size_t>(refuted_at)];
         }
         Proof out;
         out.refuted = refuted_flag;
@@ -379,9 +161,9 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     bool any_legal = false;
     for (int j = 0; j < n; ++j) {
         const std::uint8_t st = sp->state[static_cast<std::size_t>(j)];
-        if (st == kReplyProved) {
+        if (st == kChildProved) {
             any_legal = true;
-        } else if (st != kReplyIllegal) {
+        } else if (st != kChildIllegal) {
             s.aborted = true;
             return {};
         }
@@ -397,10 +179,10 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     std::string cert = "[";
     bool first_cert = true;
     for (int j = 0; j < n; ++j) {
-        if (sp->state[static_cast<std::size_t>(j)] != kReplyProved) {
+        if (sp->state[static_cast<std::size_t>(j)] != kChildProved) {
             continue;
         }
-        const Move& dmove = sp->replies[static_cast<std::size_t>(j)];
+        const Move& dmove = sp->moves[static_cast<std::size_t>(j)];
         const Proof& child = sp->results[static_cast<std::size_t>(j)];
         std::vector<Move> candidate;
         candidate.push_back(dmove);
@@ -427,44 +209,6 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     Proof proof{true, representative, cert};
     store_exact_proof_table(s, key, depth, proof);
     return proof;
-}
-
-// An idle worker's loop: take replies from whatever nodes are still open until
-// there is nothing left anywhere. Called only when the ROOT queue is empty, so
-// this thread has no work of its own to displace and cannot be the owner of a
-// node someone is waiting on -- which is also why the waiting above can never
-// deadlock.
-void help_reply_splits(SplitRegistry& reg, Search& ws, WorkerSlot& slot) {
-    for (;;) {
-        if (ws.timed_out ||
-            (ws.external_cancel != nullptr &&
-             ws.external_cancel->load(std::memory_order_relaxed))) {
-            return;
-        }
-        ReplyClaim claim = claim_any_reply(reg);
-        if (claim.index < 0) {
-            // Nothing to take. If every root move is finished there never will
-            // be; otherwise an owner is still generating its replies and this
-            // waits to be told. The timeout is a backstop, not the mechanism.
-            std::unique_lock<std::mutex> lock(reg.m);
-            if (reg.live_roots == 0) {
-                return;
-            }
-            reg.cv.wait_for(lock, std::chrono::milliseconds(2));
-            continue;
-        }
-        // Announce which root move this thread is now serving, so the root
-        // split's existing cancellation reaches helpers too: when a lower root
-        // index proves, everyone above it is told to stop, owners and helpers
-        // alike. Order matters -- publish, then clear, then re-check -- which
-        // closes the same window the root loop closes.
-        slot.current_root.store(claim.split->root_index, std::memory_order_release);
-        slot.cancel.store(false, std::memory_order_release);
-        ws.aborted = false;
-        ++ws.stats.reply_split_helped;
-        run_reply(reg, *claim.split, claim.index, ws);
-        slot.current_root.store(std::numeric_limits<int>::max(), std::memory_order_release);
-    }
 }
 
 // Prove one depth by splitting the root attacker moves across workers.
@@ -922,19 +666,32 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     std::mutex result_mutex;
     std::vector<Proof> results(static_cast<std::size_t>(n));
 
+    // ONE REGISTRY SLOT PER WORKER, not per root move. A worker publishes at
+    // most one split at a time, which is what keeps the arrangement flat: an
+    // owner waiting for its helpers is never itself a helper, so no owner can
+    // ever be waiting on another owner and the classical YBWC blocked-owner
+    // question does not arise here.
     SplitRegistry registry;
-    registry.open_splits.resize(static_cast<std::size_t>(n));
+    registry.open_splits.resize(static_cast<std::size_t>(worker_count));
     registry.best_index = &best_index;
     // Every worker that has claimed a root move and not yet finished it. A
     // helper that finds no work parks until this reaches zero, because until
     // then an owner may still be about to publish.
     registry.live_roots = 0;
-    registry.min_replies_before_help = s.reply_split_min_proved;
     const bool split_replies = s.reply_split && worker_count > 1 && depth > 1;
+    const bool split_moves = s.or_split && worker_count > 1 && depth > 1;
+    const bool any_split = split_replies || split_moves;
 
     for (int w = 0; w < worker_count; ++w) {
         slots[static_cast<std::size_t>(w)]->current_root.store(n, std::memory_order_relaxed);
         slots[static_cast<std::size_t>(w)]->cancel.store(false, std::memory_order_relaxed);
+        Search& ws = *workers[static_cast<std::size_t>(w)];
+        // `iteration_depth` is how prove_attacker recognises which plies are
+        // near enough the root to be worth splitting; workers copy the config
+        // but not the per-pass state, so it is set here rather than inherited.
+        ws.iteration_depth = depth;
+        ws.split_registry = split_moves ? &registry : nullptr;
+        ws.split_slot = w;
     }
 
     auto worker_body = [&](int w) {
@@ -946,8 +703,8 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 // Out of root moves. This is the thread that used to stop here
                 // and idle for the rest of the search, and it is the whole of
                 // the 4.75x ceiling. Go and help whoever is still working.
-                if (split_replies) {
-                    help_reply_splits(registry, ws, slot);
+                if (any_split) {
+                    help_splits(registry, ws, slot.current_root, slot.cancel);
                 }
                 break;
             }
@@ -976,6 +733,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 continue;
             }
             LiveRootGuard live(registry);
+            ws.split_priority = i;
 
             Board nb = make_move(b, moves[static_cast<std::size_t>(i)]);
             bool mate = false;
@@ -998,7 +756,7 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                 }
             } else if (depth > 1) {
                 Proof all_replies = split_replies
-                                        ? prove_defender_split(ws, registry, nb, depth - 1, i)
+                                        ? prove_defender_split(ws, registry, nb, depth - 1)
                                         : prove_defender(ws, nb, depth - 1);
                 if (ws.aborted) {
                     continue; // abandoned: no verdict, nothing recorded

@@ -218,6 +218,20 @@ void print_usage() {
 "  --root-sequential-first N     search N root moves sequentially before\n"
 "                                splitting; cuts wasted parallel work\n"
 "  --root-split-all              default; split every root move\n"
+"  --no-or-split                 stop after the first ply of the split. On by\n"
+"                                default: splitting root moves alone saturates\n"
+"                                at 4.75x because one root move owns about a\n"
+"                                fifth of the tree. Workers that run out of root\n"
+"                                moves help refute the ATTACKER moves below the\n"
+"                                dominant move's refuting reply -- an OR node,\n"
+"                                whose children must ALL be visited to disprove\n"
+"                                it. Young brothers wait: the eldest child is\n"
+"                                searched alone first, so a node that is going\n"
+"                                to succeed shares nothing out\n"
+"  --or-split-plies N            plies below the root at which an OR node may\n"
+"                                split (default 1)\n"
+"  --ybw-first N                 children searched alone before the rest are\n"
+"                                shared out (default 1)\n"
 "  --reply-split                 take the split a second ply down: a worker\n"
 "                                that runs out of root moves helps prove\n"
 "                                another root move's DEFENDER replies. OFF by\n"
@@ -585,6 +599,8 @@ const BoolOption kBoolOptions[] = {
     {"--no-root-split", &SearchConfig::root_split, false},
     {"--reply-split", &SearchConfig::reply_split, true},
     {"--no-reply-split", &SearchConfig::reply_split, false},
+    {"--or-split", &SearchConfig::or_split, true},
+    {"--no-or-split", &SearchConfig::or_split, false},
     {"--shared-tt", &SearchConfig::shared_tt, true},
     {"--private-tt", &SearchConfig::shared_tt, false},
 };
@@ -767,6 +783,18 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--root-sequential-first' expects a number");
             config.root_sequential_first = static_cast<int>(value);
+        } else if (arg == "--or-split-plies") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--or-split-plies' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--or-split-plies' expects a number");
+            config.or_split_plies = static_cast<int>(value);
+        } else if (arg == "--ybw-first") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--ybw-first' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--ybw-first' expects a number");
+            config.ybw_first = static_cast<int>(value);
         } else if (arg == "--reply-split-min-proved") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--reply-split-min-proved' requires a count");

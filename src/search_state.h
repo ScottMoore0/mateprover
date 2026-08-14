@@ -13,6 +13,11 @@
 
 namespace mateprover {
 
+// Where parallel split points are published and claimed. Defined in prove.h,
+// because the node that publishes them is prove_attacker's move loop and the
+// whole point of this design is that there is no second copy of that loop.
+struct SplitRegistry;
+
 // All tunable search options. This is the single value passed from the CLI to
 // the search, and is also what each worker copies when a search is split
 // across threads, so worker construction never has to re-parse or re-plumb
@@ -191,6 +196,51 @@ struct SearchConfig {
     // join it. The gate that decides whether the mechanism above pays; see
     // claim_any_reply and architecture 111.
     int reply_split_min_proved = 2;
+
+    // YOUNG BROTHERS WAIT, on the OR nodes below the root.
+    //
+    // 111 established which node type is safe to split, and it is not the one
+    // the reply split chose. To DISPROVE a position every attacker move must be
+    // refuted, so an OR node in a failing search visits all its children and
+    // parallel work there is not speculative. To PROVE one it stops at the first
+    // move that works -- so the eldest child is searched alone first, and only
+    // if it fails to settle the node do the younger brothers go out to the other
+    // workers. That is the classical arrangement and it is classical for this
+    // reason.
+    //
+    // The node this reaches is the one 109 identified and could not touch: the
+    // root split leaves one worker grinding on the single most expensive root
+    // move, whose cost is really the cost of ONE defender reply, whose cost is
+    // really the exhaustive refutation of every attacker move below it. That
+    // last list is what gets shared out.
+    //
+    // Implemented inside prove_attacker rather than beside it. prove_attacker is
+    // 250 lines of coverage exits, restrictions, GAP-1 axioms and fail_depth
+    // composition, and a faithful second copy of it is not a thing anyone should
+    // maintain -- 111's mechanism is a copy of a 60-line loop and even that
+    // needed a byte-for-byte differential test to trust.
+    bool or_split = true;
+    // Plies below the root iteration depth at which an OR node may split. 1
+    // splits only the ply-3 attacker nodes, which is where the work is and which
+    // makes the split flat: no owner is ever waiting on another owner, so the
+    // blocked-owner problem that YBWC normally has does not arise.
+    int or_split_plies = 1;
+    // Children searched alone before the rest are shared out. This is the "wait"
+    // in young brothers wait; 0 turns it off and splits from the first child.
+    //
+    // 4, and the 4 is measured. An OR node that is going to SUCCEED stops at its
+    // first working move, so sharing the rest out is speculation -- the same
+    // mistake the reply split made at the other node type (111), reached from
+    // the other side. One eldest child is not enough of a wait: over twelve
+    // mate-in-10s, where nearly every node succeeds, `1` cost 3.5% against not
+    // splitting at all (138.6/138.7/140.0 s against 133.7/134.1/134.8) and `4`
+    // gave it all back (133.3 s). On the disproof workload the wait costs
+    // nothing measurable, because a node that never succeeds has no early exit
+    // to protect: 6.79 s at 1, 6.82 s at 4.
+    //
+    // So the wait is not a compromise between the two workloads. It is free on
+    // the one it does not help and worth 3.5% on the one it does.
+    int ybw_first = 4;
     // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
     // working instead of bouncing straight back. Expressed in 1/64ths.
     // Precondition only the deepest iteration.
@@ -470,6 +520,19 @@ struct Search : SearchConfig {
     // When non-null, exact proof entries live in a table shared with the other
     // workers of this search instead of in the private `tt` map above.
     SharedProofTable* shared_table = nullptr;
+
+    // Where this search publishes its split points, and the slot it owns there.
+    // Null for an ordinary sequential search, which is what makes the split
+    // path in prove_attacker cost one null test when nobody is parallelising.
+    // One slot per worker, so a worker can have at most one split open and can
+    // never be waiting on a node it is itself the owner of.
+    SplitRegistry* split_registry = nullptr;
+    int split_slot = -1;
+    // Which root move this worker is serving. Helpers prefer the lowest, which
+    // is the order the sequential search would reach these subtrees in, and the
+    // root split's existing cancellation reads it to stop everyone working on a
+    // root move a lower index has already beaten.
+    int split_priority = 0;
 
     // Proof/disproof numbers for the DFPN route. Purely a heuristic cache:
     // discarding it costs search effort and cannot change a verdict.
