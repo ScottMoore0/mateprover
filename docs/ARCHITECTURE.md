@@ -187,6 +187,7 @@ did. If you are reading it for the first time:
 - [107. x-escape: The Rule That Is Measured Rather Than Counted](#107-x-escape-the-rule-that-is-measured-rather-than-counted)
 - [108. What x-escape Actually Costs, And One Hypothesis That Was Wrong](#108-what-x-escape-actually-costs-and-one-hypothesis-that-was-wrong)
 - [109. The Root Split Saturates Because One Move Owns The Tree](#109-the-root-split-saturates-because-one-move-owns-the-tree)
+- [110. Memory Is Not A Lever Until The Depth Makes It One](#110-memory-is-not-a-lever-until-the-depth-makes-it-one)
 
 ## Impact-Ordered Architecture
 
@@ -8121,3 +8122,52 @@ line-for-line arm is kept beside it under `--no-root-split` -- which is the mode
 a caller diffing against stored output wants. Relaxing the arm without adding
 the strict one would have surrendered real coverage of the sequential path to
 make room for a new default.
+
+### 110. Memory Is Not A Lever Until The Depth Makes It One
+
+39 concluded that memory is not a lever. 109 found a 6.7x swing from it and
+called that conclusion suspect. Both are right, about different regimes, and the
+useful statement is the one neither of them made.
+
+Standard directmates, the whole of `tests/mates.epd`, single-threaded:
+
+| table | nodes |
+|---|---|
+| 64 MB | 90,276 |
+| 256 MB | 90,276 |
+| 1024 MB | 90,276 |
+| 4096 MB | 90,276 |
+
+**Identical to the node.** The working set fits in 64 MB, so nothing above it is
+ever consulted. 39 stands, and stands for the reason it gave.
+
+The same question under a capture quota, at two depths:
+
+| table | depth 6 nodes | depth 7 nodes |
+|---|---|---|
+| 64 MB | 2,584,693 | 142,448,815 |
+| 256 MB | 1,655,628 | 51,685,520 |
+| 1024 MB | 1,655,628 | 23,609,331 |
+| 4096 MB | 1,655,628 | **20,158,828** |
+
+At depth 6 the curve flattens at 256 MB and everything above it is wasted. At
+depth 7 it is still improving at 4 GB, and 64 MB costs **seven times the nodes**.
+
+So the working set grows with depth, and the shipped default of 256 MB a table is
+correctly sized for the regime 39 measured and badly short for the one 109 hit.
+Nothing is wrong with either measurement; what was missing is that the answer
+depends on the depth, and the two sections were taken at different ones.
+
+**Not changed to a larger default.** Every measurement in this document was taken
+at 256 MB, and moving the default would silently invalidate the lot while helping
+only deep variant searches -- which are exactly the runs whose operator is
+already passing `-M` deliberately. The honest fix is that the guidance now
+exists: for a capture-quota search past depth 6, memory is the largest single
+knob available, worth more than any algorithmic change measured in this session
+apart from 99.
+
+The general shape is one this document keeps producing. "X is not a lever" is
+never a property of X; it is a property of X ON THE WORKLOAD MEASURED. 32 said
+root splitting contributed nothing and was measured on a route where it was
+never called; 39 said memory contributed nothing and was measured where the
+working set already fitted. Both were sound reports of the wrong regime.
