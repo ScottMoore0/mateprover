@@ -140,7 +140,22 @@ struct SearchConfig {
     // one, and an answer that depends on the thread count is not an answer this
     // engine is allowed to give. Opt in with --root-split; the default stays
     // bit-identical to the sequential search until that divergence is explained.
-    bool root_split = false;
+    // ON by default, on a measurement rather than on principle.
+    //
+    // It was defaulted off when it appeared to buy nothing and to change the
+    // reported line; 32a explains why it appeared to buy nothing (it was never
+    // wired into the default route, and then it was hidden behind a sequential
+    // preconditioner). With both fixed it is worth 4.75x at 24 threads on a
+    // depth-7 capture-quota search, with the node count moving 2% -- so the
+    // workers are sharing rather than duplicating.
+    //
+    // The cost is that the PV becomes a function of the position AND the thread
+    // count, because a worker can walk into a subtree a sibling proved. The key
+    // move and the distance are unaffected and every certificate still verifies;
+    // see 100. `--no-root-split` restores a PV that depends on the position
+    // alone, which is what a caller diffing output against a stored expectation
+    // wants.
+    bool root_split = true;
     // df-pn 1+epsilon: widen the proof threshold handed to a child so it keeps
     // working instead of bouncing straight back. Expressed in 1/64ths.
     // Precondition only the deepest iteration.

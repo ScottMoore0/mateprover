@@ -2664,13 +2664,33 @@ def test_order_and_scheduling_independence(engine: Path, res: Results) -> None:
     # workers race, and the ordered-first move always resolves first. Treat this
     # as a consistency check against gross breakage, not as evidence for the
     # lowest-index property. See architecture 8v.
+    # The ANSWER must match at every thread count. The PRINCIPAL VARIATION need
+    # not, and since the root split was defaulted on it does not: workers share
+    # one proof table, so the worker proving the accepted root move can continue
+    # into a subtree a sibling proved. Both lines are genuine forced mates of the
+    # same length and both certificates verify -- architecture 100, and
+    # test_root_split_proves_the_same_answer, which checks exactly that.
+    #
+    # So this compares the answer with the PV stripped, and the strict
+    # line-for-line comparison is kept beside it under --no-root-split, which is
+    # the mode a caller diffing against stored output would use. Dropping the
+    # strict arm entirely would have quietly surrendered real coverage of the
+    # sequential path to make room for a new default.
+    def answer_only(text: str) -> str:
+        return re.sub(r"; pv [^;]*", "", text)
+
     baseline = answers(cases, ["--no-portfolio", "--single-thread"])
     for threads in ("2", "4", "8", "16", "32"):
         got = answers(cases, ["--no-portfolio", "--threads", threads])
-        differing = [k for k in baseline if baseline[k] != got.get(k)]
+        differing = [k for k in baseline
+                     if answer_only(baseline[k]) != answer_only(got.get(k, ""))]
         res.check(f"answers at {threads} threads match the sequential answer",
                   not differing,
                   f"{differing[0][0][:30] if differing else ''}")
+        strict = answers(cases, ["--no-portfolio", "--no-root-split", "--threads", threads])
+        exact = [k for k in baseline if baseline[k] != strict.get(k)]
+        res.check(f"--no-root-split at {threads} threads reproduces the line exactly",
+                  not exact, f"{exact[0][0][:30] if exact else ''}")
 
 
 def test_persistent_service_mode(engine: Path, res: Results) -> None:

@@ -186,6 +186,7 @@ did. If you are reading it for the first time:
 - [106. The One Line In The Stream That Behaves Like Stockfish's](#106-the-one-line-in-the-stream-that-behaves-like-stockfishs)
 - [107. x-escape: The Rule That Is Measured Rather Than Counted](#107-x-escape-the-rule-that-is-measured-rather-than-counted)
 - [108. What x-escape Actually Costs, And One Hypothesis That Was Wrong](#108-what-x-escape-actually-costs-and-one-hypothesis-that-was-wrong)
+- [109. The Root Split Saturates Because One Move Owns The Tree](#109-the-root-split-saturates-because-one-move-owns-the-tree)
 
 ## Impact-Ordered Architecture
 
@@ -8054,3 +8055,69 @@ needed, and no change was made here.
 The general lesson is the one this session keeps producing. An argument that a
 heuristic is aimed at the wrong thing is not evidence that it performs badly, and
 costs about a minute to check.
+
+### 109. The Root Split Saturates Because One Move Owns The Tree
+
+Two hypotheses about where a deep capture-quota search loses its speed. Both
+were mine, both were confidently argued, and the measurements kill one outright
+and redirect the other.
+
+#### Table size is not a locality problem
+
+The claim was that a deep search is memory-bound: a 10 GB table means every
+probe is a round-trip, and per-node throughput collapses with depth. Depth 7,
+quota 3, single-threaded:
+
+| table | wall clock | nodes | nodes/sec |
+|---|---|---|---|
+| 64 MB | 243.7 s | 142,448,815 | 584,429 |
+| 256 MB | 114.1 s | 51,685,520 | 453,060 |
+| 1024 MB | 45.4 s | 23,609,331 | 520,217 |
+| 4096 MB | 36.5 s | 20,158,828 | 552,403 |
+
+A bigger table is worth **6.7x in wall clock**, and it buys that by cutting NODES
+sevenfold -- re-search avoided, nothing else. Throughput is flat at roughly half
+a million nodes a second across a 64-fold range of table sizes. There is no
+locality cliff, and the `-M` knob already captures the entire effect. The
+hypothesis was wrong, and the earlier "per-node throughput falls 5x with depth"
+figure that motivated it was an inference from an unlike-for-like comparison, not
+a measurement.
+
+#### The split does not duplicate and is not contended
+
+| threads | wall clock | nodes | speedup | nodes vs 1 thread |
+|---|---|---|---|---|
+| 1 | 39.74 s | 20,158,828 | 1.00x | 1.00x |
+| 4 | 15.37 s | 20,432,735 | 2.58x | 1.01x |
+| 8 | 10.89 s | 20,609,767 | 3.65x | 1.02x |
+| 16 | 8.72 s | 20,637,714 | 4.56x | 1.02x |
+| 24 | 8.36 s | 20,482,154 | **4.75x** | 1.02x |
+
+**The node count moves 2%.** Workers are sharing the table, not re-searching each
+other's work, so duplication is not the loss. Throughput rises from 507K to 2.45M
+nodes a second, so the machine is not starved either -- it really is doing five
+times the work per second. What stalls is the wall clock, and it stalls hard:
+1 to 4 threads buys 2.58x, 16 to 24 buys 1.04x.
+
+That leaves one explanation, and it is Amdahl rather than anything exotic. **The
+root has twenty moves and they are wildly unequal.** Once every worker has a move,
+the wall clock is the cost of the single most expensive one, and no further
+thread can touch it. A 4.75x ceiling puts the largest root move at roughly a
+fifth of the whole tree.
+
+So the fix is not locality and not lock contention: it is that a one-ply
+decomposition cannot divide work that one branch dominates. **Splitting the
+dominant root move's own subtree at the next ply is the remaining lever**, and it
+is the same two-ply decomposition proposed and abandoned earlier in this session
+-- abandoned then because the evidence for it was confounded by the sequential
+preconditioner, and supported now that the preconditioner is out of the way.
+
+#### The split is now on by default
+
+4.75x for anyone who did not know to ask for it. The cost is that the reported PV
+becomes a function of the position AND the thread count (100), so the suite's
+thread-agreement arm now compares the answer with the PV stripped, and a strict
+line-for-line arm is kept beside it under `--no-root-split` -- which is the mode
+a caller diffing against stored output wants. Relaxing the arm without adding
+the strict one would have surrendered real coverage of the sequential path to
+make room for a new default.
