@@ -185,6 +185,7 @@ did. If you are reading it for the first time:
 - [105. A Progress Stream That Publishes Theorems, Not Estimates](#105-a-progress-stream-that-publishes-theorems-not-estimates)
 - [106. The One Line In The Stream That Behaves Like Stockfish's](#106-the-one-line-in-the-stream-that-behaves-like-stockfishs)
 - [107. x-escape: The Rule That Is Measured Rather Than Counted](#107-x-escape-the-rule-that-is-measured-rather-than-counted)
+- [108. What x-escape Actually Costs, And One Hypothesis That Was Wrong](#108-what-x-escape-actually-costs-and-one-hypothesis-that-was-wrong)
 
 ## Impact-Ordered Architecture
 
@@ -7982,3 +7983,74 @@ That last point is worth stating as a limitation rather than a result. The three
 are off because the reachability predicate is conservative, not because each was
 shown unsound on its own terms. Sharpening the predicate later would silently
 re-enable all three, so any such change has to re-audit them first.
+
+### 108. What x-escape Actually Costs, And One Hypothesis That Was Wrong
+
+Three things were shipped unmeasured in 107. All three now have numbers, and one
+of them says the opposite of what was predicted.
+
+#### E costs 22% per node, and the shortcuts cost nothing
+
+The first attempt at this compared standard chess against x-escape and reported
+x-escape as ELEVEN TIMES cheaper, which is nonsense. The variants skip the DFPN
+preconditioner (99) and standard chess does not, so the comparison was measuring
+the gate, not the rule. With the preconditioner off on both sides, from the
+starting array at depth 5:
+
+| | nodes | nodes/sec |
+|---|---|---|
+| standard chess | 138,138 | 886,785 |
+| x-escape, limit 8 | **138,138** | 728,226 |
+| x-capture, quota 3 | 140,717 | 1,051,147 |
+
+The node counts are IDENTICAL, which answers the shortcut question directly: all
+five shortcuts standing down costs nothing here, because none of them was firing
+on this position anyway. The whole cost of the rule is the per-node one, and it
+is **22%** -- about 0.25 microseconds a node for the terminal predicate's two
+escape counts. That is at the good end of the 0.5-to-5 microsecond bound 107 left
+open, and better than the structural estimate.
+
+#### The variant is playable, and the first answer is 3
+
+| limit | depth 3 | depth 5 | depth 7 |
+|---|---|---|---|
+| 1 | **win in 3** | win in 5 | win in 7 |
+| 2 | no win | no win | no win |
+| 3 | no win | no win | no win |
+
+**White forces Black's king to an escape count of 1 in three moves.** Depths 5
+and 7 report 5 and 7 because `--direct-depth` searches the requested depth and
+does not minimise. Limits 2 and 3 are unreached through depth 7, at 4.7M and
+12.4M nodes -- so the variant has the same shape as x-capture, a cheap first
+answer and a wall immediately after it.
+
+#### The check bonus HELPS, and the argument that it would not was wrong
+
+107 recorded a concern: the ordering pass scores checks +50000 on the assumption
+that attacking near the enemy king is progress, and under x-escape an attacked
+ring square does NOT count toward E, so checking near the enemy king reduces
+their escape count and helps them. The heuristic looked actively wrong.
+
+Measured at depth 7 from the starting array:
+
+| | checks scored | check bonus off |
+|---|---|---|
+| x-escape, limit 1 | **5,419,320** | 5,832,287 |
+| x-escape, limit 3 | **12,373,829** | 24,651,793 |
+
+Scoring checks is better in both, and twice as good at limit 3. The reasoning was
+sound about the GAME and irrelevant to the SEARCH, which is the distinction that
+was missed: **move ordering does not rank moves by how much they advance the
+goal, it ranks them by how quickly they resolve the subtree.** A check is
+forcing -- it collapses the defender's reply list -- and forcing moves prune well
+whether or not they are the winning idea. The +50000 is a proxy for forcing-ness,
+and that proxy survives a rule change that inverts what progress means.
+
+The correctness half of the same concern was real and is already handled: the
+last-ply prune reads the same score as "this move gives check" and would have
+discarded a quiet winning withdrawal, so 107 stands it down. Nothing further is
+needed, and no change was made here.
+
+The general lesson is the one this session keeps producing. An argument that a
+heuristic is aimed at the wrong thing is not evidence that it performs badly, and
+costs about a minute to check.
