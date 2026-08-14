@@ -192,6 +192,7 @@ did. If you are reading it for the first time:
 - [112. Young Brothers Wait, On The Node Type 111 Says To Split](#112-young-brothers-wait-on-the-node-type-111-says-to-split)
 - [113. Supply Follows Demand, And The Deeper Decomposition Was Right After All](#113-supply-follows-demand-and-the-deeper-decomposition-was-right-after-all)
 - [114. Four Leads, One Bug, And Three Rejections](#114-four-leads-one-bug-and-three-rejections)
+- [115. The Idle Time Was Not Idle Time. It Was The Free.](#115-the-idle-time-was-not-idle-time-it-was-the-free)
 
 ## Impact-Ordered Architecture
 
@@ -8592,3 +8593,111 @@ started: the proof/disproof ratio, what a cache is for, and that 113 had already
 fixed 114's problem. The measurements were cheap and the estimates were free,
 which is the wrong way round -- an hour of arithmetic on the existing counters
 would have killed items 1 and 4 before either was written.
+
+### 115. The Idle Time Was Not Idle Time. It Was The Free.
+
+114 ended by saying the remaining parallel loss had no diagnosis worth trusting,
+and that the next honest step was to measure where the idle time went rather than
+propose another fix for it. That was the right order, because there was almost no
+idle time and the loss was not in the search at all.
+
+#### Instrumenting it
+
+Four counters, in microseconds of worker time: `split_work_micros` (inside
+run_child), `split_park_micros` (helper loop with nothing to take),
+`owner_wait_micros` (owner blocked on its own helpers), `root_work_micros`
+(inside a root move of one's own). And the one that makes them meaningful,
+`worker_micros`: how long a worker was ALIVE.
+
+That denominator matters. `threads x wall clock` is the wrong one, because a
+worker that has left `worker_body` is not idle, it has gone home, and counting
+its absence as idleness invents a problem that is not there.
+
+#### Workers are busy while they exist
+
+Depth 7, capture quota 3, `-M 4096`, no portfolio:
+
+| threads | wall | worker-seconds alive | alive / (threads x wall) | idle within alive |
+|---|---:|---:|---:|---:|
+| 4 | 13.43 s | 44.64 | 83.1% | 2.1% |
+| 8 | 8.42 s | 46.96 | 69.7% | 1.7% |
+| 16 | 6.32 s | 60.83 | 60.2% | 7.0% |
+| 24 | 6.02 s | 69.75 | 48.3% | 5.3% |
+
+**Idle inside a living worker is 2-7%.** Parking and owner-waiting together are
+under four worker-seconds of a hundred and fifty. There was never a pool of idle
+time to reclaim, which retires the whole line of thinking that produced 111, 112
+and the owner-helping mechanism of 114.
+
+What the table does show is that worker LIFETIME falls away from the wall clock
+as threads are added. Dividing out gives the same figure at every thread count:
+
+    4 threads    11.16 s in the split, 13.43 s wall   ->  2.3 s outside
+    8 threads     5.87 s in the split,  8.42 s wall   ->  2.55 s outside
+    16 threads    3.80 s in the split,  6.32 s wall   ->  2.52 s outside
+    24 threads    3.49 s in the split,  6.02 s wall   ->  2.53 s outside
+
+A constant two and a half seconds of wall clock outside the parallel region,
+independent of the thread count. That is a serial fraction, and at 24 threads it
+was 42% of the run.
+
+#### It is the transposition table's destructor
+
+Not thread churn: `--direct-depth`, which builds one pool instead of seven, has
+the same 2.48 s. It scales with the TABLE:
+
+| `-M` | wall | in the split | outside | nodes |
+|---|---:|---:|---:|---:|
+| 256 | 8.88 s | 8.47 s | 0.41 s | 23.1M |
+| 1024 | 8.84 s | 7.97 s | 0.87 s | 21.5M |
+| 4096 | 6.01 s | 3.36 s | **2.65 s** | 21.1M |
+
+Same search, same node counts, and the time outside the split grows sixfold with
+the memory budget. `shared_table` is a `unique_ptr` local to the route, so twenty
+million entries across 256 hash maps are handed back one at a time when the
+function returns -- inside the reported `acs`, after the verdict is already known.
+
+#### Freeing in parallel
+
+The shards share nothing, so the work divides perfectly. This is the one place in
+the program where parallelism is embarrassing rather than speculative: no
+ordering, no cutoffs, no verdicts, just deallocation.
+
+| `-M` | outside, before | outside, after |
+|---|---:|---:|
+| 1024 | 0.87 s | 0.37 s |
+| 4096 | 2.65 s | 0.58 s |
+
+And on the whole search, depth 7, capture quota 3:
+
+| threads | before | after | speedup over 1 thread |
+|---|---:|---:|---:|
+| 1 | 35.32 s | 35.32 s | 1.00x |
+| 8 | 6.45 s | 6.45 s | 5.48x |
+| 24 | 6.02 s | **3.92 s** | **9.01x** |
+
+The ceiling moves from 6.00x to 9.01x. For comparison, everything else this
+session did to the parallel search -- the OR-node split, demand gating, the
+tuning of both -- was worth about 1.10x together.
+
+Two caveats stated rather than buried. The single-threaded baseline still pays a
+serial teardown of its own private table, which nothing here parallelises, so the
+9.01x is measured against a baseline carrying an overhead the numerator no longer
+has. And the gain is proportional to `-M`: at 256 MB there was almost nothing to
+recover.
+
+#### What this says about the earlier measurements
+
+Every deep-search timing in this document taken at a large `-M` includes this
+cost. 109's thread sweep, 110's memory curve, 113's interleaved repetitions --
+all of them were partly measuring how long it takes to free the table. The
+ORDERINGS in those tables survive, because every arm paid the same overhead, but
+the magnitudes were understated and the memory curve in particular was flattered
+against itself: a bigger table cut nodes AND added teardown, so 110's 6.7x was
+the net of two effects pulling opposite ways.
+
+The general lesson is the one 114 reached from the other side. Three sessions
+were spent proposing fixes for a parallel loss that was, in the end, 44% a call
+to `operator delete` -- and the instrument that would have shown it was four
+counters and an afternoon. Measure the denominator before optimising the
+numerator.

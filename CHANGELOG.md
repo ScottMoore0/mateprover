@@ -641,3 +641,26 @@ anyone tuning `-M` actually needs.
   depth-7 search: demand gating had already stopped creating blocked owners.
 
 All three off by default. See architecture 114.
+
+### 2.3x on deep searches, by freeing the table in parallel
+
+The remaining parallel loss was not in the search. Instrumenting worker time
+showed workers are busy 93-98% of the time they are alive, with parking and
+waiting together under four worker-seconds out of a hundred and fifty -- there
+was no pool of idle time to reclaim.
+
+What there was, at every thread count alike, was a constant two and a half
+seconds of wall clock outside the parallel region. It is the shared
+transposition table's destructor: twenty million entries across 256 hash maps,
+handed back one at a time when the route returns, inside the reported `acs`,
+after the verdict is already known. It scales with `-M` and not with the search
+-- 0.41 s at 256 MB, 0.87 s at 1 GB, 2.65 s at 4 GB, on the same node counts.
+
+The shards share nothing, so they are now freed concurrently. Depth 7 under a
+capture quota at 24 threads and 4 GB: 6.02 s to 3.92 s, moving the ceiling over
+one thread from 6.00x to 9.01x. The gain is proportional to `-M` and there is
+almost nothing to recover at 256 MB.
+
+New `--profile` counters: `worker_micros`, `root_work_micros`,
+`split_work_micros`, `split_park_micros`, `owner_wait_micros`. See
+architecture 115.

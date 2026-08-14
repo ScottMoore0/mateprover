@@ -2195,11 +2195,15 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
                 s.aborted = was_aborted;
                 continue;
             }
+            const auto wait_start = std::chrono::steady_clock::now();
             std::unique_lock<std::mutex> lock(reg.m);
             if (sp->active == 0) {
                 break;
             }
             reg.cv.wait_for(lock, std::chrono::milliseconds(1));
+            s.stats.owner_wait_micros += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - wait_start).count());
         }
         s.max_owned_seq = saved_seq;
         std::unique_lock<std::mutex> lock(reg.m);
@@ -2259,6 +2263,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
 // has proved nothing, and reading its empty result as a verdict is the single
 // mistake that would turn this machinery into a forged proof.
 void run_child(SplitRegistry& reg, NodeSplit& sp, int j, Search& ws) {
+    const auto child_start = std::chrono::steady_clock::now();
     const Move& m = sp.moves[static_cast<std::size_t>(j)];
     const Board nb = make_move(sp.board, m);
     std::uint8_t st = kChildAbandoned;
@@ -2307,6 +2312,10 @@ void run_child(SplitRegistry& reg, NodeSplit& sp, int j, Search& ws) {
         }
     }
 
+    ws.stats.split_work_micros += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - child_start).count());
+
     const bool settles = sp.conjunctive ? (st == kChildFailed) : (st == kChildProved);
     std::lock_guard<std::mutex> lock(reg.m);
     sp.state[static_cast<std::size_t>(j)] = st;
@@ -2349,11 +2358,15 @@ void help_splits(SplitRegistry& reg, Search& ws, std::atomic<int>& current_root,
             // Nothing to take. If every root move is finished there never will
             // be; otherwise an owner is still generating its children and this
             // waits to be told. The timeout is a backstop, not the mechanism.
+            const auto park_start = std::chrono::steady_clock::now();
             std::unique_lock<std::mutex> lock(reg.m);
             if (reg.live_roots == 0) {
                 return;
             }
             reg.cv.wait_for(lock, std::chrono::milliseconds(2));
+            ws.stats.split_park_micros += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - park_start).count());
             continue;
         }
         // Announce which root move this thread is now serving, so the root

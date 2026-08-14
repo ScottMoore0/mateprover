@@ -434,6 +434,19 @@ struct Stats {
     // engage, whatever the wall clock says.
     std::uint64_t split_claims = 0;
     std::uint64_t split_helped = 0;
+    // WHERE THE WALL CLOCK GOES, in microseconds of worker time. The four are
+    // disjoint, and together with the clock they say what each worker thread
+    // was doing; the denominator is threads x wall clock. Counted per child
+    // SUBTREE and per park, so the clock reads are coarse and cost nothing.
+    std::uint64_t split_work_micros = 0;    // inside run_child
+    std::uint64_t split_park_micros = 0;    // helper loop, nothing to take
+    std::uint64_t owner_wait_micros = 0;    // owner blocked on its own helpers
+    std::uint64_t root_work_micros = 0;     // inside a root move of one's own
+    // Time a worker was ALIVE inside worker_body, which is the denominator the
+    // others are fractions of. Without it there is no honest utilisation
+    // figure: threads x wall clock over-counts, because a worker that has left
+    // worker_body is not idle, it is gone.
+    std::uint64_t worker_micros = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t deadline_checks = 0;
@@ -520,6 +533,11 @@ struct Stats {
         root_sequential_hits += o.root_sequential_hits;
         split_claims += o.split_claims;
         split_helped += o.split_helped;
+        split_work_micros += o.split_work_micros;
+        split_park_micros += o.split_park_micros;
+        owner_wait_micros += o.owner_wait_micros;
+        root_work_micros += o.root_work_micros;
+        worker_micros += o.worker_micros;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
         deadline_checks += o.deadline_checks;
@@ -548,7 +566,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 77 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 82 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

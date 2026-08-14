@@ -172,6 +172,56 @@ struct BoundedTable {
 // independent of the low bits an unordered_map uses for bucketing.
 class SharedProofTable {
 public:
+    // FREE THE SHARDS IN PARALLEL.
+    //
+    // Destroying this table is the single largest non-search cost the engine
+    // has, and it is paid AFTER the answer is known. At 4 GB on a depth-7
+    // capture quota it was 2.65 s of a 6.01 s run -- 44% of the wall clock
+    // spent handing memory back, inside the reported `acs`, with the verdict
+    // already in hand. It scales with the table and not with the search: 0.41 s
+    // at 256 MB, 0.87 s at 1 GB, 2.65 s at 4 GB, on 23.1M, 21.5M and 21.1M
+    // nodes respectively.
+    //
+    // Twenty million entries in 256 independent hash maps is twenty million
+    // individual frees, and the shards share nothing, so the work divides
+    // perfectly. This is the one part of the program where parallelism is
+    // embarrassing rather than speculative: no ordering, no cutoffs, no
+    // verdicts, just deallocation.
+    //
+    // A refused thread is not an error here -- the remaining shards are freed
+    // on this thread, exactly as before, and the only cost is time.
+    ~SharedProofTable() {
+        const std::size_t n = shards_.size();
+        unsigned hw = std::thread::hardware_concurrency();
+        std::size_t lanes = std::min<std::size_t>(n, hw == 0 ? 1u : hw);
+        if (lanes <= 1 || n <= 1) {
+            return;
+        }
+        std::atomic<std::size_t> next{0};
+        auto body = [&] {
+            for (;;) {
+                const std::size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i >= n) {
+                    return;
+                }
+                shards_[i].reset();
+            }
+        };
+        std::vector<std::thread> pool;
+        pool.reserve(lanes - 1);
+        for (std::size_t i = 1; i < lanes; ++i) {
+            try {
+                pool.emplace_back(body);
+            } catch (const std::system_error&) {
+                break;      // coverage is unaffected: this thread frees the rest
+            }
+        }
+        body();
+        for (std::thread& t : pool) {
+            t.join();
+        }
+    }
+
     SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total) {
         std::size_t shards = 1;
         while (shards < shard_count) {

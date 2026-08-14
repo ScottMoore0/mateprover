@@ -697,6 +697,20 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     auto worker_body = [&](int w) {
         Search& ws = *workers[static_cast<std::size_t>(w)];
         WorkerSlot& slot = *slots[static_cast<std::size_t>(w)];
+        // How long this worker was ALIVE, which is the denominator every other
+        // timing here is a fraction of. `threads x wall clock` is the wrong
+        // denominator: a worker that has left this function is not idle, it has
+        // gone home, and counting its absence as idleness invents a problem.
+        const auto worker_start = std::chrono::steady_clock::now();
+        struct WorkerClock {
+            Search& s;
+            std::chrono::steady_clock::time_point t0;
+            ~WorkerClock() {
+                s.stats.worker_micros += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - t0).count());
+            }
+        } worker_clock{ws, worker_start};
         for (;;) {
             int i = next_index.fetch_add(1, std::memory_order_relaxed);
             if (i >= n) {
@@ -755,9 +769,13 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
                     found.cert = "{\"a\":" + json_quote(move_uci(moves[static_cast<std::size_t>(i)])) + (s.goal == Goal::Stalemate ? ",\"stalemate\":true}" : ",\"mate\":true}");
                 }
             } else if (depth > 1) {
+                const auto root_start = std::chrono::steady_clock::now();
                 Proof all_replies = split_replies
                                         ? prove_defender_split(ws, registry, nb, depth - 1)
                                         : prove_defender(ws, nb, depth - 1);
+                ws.stats.root_work_micros += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - root_start).count());
                 if (ws.aborted) {
                     continue; // abandoned: no verdict, nothing recorded
                 }
