@@ -184,6 +184,7 @@ did. If you are reading it for the first time:
 - [104. d(3) >= 9, Confirmed Twice](#104-d3--9-confirmed-twice)
 - [105. A Progress Stream That Publishes Theorems, Not Estimates](#105-a-progress-stream-that-publishes-theorems-not-estimates)
 - [106. The One Line In The Stream That Behaves Like Stockfish's](#106-the-one-line-in-the-stream-that-behaves-like-stockfishs)
+- [107. x-escape: The Rule That Is Measured Rather Than Counted](#107-x-escape-the-rule-that-is-measured-rather-than-counted)
 
 ## Impact-Ordered Architecture
 
@@ -7905,3 +7906,79 @@ ladder on exactly the arithmetic that applies here: preparation that costs more
 than the work it prepares. Proving "mate within 12" on a position whose answer
 is 9 is not obviously cheaper than proving 9 outright, and may be dearer. That
 is a measurement, not a design, and it has not been taken.
+
+### 107. x-escape: The Rule That Is Measured Rather Than Counted
+
+A side LOSES when its own king reaches an escape count of N. E is how many
+squares that king could legally step to (see the escape count in board.h), so a
+king walled in by its own men is at 0, the starting array is 0 for both sides,
+and the number rises as the position opens:
+
+| | E(White) |
+|---|---|
+| starting array | 0 |
+| after 1.Nf3 | 0 -- g1 is not adjacent to e1 |
+| after 1.e4 | **1** -- e2 empties, and nothing attacks it |
+| after 1.Bd3 | **1** -- f1 empties |
+
+At a limit of 1 those last two lose on the spot. The pressure is on your own
+structure rather than on reaching the enemy, which is a different game from
+either rule before it.
+
+#### What it does NOT share with the first two rules
+
+VR_ESCAPE occupies a slot in the rule enumerator and shares almost nothing else.
+A check or capture quota counts EVENTS a side produces and decrements toward
+zero; an escape threshold counts nothing. E is measured afresh at every position,
+can rise as well as fall, and reaching the limit LOSES -- so the winner is the
+other side. Both places that decide a winner have the inversion written out
+rather than folded into the rule loop, because getting it backwards awards the
+attacker a win for exposing his own king, which is precisely the losing
+condition, and no verdict-based test would look wrong.
+
+**`variant_reachable_within` has no bound to offer and says so.** Its whole
+argument is that a side produces at most one qualifying event per move, so a
+quota above the move budget is out of reach. E is not produced but measured, and
+one capture of a shield -- or the withdrawal of a piece covering three ring
+squares -- moves it by several at once, in either direction. A live escape rule
+therefore always answers "reachable".
+
+**The key gains no bits.** Six slots at seven bits each would run to bit 66 and
+wrap. Skipping the escape slots is not a compromise: the threshold is a CONSTANT
+of the search, identical at every node a table ever holds, and E is a pure
+function of the position, so `k.board` already separates every value it can
+take. Two nodes agreeing on the board agree on E.
+
+**A root can be decided before anyone moves.** Unreachable for the first two
+rules, whose quotas count down from at least one; routine here, since a supplied
+position may simply already be over its limit. There is no way to say "mate in
+0" -- a result line needs a key move -- so the position is reported as
+`escapewin w; decided at root;` rather than searched and silently returned
+empty, which is what it did at first.
+
+#### The shortcut audit
+
+97 established the pattern: every goal-specific shortcut must be re-audited
+against a new rule, and the question to ask is WHAT KIND OF EVENT the quota
+counts. All five verdicts for x-escape:
+
+| shortcut | sound under x-check | x-capture | x-escape |
+|---|---|---|---|
+| coverage exit ("no mate in one") | no | no | **no** |
+| mate-reachability bounds | no | no | **no** |
+| shallow-fast route | no | no | **no** |
+| GAP-1, "a lone king cannot mate" | yes | NO | **NO** |
+| last-ply prune, "a winner must be a check" | yes | NO | **NO** |
+
+x-escape stands down everything. GAP-1 fails for a reason x-capture already
+taught: a lone king cannot mate, but it CAN capture the man shielding the enemy
+king, and raising the enemy's E is the win. The last-ply prune fails because a
+quiet withdrawal wins while giving no check at all. The first three fail through
+`variant_reachable_within`, which under this rule can never report the position
+safe -- so they are switched off structurally rather than by a rule-specific
+test, and no separate gate was needed for them.
+
+That last point is worth stating as a limitation rather than a result. The three
+are off because the reachability predicate is conservative, not because each was
+shown unsound on its own terms. Sharpening the predicate later would silently
+re-enable all three, so any such change has to re-audit them first.

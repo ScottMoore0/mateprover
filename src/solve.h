@@ -194,6 +194,28 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         return;
     }
 
+    // ALREADY DECIDED BEFORE ANYONE MOVED.
+    //
+    // x-check and x-capture cannot reach this: their quotas count down from at
+    // least one, so a root can never start filled. An escape limit can, because
+    // E is measured rather than accumulated and a supplied position may simply
+    // be over it. The engine has no way to say "mate in 0" -- a result line
+    // needs a key move and there is none -- so without this the search stopped
+    // after one node and printed no verdict at all, which reads as "nothing
+    // found" when the truth is "decided before the first move".
+    //
+    // Reported rather than refused. The position is legal and its answer is
+    // known; a caller screening a corpus wants to be told which side stands won.
+    {
+        const VariantWin decided = variant_winner(b);
+        if (decided.side >= 0) {
+            out << fen4(b) << "; acn 0; acs 0; " << variant_win_key(decided.rule) << ' '
+                << (decided.side == WHITE ? 'w' : 'b') << "; decided at root;\n";
+            out.flush();
+            return;
+        }
+    }
+
     // E for both kings, no search. See board.h; this exists so the escape count
     // can be checked directly against hand-worked positions.
     if (config.escape_count_only) {

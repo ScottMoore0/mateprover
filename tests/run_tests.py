@@ -813,6 +813,67 @@ def test_pv_and_certificates(engine: Path, res: Results) -> None:
         res.check(f"certificate #{dm} {fen[:24]}", ok, why)
 
 
+def test_escape_variant(engine: Path, res: Results) -> None:
+    """x-escape: a side LOSES when its own king reaches an escape count of N.
+
+    The third variant rule, and the only one that is not a countdown. A check or
+    capture quota counts events a side PRODUCES and decrements to zero; E is
+    measured afresh at every position, rises as well as falls, and reaching the
+    limit loses rather than wins -- so the winner is the other side. Both places
+    that decide a winner have that inversion written out, and getting it
+    backwards would award the attacker a win for exposing his own king, which is
+    exactly the losing condition. These pin the direction.
+    """
+    print("\n[escape] x-escape as the third variant rule")
+
+    # A forced win in one. Black's king is walled in by its own men at E 0;
+    # Qxh7 puts an UNDEFENDED white queen on the ring, which the black king
+    # could capture, so E becomes 1 and Black is over the limit.
+    fen = "5rkn/5ppp/8/8/8/8/8/6KQ w - -"
+    line = run(engine, ["-z", "1", "--no-portfolio", "--single-thread",
+                        "--escape", "8:1", "--emit-proof", "-"], f"{fen} bm #1;\n").strip()
+    res.check("a forced x-escape win is found and reported",
+              "bm h1h7" in line and "dm 1" in line, line[:90])
+    res.check("the certificate names the rule that ended it",
+              '"escapewin":true' in line, line[:90])
+
+    # The direction. With the limits swapped -- White on 1, Black on 8 -- the
+    # same move must NOT win: it raises Black's E to 1, which is now harmless,
+    # while White's own king sits at 4 and is nowhere near its own limit of 8.
+    swapped = run(engine, ["-z", "1", "--no-portfolio", "--single-thread",
+                           "--escape", "1:8", "-"], f"{fen} bm #1;\n").strip()
+    res.check("the limits are per side and not interchangeable",
+              "decided at root" in swapped or "dm " not in swapped, swapped[:90])
+
+    # Already over the limit before anyone has moved. Unreachable for the first
+    # two rules, whose quotas count down from at least one; routine here.
+    decided = run(engine, ["-z", "2", "--no-portfolio", "--single-thread",
+                           "--escape", "8:1", "-"],
+                  "5rk1/5ppp/8/8/8/8/5PPP/4R1K1 w - - bm #2;\n").strip()
+    res.check("a root already over the limit says so instead of nothing",
+              "escapewin w" in decided and "decided at root" in decided, decided[:90])
+
+    # The rule must be switchable off, and off must mean inert.
+    off = run(engine, ["-z", "1", "--no-portfolio", "--single-thread",
+                       "--escape", "8:1", "--no-escape-win", "-"], f"{fen} bm #1;\n").strip()
+    res.check("--no-escape-win makes the rule inert", "dm 1" not in off, off[:90])
+
+    # Range: a ring holds at most eight squares, so 9 can never be reached and 0
+    # is reached by every position at once. Refused rather than clamped.
+    for bad in ("0", "9", "1:9"):
+        proc = subprocess.run([str(engine), "--escape", bad, "-"], input=b"", capture_output=True)
+        res.check(f"--escape {bad} is refused", proc.returncode != 0,
+                  f"exit {proc.returncode}")
+
+    # The fifth Forsyth field round-trips, tagged, and the untagged shorthand is
+    # suppressed -- an untagged pair means CHECKS, so printing an escape limit
+    # bare would be read back as the wrong rule.
+    echoed = run(engine, ["--escape-count", "-"],
+                 "5rkn/5ppp/8/8/8/8/8/6KQ w - - esc4+2\n").strip()
+    res.check("an escape limit round-trips through the Forsyth field",
+              "esc4+2" in echoed, echoed[:90])
+
+
 def test_escape_count(engine: Path, res: Results) -> None:
     """E, the escape count: how many squares a king could legally step to.
 
@@ -3380,6 +3441,7 @@ def main() -> int:
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
     test_escape_count(args.engine, res)
+    test_escape_variant(args.engine, res)
     test_progress_publishes_only_proven_bounds(args.engine, res)
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)
