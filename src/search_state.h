@@ -220,11 +220,40 @@ struct SearchConfig {
     // maintain -- 111's mechanism is a copy of a 60-line loop and even that
     // needed a byte-for-byte differential test to trust.
     bool or_split = true;
-    // Plies below the root iteration depth at which an OR node may split. 1
-    // splits only the ply-3 attacker nodes, which is where the work is and which
-    // makes the split flat: no owner is ever waiting on another owner, so the
-    // blocked-owner problem that YBWC normally has does not arise.
-    int or_split_plies = 1;
+    // Plies below the root iteration depth at which an OR node may split.
+    //
+    // Was 1, on a measurement that had the wrong cause attached to it. Splitting
+    // deeper measured worse -- 6.25 s at one ply, 7.07 at two -- and that was
+    // read as coordination cost. It was not. A fixed ply publishes whether or
+    // not anyone is free to help, so two plies created a split point inside
+    // every ply-3 task, twenty of them against a handful of idle workers, and
+    // most of the pool became owners blocked at their own tails.
+    //
+    // With demand gating the depth limit is not what should be doing this job,
+    // so it is opened up and `split_is_wanted` decides instead. Kept as a knob
+    // because it is the only way to reproduce the measurement above.
+    int or_split_plies = 99;
+    // Remaining depth below which a node is not worth the coordination.
+    //
+    // ABSOLUTE, not relative to the root, and that is the point. The cost of
+    // publishing a node is fixed; the benefit scales with how much work is under
+    // it, which scales with remaining depth in its own right and not with how
+    // far down the tree the node happens to sit. A relative rule would split
+    // trivial nodes in a deep search and refuse worthwhile ones in a shallow.
+    //
+    // 4, measured on the depth-7 capture quota at 24 threads, best of two:
+    //
+    //     not splitting   7.15 s
+    //     floor 2         6.80 s
+    //     floor 4         5.94 s      <- three levels of OR node
+    //     floor 5         6.02 s
+    //     floor 6         6.59 s      <- one level, which is 112's fixed ply
+    //
+    // Splitting deeper than one level is worth 10% once the floor keeps it away
+    // from nodes too small to pay for themselves. 112 concluded the opposite
+    // from `--or-split-plies 2`, and was wrong twice over: that arm published
+    // without demand, and it had no floor.
+    int or_split_min_depth = 4;
     // Children searched alone before the rest are shared out. This is the "wait"
     // in young brothers wait; 0 turns it off and splits from the first child.
     //

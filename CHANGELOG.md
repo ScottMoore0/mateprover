@@ -590,3 +590,29 @@ Depth 7 under a capture quota, 24 threads: 6.22 s to 5.44 s, lifting the ceiling
 from 5.87x to 6.72x over one thread. That is 1.14x, not the 2x predicted -- the
 ply-3 children turn out to be as unequal as the root moves were, so Amdahl
 applies again one ply down. See architecture 112.
+
+### The split follows demand, at whatever depth the pool runs dry
+
+Young brothers wait has two conditions -- wait for the eldest child, and split
+only if another worker is idle -- and the previous release shipped one. A fixed
+ply publishes whether or not anyone is free to help, which is why splitting two
+plies down had measured worse: it created a split point inside every ply-3 task
+against a handful of idle workers, and most of the pool became owners blocked at
+their own tails. That was read as coordination cost. It was supply with no
+demand.
+
+A node now publishes only while there is an idle worker not already spoken for
+by an open split point, re-checked before every child, at any depth with at
+least `--or-split-min-depth` plies of work left. The floor is absolute rather
+than relative to the root, because the cost of publishing is fixed while the
+benefit scales with the work underneath.
+
+Depth 7 under a capture quota, 24 threads, three interleaved repetitions:
+6.60 s root split only, 6.19 s at one level, 5.98 s demand-driven -- 5.71x to
+6.30x over one thread. Helpers now take 3,645 of 4,659 children rather than 613
+of 2,125. Deep directmates do not regress.
+
+The previous release's conclusion that "the real lever is a different
+decomposition, not a deeper one" was wrong. A deeper decomposition pays; it
+could not pay while publishing work nobody was waiting for, into nodes too small
+to be worth publishing. See architecture 113.

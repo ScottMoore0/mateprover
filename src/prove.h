@@ -1375,7 +1375,32 @@ struct SplitRegistry {
     std::vector<std::shared_ptr<NodeSplit>> open_splits;   // one slot per worker
     int live_roots = 0;         // workers still inside a root move
     const std::atomic<int>* best_index = nullptr;
+    // DEMAND. Read without the lock by every eligible node in the search, so
+    // both are atomics rather than guarded fields: `idle` counts workers sitting
+    // in the helper loop with nothing to do, `open` counts split points already
+    // published and still offering children.
+    //
+    // These exist because 112 shipped the wrong half of young brothers wait. The
+    // concept has two conditions -- wait for the eldest child, AND split only if
+    // another processor is idle -- and only the first was implemented. Splitting
+    // at a fixed ply satisfies neither: it publishes whether or not anyone is
+    // free to help, so `--or-split-plies 2` created a split point inside every
+    // ply-3 task, twenty of them against a handful of idle workers, and turned
+    // most of the pool into owners blocked at their own tails. That measured
+    // 7.07 s against 6.25 s and was read as coordination cost. It was not
+    // coordination cost. It was supply with no demand.
+    std::atomic<int> idle{0};
+    std::atomic<int> open{0};
 };
+
+// May a node publish its remaining children? Only if somebody is waiting for
+// them, and only if the workers already waiting are not already spoken for by
+// split points that exist. Two relaxed loads, on a path taken once per child at
+// eligible depths.
+inline bool split_is_wanted(const SplitRegistry& reg) {
+    return reg.idle.load(std::memory_order_relaxed) >
+           reg.open.load(std::memory_order_relaxed);
+}
 
 struct NodeClaim {
     std::shared_ptr<NodeSplit> split;
@@ -1858,13 +1883,20 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
     // node another owner is waiting on -- which disposes of the blocked-owner
     // problem a general YBWC implementation has to reason about.
     const bool may_split = s.or_split && s.split_registry != nullptr && s.split_slot >= 0 &&
-                           depth > 1 && s.iteration_depth > 0 &&
+                           depth > 1 && depth >= s.or_split_min_depth &&
+                           s.iteration_depth > 0 &&
                            depth >= s.iteration_depth - s.or_split_plies;
     int searched = 0;
     std::size_t move_index = 0;
 
     for (; move_index < moves.size(); ++move_index) {
-        if (may_split && searched >= s.ybw_first) {
+        // The second condition of young brothers wait, and 112 shipped without
+        // it: split only if another worker is actually idle. Re-read before
+        // every child rather than decided once, so a node deep in the tree that
+        // becomes the last thing running will open up the moment the pool
+        // empties out around it -- which is exactly when it should, and never
+        // before.
+        if (may_split && searched >= s.ybw_first && split_is_wanted(*s.split_registry)) {
             break;
         }
         const Move& amove = moves[move_index];
@@ -2070,6 +2102,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             std::lock_guard<std::mutex> lock(reg.m);
             sp->open = true;
             reg.open_splits[static_cast<std::size_t>(s.split_slot)] = sp;
+            reg.open.fetch_add(1, std::memory_order_relaxed);
             reg.cv.notify_all();
         }
         // The owner works the queue like anyone else, so a node nobody helps
@@ -2090,6 +2123,7 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         std::unique_lock<std::mutex> lock(reg.m);
         sp->open = false;
         reg.open_splits[static_cast<std::size_t>(s.split_slot)].reset();
+        reg.open.fetch_sub(1, std::memory_order_relaxed);
         reg.cv.notify_all();
         reg.cv.wait(lock, [&] { return sp->active == 0; });
         const int settled_at = sp->settled_at;
@@ -2215,6 +2249,18 @@ void run_child(SplitRegistry& reg, NodeSplit& sp, int j, Search& ws) {
 // waiting on -- which is why the waits above cannot deadlock.
 void help_splits(SplitRegistry& reg, Search& ws, std::atomic<int>& current_root,
                  std::atomic<bool>& cancel) {
+    // THE DEMAND SIGNAL. Nothing in the tree splits unless this is raised, so a
+    // worker that leaves without lowering it would make every eligible node
+    // publish for a helper that does not exist. A guard rather than a pair of
+    // calls, because the loop below returns from four places.
+    struct IdleMark {
+        std::atomic<int>& n;
+        explicit IdleMark(std::atomic<int>& c) : n(c) { n.fetch_add(1, std::memory_order_relaxed); }
+        ~IdleMark() { n.fetch_sub(1, std::memory_order_relaxed); }
+        IdleMark(const IdleMark&) = delete;
+        IdleMark& operator=(const IdleMark&) = delete;
+    } idle_mark(reg.idle);
+
     for (;;) {
         if (ws.timed_out ||
             (ws.external_cancel != nullptr &&
@@ -2242,7 +2288,11 @@ void help_splits(SplitRegistry& reg, Search& ws, std::atomic<int>& current_root,
         cancel.store(false, std::memory_order_release);
         ws.aborted = false;
         ++ws.stats.split_helped;
+        // Not idle while actually working, or a pool that is fully employed
+        // would still read as demand and every node in it would split.
+        reg.idle.fetch_sub(1, std::memory_order_relaxed);
         run_child(reg, *claim.split, claim.index, ws);
+        reg.idle.fetch_add(1, std::memory_order_relaxed);
         current_root.store(std::numeric_limits<int>::max(), std::memory_order_release);
     }
 }

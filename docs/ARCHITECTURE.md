@@ -190,6 +190,7 @@ did. If you are reading it for the first time:
 - [110. Memory Is Not A Lever Until The Depth Makes It One](#110-memory-is-not-a-lever-until-the-depth-makes-it-one)
 - [111. Two-Ply Decomposition, And Why The Conjunction Argument Is Wrong](#111-two-ply-decomposition-and-why-the-conjunction-argument-is-wrong)
 - [112. Young Brothers Wait, On The Node Type 111 Says To Split](#112-young-brothers-wait-on-the-node-type-111-says-to-split)
+- [113. Supply Follows Demand, And The Deeper Decomposition Was Right After All](#113-supply-follows-demand-and-the-deeper-decomposition-was-right-after-all)
 
 ## Impact-Ordered Architecture
 
@@ -8366,3 +8367,91 @@ not a compromise between the two regimes; it is free on the one it does not help
 
 Both corpora solve the same positions in every arm. The regression bar is that a
 change may ADD verdicts and must not CHANGE them, and this changes none.
+
+### 113. Supply Follows Demand, And The Deeper Decomposition Was Right After All
+
+112 closed by saying the next lever was "a different decomposition, not a deeper
+one", on the evidence that `--or-split-plies 2` measured 7.07 s against 6.25 s
+and calling the difference coordination cost. That reading was wrong, and it was
+wrong about something the mechanism was already missing.
+
+#### Young brothers wait has two conditions and 112 shipped one
+
+The concept is *wait for the eldest child* **and** *split only if another
+processor is idle*. Only the first was implemented. A fixed ply publishes
+whether or not anyone is free to help, so two plies created a split point inside
+every ply-3 task -- twenty of them against a handful of idle workers -- and most
+of the pool became owners blocked at their own tails. The cost was not
+coordination. It was **supply with no demand**.
+
+So the registry now carries two atomics, `idle` and `open`, and a node publishes
+only while `idle > open`: there is a worker with nothing to do, and it is not
+already spoken for by a split point that exists. Two relaxed loads, re-read
+before every child rather than decided once -- so a node deep in the tree that
+becomes the last thing running opens up at the moment the pool empties out
+around it, and never before.
+
+#### And a floor, which is the part that was actually missing
+
+Demand gating alone did not deliver. With the depth limit simply removed it
+measured no better than not splitting at all, because a node two plies from the
+leaves is a few microseconds of work and cannot pay for being published and
+claimed. What was needed was a floor on remaining depth -- and an ABSOLUTE one,
+not one relative to the root. The cost of publishing is fixed; the benefit
+scales with the work underneath, which scales with remaining depth in its own
+right and not with how far down the tree the node happens to sit.
+
+Depth 7, capture quota 3, 24 threads, best of two:
+
+| floor | wall clock |
+|---|---|
+| not splitting | 7.15 s |
+| 2 | 6.80 s |
+| **4** | **5.94 s** |
+| 5 | 6.02 s |
+| 6 -- one level, which is 112's fixed ply | 6.59 s |
+
+#### What it buys
+
+Three interleaved repetitions, since the machine drifts 15% between runs and a
+non-interleaved comparison of this size would be measuring the drift:
+
+| configuration | rep 1 | rep 2 | rep 3 | median | vs 1 thread |
+|---|---|---|---|---|---|
+| 1 thread | -- | -- | -- | 37.70 s | 1.00x |
+| root split only | 6.38 | 6.95 | 6.60 | 6.60 s | 5.71x |
+| + one level of OR split | 6.16 | 6.19 | 6.40 | 6.19 s | 6.09x |
+| + three levels, demand-driven | 5.98 | 5.94 | 6.15 | **5.98 s** | **6.30x** |
+
+The ORDERING is robust -- floor 4 is fastest in every repetition of every
+comparison run -- and the MAGNITUDE is not well determined on this machine.
+Against one level the gap measured between 1.03x and 1.19x depending on
+conditions. The honest claim is the ordering plus "somewhere around a tenth",
+not a figure to three digits.
+
+The structural result is not noise-limited and is the better number:
+
+| | children handed out | taken by a helper |
+|---|---|---|
+| 112, one fixed ply | 2,125 | 613 (29%) |
+| 113, demand-driven | 4,659 | **3,645 (78%)** |
+
+Twice as many children offered and helpers taking four fifths of them, with the
+node count up 2.3%. The pool is being employed rather than merely being present.
+
+Deep directmates do not regress: 133.6 s against 137.9 s without, 10 of 12
+solved either way.
+
+#### The correction
+
+"The real lever past here is a different decomposition, not a deeper one" was
+mine, it was confident, and it was the opposite of true. A deeper decomposition
+pays perfectly well -- it just cannot pay while it is publishing work nobody is
+waiting for, into nodes too small to be worth publishing. Two missing conditions
+were being read as evidence about the shape of the problem.
+
+That is the same error as 111's, in a different costume. There the argument was
+that AND nodes are safe to split because they are conjunctions; here it was that
+depth is the thing that limits splitting. Both times a property of the
+IMPLEMENTATION was mistaken for a property of the SEARCH, and both times one
+measurement settled it.

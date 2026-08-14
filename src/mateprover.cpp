@@ -227,9 +227,14 @@ void print_usage() {
 "                                whose children must ALL be visited to disprove\n"
 "                                it. Young brothers wait: the eldest child is\n"
 "                                searched alone first, so a node that is going\n"
-"                                to succeed shares nothing out\n"
+"                                to succeed shares nothing out, and a node only\n"
+"                                splits at all while a worker is idle to take\n"
+"                                the children -- supply follows demand, at\n"
+"                                whatever depth the pool happens to run dry\n"
 "  --or-split-plies N            plies below the root at which an OR node may\n"
-"                                split (default 1)\n"
+"                                split (default 99: demand decides, not depth)\n"
+"  --or-split-min-depth N        remaining depth below which a node is not worth\n"
+"                                the coordination (default 2)\n"
 "  --ybw-first N                 children searched alone before the rest are\n"
 "                                shared out (default 1)\n"
 "  --reply-split                 take the split a second ply down: a worker\n"
@@ -789,6 +794,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--or-split-plies' expects a number");
             config.or_split_plies = static_cast<int>(value);
+        } else if (arg == "--or-split-min-depth") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--or-split-min-depth' requires a depth");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--or-split-min-depth' expects a number");
+            config.or_split_min_depth = static_cast<int>(value);
         } else if (arg == "--ybw-first") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--ybw-first' requires a count");
