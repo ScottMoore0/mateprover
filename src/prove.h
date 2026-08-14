@@ -1367,6 +1367,9 @@ struct NodeSplit {
     bool settle_is_check = false;   // AND: fatal-anti-check observer only
     bool open = false;
     int min_before_help = 0;    // AND: replies the owner must have proved first
+    // Publication order, from a monotonic counter. This is what makes it safe
+    // for a BLOCKED OWNER to go and help somebody else; see claim_any_child.
+    std::uint64_t seq = 0;
 };
 
 struct SplitRegistry {
@@ -1391,6 +1394,9 @@ struct SplitRegistry {
     // coordination cost. It was supply with no demand.
     std::atomic<int> idle{0};
     std::atomic<int> open{0};
+    // Hands out NodeSplit::seq. Monotonic, and the ordering it induces is the
+    // whole of the termination argument for owners helping while they wait.
+    std::atomic<std::uint64_t> next_seq{1};
 };
 
 // May a node publish its remaining children? Only if somebody is waiting for
@@ -1427,7 +1433,28 @@ int claim_child(SplitRegistry& reg, NodeSplit& sp) {
 // Find work for an idle worker: the open node with the lowest priority -- the
 // root move the sequential search would have reached first -- that still has a
 // child to give.
-NodeClaim claim_any_child(SplitRegistry& reg) {
+// `min_seq` is the sequence number of the newest split the CALLER owns, or 0
+// for a worker that owns none. A caller may only take children from splits
+// published AFTER its own, and that one restriction is what makes it safe for
+// an owner to help rather than idle while it waits for its own helpers.
+//
+// THE TERMINATION ARGUMENT, written out because the failure mode is a hang, and
+// a hang in a prover is worse than most programs' wrong answers.
+//
+// Let worker X be blocked on the split S it owns, with seq(S) = x. Every
+// outstanding child of S is held by some worker Y, and at the instant Y claimed
+// it, Y owned nothing newer than S. If Y is in turn blocked, it is blocked on a
+// split S' that it published AFTER that claim, so seq(S') > x -- strictly,
+// because the counter only increases. Following "is waiting for" from any
+// blocked worker therefore walks a strictly increasing sequence of integers.
+//
+// A strictly increasing walk over a finite set cannot revisit, so the chain has
+// no cycle and must end; and it can only end at a worker that is NOT blocked,
+// which is one that is computing. So some worker is always making progress and
+// no set of workers can wait on one another in a ring. Stack depth is bounded
+// by the same fact: each nested help owns a strictly newer split than its
+// caller, and splits are finite in any one search.
+NodeClaim claim_any_child(SplitRegistry& reg, std::uint64_t min_seq) {
     std::lock_guard<std::mutex> lock(reg.m);
     const int best = reg.best_index != nullptr
                          ? reg.best_index->load(std::memory_order_acquire)
@@ -1463,6 +1490,12 @@ NodeClaim claim_any_child(SplitRegistry& reg) {
         // one, so the rest are being shared out precisely when the node looks
         // like it is going to fail -- and a failing OR node needs every child.
         if (sp->next < sp->min_before_help) {
+            continue;
+        }
+        // Strictly newer than anything the caller owns. A pure helper passes 0
+        // and is unrestricted; a blocked owner is confined to splits that
+        // cannot be waiting on it, which is what keeps the wait acyclic.
+        if (sp->seq <= min_seq) {
             continue;
         }
         if (chosen == nullptr || sp->priority < chosen->priority) {
@@ -2098,13 +2131,16 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
             }
         }
 
+        const std::uint64_t saved_seq = s.max_owned_seq;
         {
             std::lock_guard<std::mutex> lock(reg.m);
+            sp->seq = reg.next_seq.fetch_add(1, std::memory_order_relaxed);
             sp->open = true;
             reg.open_splits[static_cast<std::size_t>(s.split_slot)] = sp;
             reg.open.fetch_add(1, std::memory_order_relaxed);
             reg.cv.notify_all();
         }
+        s.max_owned_seq = sp->seq;
         // The owner works the queue like anyone else, so a node nobody helps
         // costs one atomic claim per child on top of the sequential loop.
         for (;;) {
@@ -2120,12 +2156,53 @@ Proof prove_attacker(Search& s, const Board& b, int depth) {
         // Withdraw before waiting, so no further claim can be made, and then
         // wait for the helpers already inside. Their shared_ptr copies keep the
         // node alive regardless; it is their ANSWERS that are needed.
+        {
+            std::lock_guard<std::mutex> lock(reg.m);
+            sp->open = false;
+            reg.open_splits[static_cast<std::size_t>(s.split_slot)].reset();
+            reg.open.fetch_sub(1, std::memory_order_relaxed);
+            reg.cv.notify_all();
+        }
+        // WAIT BY WORKING. A blocked owner used to be a lost thread: out of its
+        // own children, sitting on the condition variable until its helpers came
+        // back. That is why splitting more than one ply down lost -- every extra
+        // split point converted a worker into a waiter, so supply of split
+        // points became consumption of workers.
+        //
+        // Now it goes and helps, confined to splits published after its own so
+        // the wait relation stays acyclic (see claim_any_child). Not while
+        // unwinding: a search that has given up should unwind, not take on work.
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lock(reg.m);
+                if (sp->active == 0) {
+                    break;
+                }
+            }
+            NodeClaim help = (s.owner_helps && !s.aborted)
+                                 ? claim_any_child(reg, s.max_owned_seq)
+                                 : NodeClaim{};
+            if (help.index >= 0) {
+                // The helped child's outcome belongs to ITS node, not this one.
+                // Letting an abort leak across would poison a node this worker
+                // merely lent a hand to, and every real termination condition --
+                // deadline, node ceiling, cancellation -- is re-derived by
+                // search_cancelled from flags this does not touch, so restoring
+                // it cannot mask one.
+                const bool was_aborted = s.aborted;
+                ++s.stats.split_helped;
+                run_child(reg, *help.split, help.index, s);
+                s.aborted = was_aborted;
+                continue;
+            }
+            std::unique_lock<std::mutex> lock(reg.m);
+            if (sp->active == 0) {
+                break;
+            }
+            reg.cv.wait_for(lock, std::chrono::milliseconds(1));
+        }
+        s.max_owned_seq = saved_seq;
         std::unique_lock<std::mutex> lock(reg.m);
-        sp->open = false;
-        reg.open_splits[static_cast<std::size_t>(s.split_slot)].reset();
-        reg.open.fetch_sub(1, std::memory_order_relaxed);
-        reg.cv.notify_all();
-        reg.cv.wait(lock, [&] { return sp->active == 0; });
         const int settled_at = sp->settled_at;
         lock.unlock();
 
@@ -2267,7 +2344,7 @@ void help_splits(SplitRegistry& reg, Search& ws, std::atomic<int>& current_root,
              ws.external_cancel->load(std::memory_order_relaxed))) {
             return;
         }
-        NodeClaim claim = claim_any_child(reg);
+        NodeClaim claim = claim_any_child(reg, ws.max_owned_seq);
         if (claim.index < 0) {
             // Nothing to take. If every root move is finished there never will
             // be; otherwise an owner is still generating its children and this

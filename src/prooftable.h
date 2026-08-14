@@ -91,10 +91,20 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
     // the search often proves more than it was asked because a child's disproof
     // propagates upward. Recording only the request throws that away.
     const int bound = proof.ok ? depth : std::max(depth, proof.fail_depth);
+    // The line and the certificate are the largest thing an entry carries and
+    // the only part of it the SEARCH never reads: probes consume the bounds and
+    // the refuted flag, while the line is wanted once, at the end, for the
+    // answer. Suppressing them trades a truncated principal variation for more
+    // verdicts per megabyte -- worth measuring, because 110 found node counts
+    // acutely sensitive to how many verdicts fit.
+    static const std::vector<Move> kNoLine;
+    static const std::string kNoCert;
+    const std::vector<Move>& line = s.tt_lines ? proof.pv : kNoLine;
+    const std::string& cert = s.tt_lines ? proof.cert : kNoCert;
     if (s.shared_table != nullptr) {
-        s.shared_table->merge(key, bound, proof.ok, proof.pv, proof.cert, proof.refuted);
+        s.shared_table->merge(key, bound, proof.ok, line, cert, proof.refuted);
     } else {
-        s.tt.merge(key, bound, proof.ok, proof.pv, proof.cert, proof.refuted);
+        s.tt.merge(key, bound, proof.ok, line, cert, proof.refuted);
     }
 }
 

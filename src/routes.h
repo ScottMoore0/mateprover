@@ -487,6 +487,19 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         // The depth completed and found nothing: that is a theorem, so say so.
         publish_proven_bound(s, b, depth);
     }
+    // THE SHARED TABLE'S EVICTION COUNT DIES WITH IT UNLESS IT IS FOLDED HERE.
+    //
+    // `shared_table` is handed to the WORKERS and never to the enclosing search,
+    // so the report -- which reads `s.shared_table ? shared->evictions() :
+    // s.tt.evictions` -- was reading the main search's own table, which barely
+    // gets used once the root splits. It printed 0 evictions at 64 MB, 128 MB
+    // and 4 GB while the node count moved from 34.6M to 22.0M with memory,
+    // which cannot both be true. The instrument was pointed at the wrong object,
+    // and no measurement of the replacement policy was possible until it was
+    // pointed at the right one.
+    if (shared_table != nullptr) {
+        s.tt.evictions += shared_table->evictions();
+    }
     return result;
 }
 

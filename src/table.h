@@ -75,10 +75,77 @@ struct BoundedTable {
         // Everything is current, so age alone cannot choose a victim. Shed down
         // to a low-water mark to keep this from re-triggering on every store.
         const std::size_t low_water = capacity - capacity / 8;
-        for (auto it = map.begin(); it != map.end() && map.size() > low_water;) {
-            it = map.erase(it);
-            ++evictions;
+        if (map.size() <= low_water) {
+            return;
         }
+        // DEPTH DECIDES, not map order.
+        //
+        // The old second pass erased whatever the iterator reached first, which
+        // is hash order -- so a verdict that cost a hundred million nodes was
+        // exactly as likely to be dropped as one that cost fifty. Every entry is
+        // equally correct to discard (the safety argument above is untouched by
+        // this: eviction trades time for memory and never correctness) but they
+        // are wildly unequal in what they cost to recompute, and that cost grows
+        // with the depth bound the entry carries.
+        //
+        // A histogram rather than a sort: depths are small integers, so one
+        // O(n) pass finds the cut and a second applies it, against O(n log n)
+        // and an allocation for the general form. Amortised over the capacity/8
+        // stores before the next eviction, this is a few operations per store.
+        constexpr int kMaxRank = 96;
+        std::array<std::size_t, kMaxRank + 1> histogram{};
+        for (const auto& kv : map) {
+            ++histogram[static_cast<std::size_t>(entry_rank(kv.second))];
+        }
+        // Walk up from the cheapest until enough have been marked for removal.
+        const std::size_t excess = map.size() - low_water;
+        std::size_t counted = 0;
+        int cut = 0;
+        for (; cut <= kMaxRank; ++cut) {
+            counted += histogram[static_cast<std::size_t>(cut)];
+            if (counted >= excess) {
+                break;
+            }
+        }
+        // Entries strictly below the cut always go; entries AT the cut go until
+        // the quota is met, so the pass sheds what was asked for and no more.
+        std::size_t at_cut_to_drop = (counted > excess) ? histogram[static_cast<std::size_t>(cut)] - (counted - excess)
+                                                        : histogram[static_cast<std::size_t>(cut)];
+        for (auto it = map.begin(); it != map.end() && map.size() > low_water;) {
+            const int rank = entry_rank(it->second);
+            bool drop = rank < cut;
+            if (!drop && rank == cut && at_cut_to_drop > 0) {
+                drop = true;
+                --at_cut_to_drop;
+            }
+            if (drop) {
+                it = map.erase(it);
+                ++evictions;
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    // How expensive this entry would be to recompute, as a small integer.
+    //
+    // A refuted entry ranks top and is shed last: `refuted` is depth
+    // INDEPENDENT, so it answers every future query at every depth, and no
+    // amount of later searching can produce a stronger statement about that
+    // position. Everything else ranks by its depth bound, since the work behind
+    // a verdict grows with the depth it was established at.
+    static int entry_rank(const TTEntry& e) {
+        if (e.refuted) {
+            return 96;
+        }
+        int rank = 0;
+        if (e.min_proved != TTEntry::NO_PROOF) {
+            rank = std::max(rank, e.min_proved);
+        }
+        if (e.max_disproved != TTEntry::NO_DISPROOF) {
+            rank = std::max(rank, e.max_disproved);
+        }
+        return std::min(95, std::max(0, rank));
     }
 
     void clear() {

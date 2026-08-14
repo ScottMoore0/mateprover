@@ -616,3 +616,28 @@ The previous release's conclusion that "the real lever is a different
 decomposition, not a deeper one" was wrong. A deeper decomposition pays; it
 could not pay while publishing work nobody was waiting for, into nodes too small
 to be worth publishing. See architecture 113.
+
+### Fixed: the eviction counter was pointed at the wrong table
+
+`--profile` reported 0 evictions at 64 MB, 128 MB and 4 GB while node counts
+moved 60% with memory. The shared proof table is handed to the root-split
+WORKERS and never to the enclosing search, so the report was reading the main
+search's own table, which barely gets used once the root splits. Folding the
+shared table's count in at the end of each route gives 26.6M evictions at 64 MB
+and 0 at 4 GB -- which explains the memory curve exactly, and is the number
+anyone tuning `-M` actually needs.
+
+### Three rejections, kept as switches
+
+- `--no-tt-lines` suppresses the line and certificate in table entries. No
+  effect: 93% of entries are disproofs, which store neither already.
+- `--tt-depth-evict` chooses eviction victims by depth bound rather than hash
+  order. Consistently slightly worse -- depth says what an entry cost, not
+  whether it will be wanted again, and a cache is for the second.
+- `--owner-helps` lets a worker blocked on its own split help others, with a
+  written termination argument (splits carry a monotonic sequence number and a
+  worker may only claim from splits newer than its own, so the wait relation
+  strictly increases and cannot cycle). Sound, and it fires 98 times in a whole
+  depth-7 search: demand gating had already stopped creating blocked owners.
+
+All three off by default. See architecture 114.

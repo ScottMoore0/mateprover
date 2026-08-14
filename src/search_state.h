@@ -464,6 +464,39 @@ struct SearchConfig {
     // Depth used when the input line carries none (-Z), as distinct from -z
     // which OVERRIDES whatever the line says.
     int default_depth = 0;
+    // Store the principal variation and the certificate in table entries.
+    //
+    // The search never reads them: probes consume the depth bounds and the
+    // refuted flag, and the line is wanted once, at the end. Off makes entries
+    // smaller, so more verdicts fit in the same budget -- see architecture 114
+    // for whether that is worth the truncated line it costs.
+    // A worker waiting for its own split's helpers goes and helps others rather
+    // than idling, instead of being a lost thread. See claim_any_child for the
+    // termination argument -- the reason this is safe is the valuable part.
+    //
+    // DEFAULT OFF, because it was measured to have nothing to do. It was named
+    // the highest-ceiling parallel item on the reasoning that every extra split
+    // point converts a worker into a waiter; 113's demand gating had already
+    // removed that, by never creating split points nobody is waiting for. At the
+    // shipped floor the mechanism fires 98 times in a whole depth-7 search
+    // (3,102 helped claims against 3,004 without it) and the wall clock does not
+    // move: 5.37/5.30 s against 5.29/5.27 s.
+    //
+    // Kept because it costs nothing when off, because the proof is written down,
+    // and because any future attempt at a finer decomposition needs it. See
+    // architecture 114.
+    bool owner_helps = false;
+    bool tt_lines = true;
+    // Choose eviction victims by the depth bound they carry rather than by
+    // whatever the map iterator reaches first.
+    //
+    // DEFAULT OFF: measured slightly WORSE, consistently. Depth is a good proxy
+    // for what an entry cost to compute and a bad one for whether it will be
+    // wanted again, and the second is what a cache is for. Shallow entries are
+    // enormously more numerous and are re-probed constantly; deep ones are
+    // expensive and often probed once. The generation-aged policy already keeps
+    // what is being USED, which is the better signal. See architecture 114.
+    bool tt_depth_evict = false;
     bool shared_tt = true;
     std::size_t shared_tt_shards = 256;
     std::uint64_t parallel_min_nodes = 500;
@@ -562,6 +595,10 @@ struct Search : SearchConfig {
     // root split's existing cancellation reads it to stop everyone working on a
     // root move a lower index has already beaten.
     int split_priority = 0;
+    // Sequence number of the newest split this search owns, 0 if none. A worker
+    // may only take children from splits published after this, which is what
+    // lets a blocked owner help without the wait relation ever forming a ring.
+    std::uint64_t max_owned_seq = 0;
 
     // Proof/disproof numbers for the DFPN route. Purely a heuristic cache:
     // discarding it costs search effort and cannot change a verdict.

@@ -191,6 +191,7 @@ did. If you are reading it for the first time:
 - [111. Two-Ply Decomposition, And Why The Conjunction Argument Is Wrong](#111-two-ply-decomposition-and-why-the-conjunction-argument-is-wrong)
 - [112. Young Brothers Wait, On The Node Type 111 Says To Split](#112-young-brothers-wait-on-the-node-type-111-says-to-split)
 - [113. Supply Follows Demand, And The Deeper Decomposition Was Right After All](#113-supply-follows-demand-and-the-deeper-decomposition-was-right-after-all)
+- [114. Four Leads, One Bug, And Three Rejections](#114-four-leads-one-bug-and-three-rejections)
 
 ## Impact-Ordered Architecture
 
@@ -8455,3 +8456,139 @@ that AND nodes are safe to split because they are conjunctions; here it was that
 depth is the thing that limits splitting. Both times a property of the
 IMPLEMENTATION was mistaken for a property of the SEARCH, and both times one
 measurement settled it.
+
+### 114. Four Leads, One Bug, And Three Rejections
+
+The four items proposed at the end of 113, worked in order. Three reject on
+measurement and the fourth was never a problem. The most valuable thing to come
+out of it is a broken counter.
+
+#### 1. Verdict-only table entries -- REJECTED
+
+The claim: `TTEntry` carries a `std::vector<Move> pv` and a `std::string cert`
+that the SEARCH never reads (probes consume the depth bounds and the refuted
+flag), so dropping them fits more verdicts per megabyte, and 110 found node
+counts acutely sensitive to exactly that. Estimated at "roughly halves entry
+size". Measured, depth 7, quota 3, 24 threads, `-M 128`:
+
+| | nodes | wall clock |
+|---|---:|---:|
+| lines stored | 27,944,188 | 8.45 s |
+| lines suppressed | 28,180,252 | 8.41 s |
+
+Nothing. And the reason is arithmetic I should have checked before proposing it:
+
+    exact_tt_proof_stores      490,257
+    exact_tt_disproof_stores 6,721,080
+
+**93% of entries are disproofs, and a failed `Proof` carries no pv and no cert
+already.** An empty vector and an empty string cost 56 bytes inline and no heap
+allocation at all, so there was never a 2x to be had -- at most a few percent of
+7% of the entries. The estimate was made by adding up field sizes without
+checking either the proof/disproof ratio or that empty containers do not
+allocate.
+
+The saving grace is order of work: measuring first cost twenty minutes, and the
+principal-variation reconstruction that would have been needed to ship it was
+never written.
+
+`--no-tt-lines` stays, off, because it is one line and it is the arm of the
+measurement.
+
+#### 2. Depth-aware replacement -- REJECTED, after fixing the instrument
+
+The eviction path chose victims in hash order: a verdict that cost a hundred
+million nodes was exactly as likely to be shed as one that cost fifty. Replacing
+that with a depth-ranked histogram is straightforward and it is consistently,
+slightly WORSE. Depth 7, quota 3, 24 threads, `-M 64`, interleaved:
+
+| | rep 1 | rep 2 | rep 3 |
+|---|---|---|---|
+| generation-aged (shipped) | 33,799,906 | 33,788,216 | 34,193,314 |
+| depth-ranked | 34,592,398 | 33,937,390 | 34,359,903 |
+
+Depth is a good proxy for what an entry COST and a bad one for whether it will be
+WANTED again, and a cache is for the second. Shallow entries are enormously more
+numerous and are re-probed constantly; a deep entry is expensive and often probed
+once. The generation-aged policy keeps what is being used, which is the better
+signal, and it was already right.
+
+**But the measurement was impossible until a counter was fixed, and that is the
+real finding here.** The profile reported:
+
+    -M 64    nodes 34,592,942   tt_evictions 0
+    -M 128   nodes 27,864,409   tt_evictions 0
+    -M 4096  nodes 21,828,062   tt_evictions 0
+
+Zero evictions at every size, while the node count moves 60% with memory. Both
+cannot be true. `shared_table` is handed to the WORKERS and never to the
+enclosing search, so `s.shared_table ? shared->evictions() : s.tt.evictions` was
+reading the main search's own table -- which barely gets used once the root
+splits. Folding the shared table's count in at the end of each route:
+
+    -M 64    tt_evictions 26,600,589
+    -M 128   tt_evictions 20,847,636
+    -M 4096  tt_evictions 0
+
+Which explains 110's memory curve exactly, and is the number anyone tuning
+memory actually wants. A counter that reads zero because it is pointed at the
+wrong object is worse than no counter: it answers the question confidently.
+
+#### 3. Restricted-proof to unrestricted-table sharing -- NOT ATTEMPTED
+
+Named as "sound, asymmetric, small". The first two hold: a restricted lane's
+PROOF is valid unrestricted, because a mate forced with fewer options available
+is still a forced mate, while its DISPROOF is not, because it never looked at
+the moves the restriction removed. Sharing one direction and not the other is
+the correct design.
+
+"Small" was wrong. The table key carries the goal, the attacker and the node
+kind but NOT the restriction, so a shared table would have to refuse disproof
+stores from restricted lanes and refuse disproof reads on their behalf -- a
+second table type, or a per-store policy threaded through `merge` and `absorb`,
+both of which are on the path where a mistake produces a false disproof rather
+than a slow search.
+
+Not started rather than half-done, on the same judgement that deferred the
+two-ply decomposition earlier in this line of work: a soundness-critical change
+begun with little room left to build its differential gate is the mistake the
+promotion rule exists to prevent. It is the best-motivated item remaining.
+
+#### 4. Owners help while waiting -- SOUND, AND THERE IS NOTHING FOR IT TO DO
+
+A worker blocked on its own split used to be a lost thread. Letting it help
+needs a termination argument, because the failure mode is a hang:
+
+> Splits carry a sequence number from a monotonic counter, and a worker may only
+> claim children from splits NEWER than the newest it owns.
+>
+> Let X be blocked on the split S it owns, seq(S) = x. Every outstanding child of
+> S is held by some worker Y which, when it claimed, owned nothing newer than S.
+> If Y is itself blocked, it is blocked on a split published after that claim, so
+> strictly greater than x. Following "is waiting for" from any blocked worker
+> therefore walks a strictly increasing sequence of integers, which over a finite
+> set cannot revisit -- so the chain has no cycle, must end, and can only end at
+> a worker that is computing. Stack depth is bounded by the same fact.
+
+Implemented, and it measures nothing: 5.37 and 5.30 s against 5.29 and 5.27 s
+without. The counters say why -- 3,102 helped claims against 3,004, so the
+mechanism fires 98 times in an entire depth-7 search.
+
+**113 had already removed the problem.** Demand gating does not create split
+points nobody is waiting for, so it does not create blocked owners either; "every
+extra split point converts a worker into a waiter" described the mechanism BEFORE
+demand gating, and I carried the diagnosis forward without noticing the fix had
+landed on it. Dropping the floor to 2 to manufacture blocked owners does exercise
+it -- 187,049 helped claims of 346,970 -- and is slower anyway, because those
+nodes are too small to pay.
+
+Default off. Kept because it costs nothing when off, because the proof is written
+down, and because any finer decomposition would need it.
+
+#### The pattern, stated once
+
+Three of four rejected, and each was rejected by a fact available before the work
+started: the proof/disproof ratio, what a cache is for, and that 113 had already
+fixed 114's problem. The measurements were cheap and the estimates were free,
+which is the wrong way round -- an hour of arithmetic on the existing counters
+would have killed items 1 and 4 before either was written.
