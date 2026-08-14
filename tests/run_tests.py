@@ -813,6 +813,55 @@ def test_pv_and_certificates(engine: Path, res: Results) -> None:
         res.check(f"certificate #{dm} {fen[:24]}", ok, why)
 
 
+def test_escape_count(engine: Path, res: Results) -> None:
+    """E, the escape count: how many squares a king could legally step to.
+
+    Counted with the king REMOVED from the board, which is the only subtle part.
+    Left in place it blocks sliding lines through its own square, so a rook
+    checking along a file leaves the square directly behind the king looking
+    safe -- precisely the square the king may not run to. The Ke2-versus-Re8
+    case below is the discriminating one: 6 is right, and a build that forgets
+    to remove the king reports 7.
+
+    The specification's two conditions collapse into one query, and that is
+    asserted rather than assumed. An occupied ring square needs the enemy man on
+    it to be undefended; an empty one needs to be unattacked. "Defended by the
+    opponent" and "attacked by the opponent" are the same predicate.
+    """
+    print("\n[escape] E matches the specification's worked examples")
+
+    cases = [
+        ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", 0, 0,
+         "starting array: every ring square holds one of the king's own men"),
+        ("7k/8/8/8/8/8/8/K7 w - -", 3, 3,
+         "lone kings in opposite corners: three squares each"),
+        ("k3r3/8/8/8/8/8/8/4K3 w - -", 4, 3,
+         "Ke1 against Re8: e2 is attacked, the other four are not"),
+        ("k3r3/8/8/8/8/8/4K3/8 w - -", 6, 3,
+         "Ke2 against Re8: e1 AND e3 are unsafe, which needs the king removed"),
+    ]
+    stdin = "".join(f"{fen}\n" for fen, _, _, _ in cases)
+    lines = [l for l in run(engine, ["--escape-count", "-"], stdin).splitlines() if l.strip()]
+    res.check("one escape report per position", len(lines) == len(cases), f"got {len(lines)}")
+
+    for (fen, want_w, want_b, why), line in zip(cases, lines):
+        got_w = int(m.group(1)) if (m := re.search(r"escape w (\d+)", line)) else -1
+        got_b = int(m.group(1)) if (m := re.search(r"escape b (\d+)", line)) else -1
+        res.check(f"E = {want_w}/{want_b}: {why}",
+                  (got_w, got_b) == (want_w, want_b),
+                  f"got {got_w}/{got_b} for {fen}")
+
+    # An undefended enemy man on the ring is a legal capture and counts; the
+    # same man defended is neither capturable nor safe, so it does not.
+    for fen, want, why in [
+        ("k7/8/8/8/8/8/5p2/6K1 w - -", 5, "an undefended pawn on f2 is capturable"),
+        ("k4r2/8/8/8/8/8/5p2/6K1 w - -", 4, "the same pawn defended by Rf8 is not"),
+    ]:
+        line = run(engine, ["--escape-count", "-"], f"{fen}\n").strip()
+        got = int(m.group(1)) if (m := re.search(r"escape w (\d+)", line)) else -1
+        res.check(f"E = {want}: {why}", got == want, f"got {got} for {fen}")
+
+
 def test_progress_publishes_only_proven_bounds(engine: Path, res: Results) -> None:
     """--progress may publish only what the search has actually PROVEN.
 
@@ -3294,6 +3343,7 @@ def main() -> int:
     test_shipped_verifier(args.engine, res)
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
+    test_escape_count(args.engine, res)
     test_progress_publishes_only_proven_bounds(args.engine, res)
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)

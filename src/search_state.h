@@ -182,6 +182,9 @@ struct SearchConfig {
     // difference between this and a playing engine's `info` output, which is a
     // running conjecture that may be withdrawn. Nothing here is ever withdrawn.
     bool progress = false;
+    // Report E for both kings and stop. A diagnostic, so that the escape
+    // count can be checked against hand-worked positions without a search.
+    bool escape_count_only = false;
     // May THIS search publish a bound? False for every restricted portfolio
     // lane, because a restricted lane that fails has proved nothing whatever --
     // it never looked at the moves the restriction removed. Carried as an

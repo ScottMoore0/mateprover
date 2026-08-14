@@ -194,6 +194,15 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         return;
     }
 
+    // E for both kings, no search. See board.h; this exists so the escape count
+    // can be checked directly against hand-worked positions.
+    if (config.escape_count_only) {
+        out << fen4(b) << "; acn 0; acs 0; escape w " << escape_count(b, WHITE)
+            << "; escape b " << escape_count(b, BLACK) << ";\n";
+        out.flush();
+        return;
+    }
+
     // Successor analysis: run the job on every position reachable in one move.
     //
     // Chest's -x, and its stated purpose is the phrase "black moves but loses in

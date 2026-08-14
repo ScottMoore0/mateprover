@@ -692,6 +692,64 @@ bool attacked_on_planes(std::uint64_t occ,
     return false;
 }
 
+// E, THE ESCAPE COUNT. How confined is a king, counted as if it were the only
+// mover on the board?
+//
+// The ring is the up-to-eight squares adjacent to the king: eight in the
+// interior, five on an edge, three in a corner. A ring square counts when the
+// king could legally step onto it.
+//
+// THE KING IS REMOVED FIRST, and that is the whole subtlety. Left on the board
+// it blocks sliding lines that pass through its own square, so a rook checking
+// along a file would leave the square directly BEHIND the king looking safe --
+// which is exactly the square the king cannot legally run to. Removing it makes
+// the sliding attacks pass through, and the count comes out right.
+//
+// The two conditions in the specification collapse into one query, and it is
+// worth saying why rather than leaving it as a coincidence. An occupied square
+// needs the enemy man on it to be UNDEFENDED; an empty square needs to be
+// unattacked by the enemy. "Defended by the opponent" and "attacked by the
+// opponent" are the same predicate, so one `attacked_on_planes` call settles
+// both cases. Attack generation does not care whether the target square is
+// occupied -- occupancy matters only for sliders passing BEYOND it -- so the
+// enemy man is left in place for the query, which is what makes the recapture
+// reading correct. A pinned defender still defends, matching normal chess.
+//
+// En passant is ignored: it cannot bear on a king step. Castling is ignored:
+// E counts single steps only.
+inline int escape_count(const Board& b, Color side) {
+    const int k = b.king_sq[side];
+    if (k < 0) {
+        return 0;
+    }
+    const Color foe = other(side);
+    const std::uint64_t king_bit = 1ull << k;
+
+    // The king-removed position, built once and reused for every ring square.
+    const std::uint64_t occ = b.occ & ~king_bit;
+    std::array<std::uint64_t, 2> by_color = b.by_color;
+    std::array<std::uint64_t, 6> by_type = b.by_type;
+    by_color[side] &= ~king_bit;
+    by_type[PT_KING] &= ~king_bit;
+
+    std::uint64_t ring = attack_bb().king[k];
+    int escapes = 0;
+    while (ring) {
+        const int sq = lsb_index(ring);
+        ring &= ring - 1;
+        const std::uint64_t bit = 1ull << sq;
+        // Occupied by one of our own men: blocked, and no query needed.
+        if ((occ & bit) && !(by_color[foe] & bit)) {
+            continue;
+        }
+        if (attacked_on_planes(occ, by_color, by_type, sq, foe)) {
+            continue;
+        }
+        ++escapes;
+    }
+    return escapes;
+}
+
 bool is_attacked(const Board& b, int target, Color by) {
     return attacked_on_planes(b.occ, b.by_color, b.by_type, target, by);
 }

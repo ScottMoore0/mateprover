@@ -383,6 +383,11 @@ void print_usage() {
 "  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
 "                                iterative deepening its work cannot carry\n"
 "                                across depths (default 1, no skipping)\n"
+"  --escape-count                report E, the escape count, for both kings and\n"
+"                                stop. E is how many squares a king could legally\n"
+"                                step to, counted with the king itself removed\n"
+"                                from the board so that sliding attacks THROUGH\n"
+"                                its square are seen. A diagnostic, not a search\n"
 "  --progress | --no-progress    default: off. While the search runs, write a\n"
 "                                line to STDERR each time a depth completes\n"
 "                                without finding a solution. Every such line is a\n"
@@ -516,6 +521,7 @@ const BoolOption kBoolOptions[] = {
     {"--iterative-depth", &SearchConfig::direct_depth, false},
     {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
     {"--dfpn-every-depth", &SearchConfig::dfpn_final_depth_only, false},
+    {"--escape-count", &SearchConfig::escape_count_only, true},
     {"--progress", &SearchConfig::progress, true},
     {"--no-progress", &SearchConfig::progress, false},
     {"--dfpn-under-variant", &SearchConfig::dfpn_under_variant, true},
