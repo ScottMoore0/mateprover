@@ -180,6 +180,8 @@ did. If you are reading it for the first time:
 - [100. A Shared Table Makes The PV Stop Being A Function Of The Position](#100-a-shared-table-makes-the-pv-stop-being-a-function-of-the-position)
 - [101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else](#101-finding-only-mode-is-a-frontier-tool-and-costs-on-everything-else)
 - [102. Quota Dominance Is Sound, And Cannot Pay](#102-quota-dominance-is-sound-and-cannot-pay)
+- [103. The Quota Ladder: The Premise Was Right And The Arithmetic Was Not](#103-the-quota-ladder-the-premise-was-right-and-the-arithmetic-was-not)
+- [104. d(3) >= 9, Confirmed Twice](#104-d3--9-confirmed-twice)
 
 ## Impact-Ordered Architecture
 
@@ -7683,3 +7685,96 @@ The general lesson is the cheaper one to have learned first: **before building a
 mechanism that exploits two states being distinguishable, check whether they are
 ever actually distinct.** The information needed to predict this result was a
 comment in the file the change was made in.
+
+### 103. The Quota Ladder: The Premise Was Right And The Arithmetic Was Not
+
+102 rejected quota dominance because it never fires: a capture quota is
+derivable from material, so within one root the board fixes it and no
+neighbouring table entry can exist. That argument turns entirely on "within one
+root", and the ladder was the configuration built to break it.
+
+Solve the position at a capture quota of 1, then 2, then the quota actually
+asked for, keeping the exact table across the rungs. Two runs at quotas N1 < N2
+assign the same board remaining N1-k and N2-k for the same k -- a constant
+offset -- so every disproof a lower rung stored sits exactly one step from a
+query the higher rung will make. **That part is correct, and it is the first
+configuration in which the mechanism has ever fired:**
+
+| position | dominance hits / probes |
+|---|---|
+| quota 3, depth 5 | 6,811 / 439,894 (1.5%) |
+| quota 3, depth 6 | 15,171 / 6,505,046 (0.23%) |
+
+Against 102's zero in 900,000, the re-derivation is confirmed. The ladder is
+still worthless, for a reason that has nothing to do with the mechanism.
+
+#### A lower capture quota is easier to WIN and more expensive to SOLVE
+
+The ladder assumes the preparatory rungs are cheap. Measured at depth 6 from the
+starting array, single-threaded:
+
+| rung | result | time |
+|---|---|---|
+| quota 1 | **win**, 1.Nc3 | 2.39 s |
+| quota 2 | **win**, 1.Nc3 | 5.41 s |
+| quota 3 (the target) | no win | **2.00 s** |
+
+**The preparation costs 7.80 s to accelerate 2.00 s of work.** The ladder can
+never pay at these numbers, and the comment written while building it -- "the
+lower rung is also strictly cheaper, which is what makes it worth running at
+all" -- was an assumption stated as a fact and never checked.
+
+The reason it is false is worth keeping. A lower quota is easier for the
+attacker, so the search returns a PROOF, and proving a win means establishing
+that every defender reply fails: a full tree. A higher quota is refused early by
+the reachability bound, because three captures in six moves is close enough to
+the arithmetic ceiling that most branches die on it. The harder game is the
+cheaper question.
+
+That also explains the hit rate independently. Cheap rungs produce mostly
+proofs, and only DISPROOFS generalise upward, so the ladder accumulates exactly
+the kind of knowledge that cannot transfer. The hit rate falls from 1.5% to
+0.23% between depth 5 and depth 6, moving the wrong way with depth.
+
+Measured 5x to 8x slower across five positions, verdicts identical throughout.
+Rejected and removed, on the same grounds as 102: the failure mode of a reversed
+dominance direction is a silent false "no win", and that is not worth carrying
+as dead code once the mechanism is measured not to pay.
+
+Two rejections in a row on the same idea, for two unrelated reasons -- the
+states are never distinct, and when they are made distinct the preparation costs
+more than the work. Both were cheap to measure and neither was predictable from
+the argument, which is the case for measuring rather than reasoning about
+performance changes.
+
+### 104. d(3) >= 9, Confirmed Twice
+
+White forces one capture from the starting array in three moves and two in five.
+Three takes at least nine -- four more moves than two did, and the jump is large
+enough to be worth stating how it was established.
+
+| quota 3 | verdict | nodes | time |
+|---|---|---|---|
+| depth 6 | no win | 1,655,628 | 2.00 s |
+| depth 7 | no win | 20,499,067 | 9.26 s |
+| depth 8 | **no win** | 1,294,199,343 | 1,747 s |
+| depth 8, re-run | **no win** | 1,292,432,074 | 2,093 s |
+
+Every row is from the UNRESTRICTED lane, which is the only one permitted to
+assert "no solution"; a restricted lane that finds nothing has proved nothing.
+None is a timeout.
+
+The two depth-8 runs differ in configuration -- the second has the any-depth
+refutation axioms disabled -- and their node counts differ by 0.14%, which is
+thread scheduling rather than a change of search. Depths 6 and 7 were also run
+with the axioms off and produced node counts identical to the digit, so the
+axioms contribute nothing to this result and cannot be the source of a false
+refusal. Depth 7 was additionally cross-checked sequentially.
+
+Depth 8 cost 188x depth 7, which itself cost 21x depth 6; the growth factor is
+itself growing. **Depth 9 projects to between 90 and 240 hours** on 24 cores, so
+d(3) exactly is out of reach by search alone. 102 and 103 were the two
+candidates for closing that gap and both are rejected.
+
+The context for how large this became: before 99, depth 6 alone ran twelve hours
+and returned a timeout at 13.98 billion nodes. It now answers in two seconds.
