@@ -236,6 +236,27 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         SearchConfig child_config = config;
         child_config.successors = false;
         const std::vector<Move> moves = legal_moves(b, false, 64, false);
+        // CARRY ONE TABLE ACROSS THE WHOLE JOB.
+        //
+        // Successors of one position are the case where sharing between
+        // jobs obviously pays: they are siblings, so their subtrees overlap
+        // almost entirely, and without this each child throws away
+        // everything the previous child learned. Unrelated positions in a
+        // batch transpose essentially never, which is why this is scoped
+        // here rather than made general.
+        //
+        // Stood down when an escape rule is live: the escape LIMIT is not
+        // part of the table key -- deliberately, see tt_key -- on the
+        // argument that it is constant for one search, and carrying a table
+        // between jobs is exactly what could make that false.
+        std::unique_ptr<SharedProofTable> job_table;
+        const bool escape_live = quota_of(b, WHITE, VR_ESCAPE) != kNoQuota ||
+                                 quota_of(b, BLACK, VR_ESCAPE) != kNoQuota;
+        if (config.cross_job_proofs && !escape_live) {
+            job_table.reset(new SharedProofTable(config.shared_tt_shards, 0,
+                                                 entry_capacity_for_mb(config.memory_mb)));
+            child_config.job_table = job_table.get();
+        }
         out << "; successors " << moves.size() << "\n";
         for (const Move& m : moves) {
             const Board nb = make_move(b, m);
@@ -522,11 +543,13 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         // Sized like a lane's own table rather than the whole budget: it holds
         // only the proved positions, which the counters put at about 7% of
         // stores.
-        std::unique_ptr<SharedProofTable> cross_proofs;
-        if (config.cross_lane_proofs) {
-            cross_proofs.reset(new SharedProofTable(
+        std::unique_ptr<SharedProofTable> owned_cross;
+        SharedProofTable* cross_proofs = config.job_table;
+        if (cross_proofs == nullptr && config.cross_lane_proofs) {
+            owned_cross.reset(new SharedProofTable(
                 config.shared_tt_shards, 0,
                 entry_capacity_for_mb(memory_share(static_cast<std::size_t>(lanes)))));
+            cross_proofs = owned_cross.get();
         }
         std::vector<std::unique_ptr<Search>> searches;
         std::vector<std::unique_ptr<std::atomic<bool>>> cancels;
@@ -552,7 +575,12 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.root_depth = max_depth;
             t.portfolio = false;
             t.portfolio_parallel = false;
-            t.cross_proofs = cross_proofs.get();
+            t.cross_proofs = cross_proofs;
+            // Only an unrestricted lane may contribute disproofs. This is the
+            // single flag standing between a sound optimisation and a false
+            // "no solution": a restricted lane's failure is silent about every
+            // move its restriction removed.
+            t.cross_authoritative = lane_is_unrestricted(entries[static_cast<std::size_t>(i)]);
             t.threads = lane_threads[static_cast<std::size_t>(i)];
             t.checks_mask = entries[static_cast<std::size_t>(i)].checks_mask;
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;

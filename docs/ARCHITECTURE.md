@@ -194,6 +194,7 @@ did. If you are reading it for the first time:
 - [114. Four Leads, One Bug, And Three Rejections](#114-four-leads-one-bug-and-three-rejections)
 - [115. The Idle Time Was Not Idle Time. It Was The Free.](#115-the-idle-time-was-not-idle-time-it-was-the-free)
 - [116. Sharing Proofs Between Lanes, And The Last Of The Free](#116-sharing-proofs-between-lanes-and-the-last-of-the-free)
+- [117. Carrying The Table Between Jobs, And The Fourth Direction](#117-carrying-the-table-between-jobs-and-the-fourth-direction)
 
 ## Impact-Ordered Architecture
 
@@ -8781,3 +8782,104 @@ milliseconds -- the lanes finish before they can help each other. The gain is at
 the other end, on positions near the time limit, which is exactly where the one
 recovered mate-in-8 came from. Anyone tuning this should look at
 `cross_lane_hits` on long positions and ignore it on short ones.
+
+### 117. Carrying The Table Between Jobs, And The Fourth Direction
+
+116 left one extension unmeasured: proofs flow between lanes but not between
+positions, and the table is thrown away at the end of each job. Two things came
+out of chasing that, and the smaller one is the more useful.
+
+#### The prize I expected does not exist
+
+The reasoning was that a batch pays a table construction and a table destruction
+per position, and 115 had just shown teardown to be worth 44% of a deep run. So
+reuse should recover that even with no transposition at all.
+
+It recovers nothing, because there is nothing to recover. Twelve trivial
+positions, where the search is microseconds and table handling is the only
+variable:
+
+| `-M` | 1 position at a time | 4 at a time |
+|---|---|---|
+| 64 | 0.10 s | 0.07 s |
+| 1024 | 0.10 s | 0.07 s |
+| 4096 | 0.11 s | 0.07 s |
+
+A 64-fold change in the budget moves nothing. The table is allocated lazily and
+grows only to what is stored, so a position that stores little pays little, and
+the teardown 115 measured was the cost of twenty million ENTRIES rather than of
+four gigabytes of budget. The hypothesis was arithmetic about a fixed cost that
+is not fixed.
+
+#### The key was already built for this
+
+`tt_key` carries the board, side to move, attacker, node kind, castling, en
+passant, goal, and the check and capture quotas -- so an entry is a fact about a
+POSITION, not about the root it was reached from. Its own comment anticipated
+this change:
+
+> Capture quotas are in fact derivable from material [...] They are keyed anyway:
+> that derivation holds only while a table never spans two roots, **which is true
+> today and enforced nowhere.**
+
+This is the change that makes it no longer true, and the bits were already paid
+for. One precondition is NOT in the key, and deliberately: the escape limit is
+unkeyed on the argument that it is "a CONSTANT of the search, identical at every
+node a table ever holds". Across jobs that needs the limit constant across the
+batch, which a per-line Forsyth field can break -- so the carry-over stands down
+whenever an escape rule is live, rather than trusting nobody to mix limits in one
+file.
+
+#### The fourth direction
+
+Working through what may cross a lane boundary turned up a direction 116 missed.
+A restriction removes ATTACKER options, so:
+
+| | valid elsewhere? |
+|---|---|
+| restricted PROOF | yes -- a mate forced with fewer options is a mate forced with more |
+| restricted DISPROOF | **no** -- it never looked at the moves the restriction removed |
+| unrestricted PROOF | yes, trivially |
+| unrestricted DISPROOF | **yes** -- "no mate within d with every move available" implies "no mate within d with fewer" |
+
+Three of four are sound and 116 shipped only two of them. The fourth matters
+because disproofs are 93% of what the table holds: proofs alone were 7% of the
+traffic, so the cross table was almost empty. One flag, `cross_authoritative`,
+set only for unrestricted lanes, decides who may contribute a disproof; anyone
+may read one. Stores on a mate-in-5 went from 18 to 43.
+
+#### What it is worth
+
+Successors of one position -- the case where jobs are genuinely related, since
+they are siblings whose subtrees overlap -- at depth 6, best of three:
+
+| | wall clock |
+|---|---|
+| `--no-cross-job-proofs` | 29.95 s |
+| `--cross-job-proofs` | **28.79 s** |
+
+**4%.** The counters say why: 799 hits against 78,185 stores, a 1% hit rate. The
+cross table is probed only as a FALLBACK, after the lane's own table misses, so
+it competes with a primary that has already absorbed the easy traffic.
+
+A first, cold-cache measurement showed 1.12 s against 0.61 s and was thrown away:
+repeating it gave 0.22 s and 0.19 s. A 1.84x that becomes 1.16x on the second run
+was measuring the filesystem.
+
+On the 30-position mate-in-8 corpus, with and without the whole mechanism: 19/30
+both ways, every verdict and every depth identical. The 18-to-19 gain 116
+recorded did not reproduce -- it was a borderline position moving on timing at a
+5 s cap, and it should not have been reported as a gain without a repeat.
+
+#### What ships
+
+Both on. Sound, gated the same way (verdict and depth may not move), 4% on the
+one workload where jobs are related and nothing anywhere else. The honest summary
+is that this is a small, correct mechanism, and that the two halves -- the fourth
+direction and the cross-job carry -- were measured together and not separated.
+Separating them needs a flag that does not exist, and the 4% does not justify
+building it.
+
+The general lesson is the same one 114 recorded. The reasoning that motivated
+this was a fixed cost that turned out not to be fixed, and it took twelve trivial
+positions and one command to find out. Size the prize before building the thing.

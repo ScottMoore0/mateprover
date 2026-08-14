@@ -43,15 +43,35 @@ bool probe_exact_proof_table(Search& s, const TTKey& key, int depth, Proof& out)
         if (s.cross_proofs == nullptr || !s.cross_proofs->probe(key, entry)) {
             return false;
         }
-        if (entry.min_proved == TTEntry::NO_PROOF || depth < entry.min_proved) {
-            ++s.stats.tt_known_weaker;
-            return false;
+        // Every branch below is readable by every lane. What is restricted is
+        // what may be WRITTEN here, not what may be read: a restricted lane's
+        // disproof never enters this table, and everything that does enter is
+        // valid for any lane and any job. See Search::cross_authoritative.
+        if (entry.refuted) {
+            ++s.stats.tt_hits;
+            ++s.stats.exact_tt_disproof_hits;
+            ++s.stats.cross_lane_hits;
+            out = {};
+            out.refuted = true;
+            return true;
         }
-        ++s.stats.tt_hits;
-        ++s.stats.exact_tt_proof_hits;
-        ++s.stats.cross_lane_hits;
-        out = {true, std::move(entry.pv), std::move(entry.cert)};
-        return true;
+        if (entry.min_proved != TTEntry::NO_PROOF && depth >= entry.min_proved) {
+            ++s.stats.tt_hits;
+            ++s.stats.exact_tt_proof_hits;
+            ++s.stats.cross_lane_hits;
+            out = {true, std::move(entry.pv), std::move(entry.cert)};
+            return true;
+        }
+        if (entry.max_disproved != TTEntry::NO_DISPROOF && depth <= entry.max_disproved) {
+            ++s.stats.tt_hits;
+            ++s.stats.exact_tt_disproof_hits;
+            ++s.stats.cross_lane_hits;
+            out = {};
+            out.fail_depth = entry.max_disproved;
+            return true;
+        }
+        ++s.stats.tt_known_weaker;
+        return false;
     }
     // Refuted is depth-independent by construction, so it answers any query
     // regardless of the depth asked for. It is checked FIRST: it is the
@@ -127,9 +147,10 @@ void store_exact_proof_table(Search& s, const TTKey& key, int depth, const Proof
     // Publish PROOFS to the other lanes. Never a disproof and never the refuted
     // flag: those are statements about the restricted problem this lane is
     // solving, and no other lane is solving that problem.
-    if (s.cross_proofs != nullptr && proof.ok) {
+    if (s.cross_proofs != nullptr && (proof.ok || s.cross_authoritative)) {
         ++s.stats.cross_lane_stores;
-        s.cross_proofs->merge(key, depth, true, line, cert, false);
+        s.cross_proofs->merge(key, bound, proof.ok, line, cert,
+                              proof.refuted && s.cross_authoritative);
     }
 }
 

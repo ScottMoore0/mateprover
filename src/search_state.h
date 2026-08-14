@@ -494,6 +494,28 @@ struct SearchConfig {
     // regression bar exactly: a change may ADD verdicts and must not CHANGE
     // them.
     bool cross_lane_proofs = true;
+    // The same table, carried between JOBS as well as between lanes.
+    //
+    // Sound for exactly the reason cross-lane sharing is: the key is complete
+    // -- board, side to move, attacker, node kind, castling, en passant, goal,
+    // and the check and capture quotas -- so an entry is a fact about a
+    // POSITION and not about the root it was reached from. tt_key's own comment
+    // notes that the capture quotas are keyed although they are derivable,
+    // precisely because the derivation "holds only while a table never spans
+    // two roots, which is true today and enforced nowhere". This is the change
+    // that makes it no longer true, and the bits were already paid for.
+    //
+    // ONE PRECONDITION, and it is not in the key. The escape limit is
+    // deliberately unkeyed on the argument that it is "a CONSTANT of the
+    // search, identical at every node a table ever holds". Across jobs that
+    // argument needs the limit to be constant across the BATCH too, which it is
+    // when it comes from the command line and is not when a per-line Forsyth
+    // field overrides it. So the carry-over stands down whenever an escape rule
+    // is live, rather than relying on nobody mixing limits in one file.
+    bool cross_job_proofs = true;
+    // A table carried in from an enclosing job, replacing the one a portfolio
+    // would otherwise build for itself. Null for an ordinary run.
+    SharedProofTable* job_table = nullptr;
     // A worker waiting for its own split's helpers goes and helps others rather
     // than idling, instead of being a lost thread. See claim_any_child for the
     // termination argument -- the reason this is safe is the valuable part.
@@ -618,6 +640,24 @@ struct Search : SearchConfig {
     // disproof side of the lattice is ever written here or read from here, which
     // is what makes it sound for a restricted lane to contribute.
     SharedProofTable* cross_proofs = nullptr;
+    // May THIS search contribute DISPROOFS to the cross table?
+    //
+    // True only for an unrestricted lane, and the asymmetry runs the opposite
+    // way to the proofs'. A restriction removes attacker options, so:
+    //
+    //   restricted PROOF    -> valid unrestricted. A mate forced with fewer
+    //                          options is a mate forced with more.
+    //   restricted DISPROOF -> valid nowhere else. It never looked at the moves
+    //                          the restriction removed.
+    //   unrestricted PROOF  -> valid everywhere, trivially.
+    //   unrestricted DISPROOF -> valid for RESTRICTED lanes too. "No mate
+    //                          within d with every move available" implies "no
+    //                          mate within d with fewer".
+    //
+    // So three of the four directions are sound and one is not, and this flag is
+    // the one that is not. Disproofs are 93% of what the table holds, so this is
+    // where the sharing is worth anything at all.
+    bool cross_authoritative = false;
     // Which root move this worker is serving. Helpers prefer the lowest, which
     // is the order the sequential search would reach these subtrees in, and the
     // root split's existing cancellation reads it to stop everyone working on a

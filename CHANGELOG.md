@@ -690,3 +690,32 @@ shard destructor. Depth 7 at 4 GB and 24 threads: 6.01 s to 3.89 s, with
 teardown down to 13% of the run from 44%. The single-threaded case is not fixed
 and is not instrumented -- with no root split there is no shared table, and the
 private one is freed outside the route.
+
+### The cross-lane table now carries disproofs, and crosses jobs
+
+Working out what may cross a lane boundary turned up a fourth direction the
+previous release missed. A restriction removes attacker options, so an
+UNRESTRICTED lane's disproof is valid for restricted lanes too: "no mate within
+d with every move available" implies "no mate within d with fewer". Three of the
+four directions are sound; only a restricted lane's disproof travels nowhere.
+That matters because disproofs are 93% of what the table holds, so the
+proofs-only version was nearly empty.
+
+`--cross-job-proofs` carries the same table between the jobs of a `--successors`
+run, where the positions are siblings and their subtrees overlap. Sound because
+the key is a complete description of a position rather than of a root -- as
+tt_key's own comment anticipated. It stands down when an escape rule is live,
+because the escape LIMIT is deliberately unkeyed on the argument that it is
+constant for one search, and carrying a table between jobs is what could make
+that false.
+
+Worth 4% on a depth-6 successors job (29.95 s to 28.79 s), with a 1% hit rate --
+the cross table is a fallback, probed after the lane's own table misses. Nothing
+measurable elsewhere. 30 mate-in-8s: 19/30 either way, every verdict and depth
+identical.
+
+Two corrections to the previous release's notes. The 18-to-19 gain reported for
+cross-lane sharing did not reproduce; it was a borderline position moving on
+timing at a 5 s cap. And reuse buys nothing from avoiding table allocation --
+a 64-fold change in `-M` moves a trivial batch by 0.01 s, because the table is
+lazy and grows only to what is stored. See architecture 117.
