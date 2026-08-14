@@ -13,6 +13,40 @@
 
 namespace mateprover {
 
+// PROGRESS: publish a proven lower bound, mid-search.
+//
+// Called once per iterative-deepening depth that COMPLETED and found nothing.
+// That establishes "no solution within d" exactly and permanently, so the line
+// is a result in its own right and not a status guess.
+//
+// Three preconditions, and all three are load-bearing:
+//
+//   `progress_authority`  only the unrestricted lane may say this. A restricted
+//                         lane's failure means nothing (98).
+//   `!aborted`            a subtree abandoned on a node budget recorded no
+//                         verdict, so the depth proved nothing.
+//   `!timed_out`          the same for the wall clock.
+//
+// The last two are the abort invariant, and getting them wrong would publish a
+// FALSE theorem -- the one class of bug this engine exists to prevent. They are
+// tested by asserting that a timed-out depth emits nothing, rather than by
+// asserting that the bounds look plausible.
+//
+// stderr, so the result format on stdout is untouched and existing consumers
+// need not care that this exists.
+inline void publish_proven_bound(const Search& s, const Board& b, int depth) {
+    if (!s.progress || !s.progress_authority || s.aborted || s.timed_out) {
+        return;
+    }
+    static std::mutex progress_mutex;
+    std::lock_guard<std::mutex> lock(progress_mutex);
+    std::cerr << "progress " << fen4(b) << "; proven no solution within " << depth
+              << "; acn " << s.stats.nodes << "; acs "
+              << std::chrono::duration<double>(std::chrono::steady_clock::now() - s.search_start).count()
+              << ";\n";
+    std::cerr.flush();
+}
+
 // Men on the board. The preconditioner's material floor reads this; it is not
 // on any hot path.
 inline int men_on_board(const Board& b) {
@@ -139,6 +173,8 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
         if (s.timed_out) {
             break; // the depth was abandoned, so its failure is not a verdict
         }
+        // The depth completed and found nothing: that is a theorem, so say so.
+        publish_proven_bound(s, b, depth);
     }
     return result;
 }
@@ -447,6 +483,8 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
         if (s.timed_out) {
             break; // the depth was abandoned, so its failure is not a verdict
         }
+        // The depth completed and found nothing: that is a theorem, so say so.
+        publish_proven_bound(s, b, depth);
     }
     return result;
 }

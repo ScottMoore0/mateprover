@@ -182,6 +182,7 @@ did. If you are reading it for the first time:
 - [102. Quota Dominance Is Sound, And Cannot Pay](#102-quota-dominance-is-sound-and-cannot-pay)
 - [103. The Quota Ladder: The Premise Was Right And The Arithmetic Was Not](#103-the-quota-ladder-the-premise-was-right-and-the-arithmetic-was-not)
 - [104. d(3) >= 9, Confirmed Twice](#104-d3--9-confirmed-twice)
+- [105. A Progress Stream That Publishes Theorems, Not Estimates](#105-a-progress-stream-that-publishes-theorems-not-estimates)
 
 ## Impact-Ordered Architecture
 
@@ -7778,3 +7779,71 @@ candidates for closing that gap and both are rejected.
 
 The context for how large this became: before 99, depth 6 alone ran twelve hours
 and returned a timeout at 13.98 billion nodes. It now answers in two seconds.
+
+### 105. A Progress Stream That Publishes Theorems, Not Estimates
+
+A long search was entirely opaque. The depth-8 capture-quota run produced its
+first and only output after twenty-nine minutes, and progress had to be inferred
+from accumulated CPU time in the process table.
+
+`--progress` writes a line to stderr each time an iterative-deepening depth
+completes without finding a solution:
+
+```
+progress <fen4>; proven no solution within 5; acn 153926; acs 0.147851;
+progress <fen4>; proven no solution within 6; acn 1796864; acs 2.07086;
+progress <fen4>; proven no solution within 7; acn 23011374; acs 42.9529;
+```
+
+The distinction from a playing engine's `info` output is the whole point. Those
+lines are a running conjecture, revised and withdrawn as the search changes its
+mind -- which is how The Huntsman came to announce a mate in 18 in a dead-drawn
+position. **Every line here is a theorem.** "No solution within 5" is exact and
+permanent; nothing emitted is ever retracted. The growth factor per depth is
+also visible as it happens, which is what makes a multi-hour run diagnosable
+rather than merely long.
+
+Three preconditions, all load-bearing. Only the UNRESTRICTED lane may publish,
+since a restricted lane that fails has proved nothing (98). And the depth must
+have COMPLETED: one abandoned on the clock or a node budget recorded no verdict,
+so publishing a bound for it would be a false theorem. stderr keeps the stdout
+result format untouched.
+
+#### The test that could not fail, and why
+
+The first version of the timeout test was worthless, and it took a mutation to
+show it. Time out a position with no solution, then assert no bound names a
+depth past the cutoff -- it passed against a binary with **both** guards
+deliberately removed.
+
+The reason is that on a position with no solution, every bound is TRUE whenever
+it is published. Premature or not, "no solution within 6" is a correct statement
+about a position that has no solution at any depth. The broken build emitted
+only true statements, so no assertion about the content of those statements
+could catch it.
+
+A false theorem needs a position that HAS a solution, cut off inside the depth
+that finds it. Capture quota 2 is a win in exactly five moves, so "no solution
+within 5" is false there, and the mutant says it:
+
+```
+FAIL  an abandoned depth publishes no bound  published [1, 2, 3, 4, 5],
+                                             but a mate in 5 exists
+```
+
+The budget is calibrated from a full run rather than hardcoded, so the cutoff
+lands inside depth 5 on fast and slow machines alike.
+
+Two further things the mutation exposed. The guards are REDUNDANT: the emit site
+sits after the timed-out break, so each of the loop order and the in-function
+guard is independently sufficient, and neither mutation alone changed any
+observable behaviour. Both are kept -- defence in depth is right for a false
+theorem -- but the comment claiming each was load-bearing on its own was wrong
+before this was measured.
+
+And the general form, which this project keeps relearning: **a test whose
+assertions are satisfied by the broken build is not a weak test, it is not a
+test.** The question to ask of a new test is not "does it pass?" but "what
+change to the code makes it fail?" -- and if the answer is "none", it is
+measuring nothing. See the honest note on the thread-agreement arm in 8v, which
+has the same shape and is still unresolved.

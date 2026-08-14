@@ -813,6 +813,103 @@ def test_pv_and_certificates(engine: Path, res: Results) -> None:
         res.check(f"certificate #{dm} {fen[:24]}", ok, why)
 
 
+def test_progress_publishes_only_proven_bounds(engine: Path, res: Results) -> None:
+    """--progress may publish only what the search has actually PROVEN.
+
+    Each line it emits says "no solution within N", which is a theorem, not a
+    status estimate: unlike a playing engine's `info` output it is never revised
+    and never withdrawn. That is the whole justification for streaming it, and
+    it holds only while three things hold.
+
+    The depth must have COMPLETED. A depth abandoned on the wall clock or a node
+    budget recorded no verdict -- the abort invariant -- so publishing a bound
+    for it would be a false theorem, which is the one class of bug this engine
+    exists to prevent. That is what the timeout arm below pins, and it is the
+    reason the test asserts "the abandoned depth is absent" rather than "the
+    bounds look plausible": only the first phrasing can fail when the guard is
+    removed.
+
+    Only the UNRESTRICTED lane may publish. A restricted lane that finds nothing
+    has proved nothing whatever, because it never looked at the moves the
+    restriction removed (architecture 98). Eight lanes must therefore produce
+    one lane's worth of bounds, not eight.
+
+    And a bound must never reach the depth at which a solution exists, which
+    would be a direct contradiction of the answer on the very same run.
+    """
+    print("\n[progress] the mid-search stream publishes proven bounds only")
+
+    start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    quota = ["--captures", "3:126", "-M", "512"]
+
+    def bounds(args: list[str], stdin: str, timeout: float = 600.0):
+        proc = subprocess.run([str(engine), *args], input=stdin.encode(),
+                              capture_output=True, timeout=timeout)
+        got = [int(m) for m in re.findall(r"proven no solution within (\d+)",
+                                          proc.stderr.decode(errors="replace"))]
+        return got, proc.stdout.decode(errors="replace")
+
+    # Off by default: a consumer that never asked for this must not see it.
+    quiet, _ = bounds([*quota, "-z", "5", "--no-portfolio", "--single-thread", "-"],
+                      f"{start} bm #5;\n")
+    res.check("no progress output unless asked for", not quiet, f"got {quiet}")
+
+    # On: one bound per completed depth, strictly increasing, none reaching the
+    # requested depth, and nothing on stdout.
+    got, stdout = bounds([*quota, "-z", "6", "--no-portfolio", "--single-thread",
+                          "--progress", "-"], f"{start} bm #6;\n")
+    res.check("a bound is published for every completed depth",
+              got == [1, 2, 3, 4, 5, 6], f"got {got}")
+    res.check("bounds do not appear on stdout",
+              "proven no solution" not in stdout, stdout[:80])
+
+    # THE ONE THAT MATTERS, and it has to be built carefully to be able to fail.
+    #
+    # The obvious version -- time out a position with NO solution, then check no
+    # bound names a depth past the cutoff -- cannot catch the bug. Every bound on
+    # such a position is true whenever it is published, premature or not, so a
+    # build that publishes abandoned depths still emits only true statements.
+    # That version passed against a binary with both guards deliberately removed,
+    # which is how this was found.
+    #
+    # A FALSE theorem needs a position that HAS a solution, cut off inside the
+    # depth that finds it. Capture quota 2 is a win in exactly 5, so "no solution
+    # within 5" is false, and a build that publishes an abandoned depth says it.
+    # The budget is calibrated from a full run rather than hardcoded so that the
+    # cutoff lands inside depth 5 on a fast machine and a slow one alike.
+    win = ["--captures", "2:126", "-M", "512"]
+    full = run(engine, [*win, "-z", "5", "--no-portfolio", "--single-thread", "-"],
+               f"{start} bm #5;\n")
+    took = float(m.group(1)) if (m := re.search(r"acs ([\d.e+-]+)", full)) else 0.0
+    res.check("the calibration run finds the mate in 5", "dm 5" in full, full.strip()[:70])
+
+    timed, stdout = bounds([*win, "-z", "5", "--no-portfolio", "--single-thread",
+                            "--progress", "--time-limit", f"{max(took / 2, 0.01):.4f}", "-"],
+                           f"{start} bm #5;\n")
+    res.check("the arm is live: the calibrated run does time out",
+              "timeout" in stdout, stdout.strip()[:70])
+    res.check("an abandoned depth publishes no bound",
+              5 not in timed, f"published {timed}, but a mate in 5 exists")
+    res.check("published bounds are strictly increasing",
+              timed == sorted(set(timed)), f"got {timed}")
+
+    # Restricted lanes stay silent: eight lanes, one lane's worth of bounds.
+    lanes, _ = bounds([*quota, "-z", "5", "--portfolio", "--portfolio-parallel",
+                       "--portfolio-lanes", "8", "--progress", "-"],
+                      f"{start} bm #5;\n")
+    res.check("only the unrestricted lane publishes",
+              lanes == [1, 2, 3, 4, 5], f"got {lanes}")
+
+    # A bound must never contradict the answer on the same run: mate-in-3 means
+    # depths 1 and 2 are refutable and 3 is not.
+    solved, stdout = bounds(["-z", "3", "--no-portfolio", "--single-thread",
+                             "--progress", "-M", "512", "-"],
+                            "2brrb2/8/p7/7Q/1p1kpPp1/1P1pN1K1/3P4/8 w - - bm #2;\n")
+    res.check("a bound never reaches the depth that has a solution",
+              all(d < 2 for d in solved) and "dm 2" in stdout,
+              f"bounds {solved}, answer {stdout.strip()[:60]}")
+
+
 def test_preconditioner_stands_down_under_a_variant(engine: Path, res: Results) -> None:
     """The DFPN preconditioner must not run while a variant win rule is live.
 
@@ -3197,6 +3294,7 @@ def main() -> int:
     test_shipped_verifier(args.engine, res)
     test_verifier_rejects_stalemate_as_mate(args.engine, res)
     test_pv_and_certificates(args.engine, res)
+    test_progress_publishes_only_proven_bounds(args.engine, res)
     test_preconditioner_stands_down_under_a_variant(args.engine, res)
     test_root_split_proves_the_same_answer(args.engine, res)
     test_corpus_ergonomics(args.engine, res)

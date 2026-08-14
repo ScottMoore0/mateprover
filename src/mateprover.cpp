@@ -383,6 +383,15 @@ void print_usage() {
 "  --dfpn-min-depth N            skip the preconditioner below depth N; under\n"
 "                                iterative deepening its work cannot carry\n"
 "                                across depths (default 1, no skipping)\n"
+"  --progress | --no-progress    default: off. While the search runs, write a\n"
+"                                line to STDERR each time a depth completes\n"
+"                                without finding a solution. Every such line is a\n"
+"                                PROVEN bound -- 'no solution within N' -- never\n"
+"                                a guess, so nothing emitted is ever withdrawn.\n"
+"                                Only the unrestricted lane publishes, and only\n"
+"                                for a depth that COMPLETED: one abandoned on the\n"
+"                                clock or a node budget proved nothing. Needs\n"
+"                                --iterative-depth to have anything to say\n"
 "  --dfpn-under-variant | --no-dfpn-under-variant\n"
 "                                default: --no-dfpn-under-variant. Proof numbers\n"
 "                                measure the MATE and know nothing about a\n"
@@ -507,6 +516,8 @@ const BoolOption kBoolOptions[] = {
     {"--iterative-depth", &SearchConfig::direct_depth, false},
     {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
     {"--dfpn-every-depth", &SearchConfig::dfpn_final_depth_only, false},
+    {"--progress", &SearchConfig::progress, true},
+    {"--no-progress", &SearchConfig::progress, false},
     {"--dfpn-under-variant", &SearchConfig::dfpn_under_variant, true},
     {"--no-dfpn-under-variant", &SearchConfig::dfpn_under_variant, false},
     {"--dfpn-sort", &SearchConfig::dfpn_sort, true},

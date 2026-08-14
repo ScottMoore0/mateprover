@@ -172,6 +172,22 @@ struct SearchConfig {
     // tests/mates.epd), so this stands the preconditioner down exactly where it
     // loses and nowhere else. See architecture 32.
     bool dfpn_under_variant = false;
+    // Stream PROVEN intermediate bounds to stderr while the search runs.
+    //
+    // A long search is otherwise completely opaque: the depth-8 capture-quota
+    // run produced its first and only output after twenty-nine minutes, and
+    // progress had to be inferred from accumulated CPU time.
+    //
+    // Every line emitted is a theorem, not an estimate. That is the whole
+    // difference between this and a playing engine's `info` output, which is a
+    // running conjecture that may be withdrawn. Nothing here is ever withdrawn.
+    bool progress = false;
+    // May THIS search publish a bound? False for every restricted portfolio
+    // lane, because a restricted lane that fails has proved nothing whatever --
+    // it never looked at the moves the restriction removed. Carried as an
+    // explicit flag rather than re-derived at the emit site so that it cannot
+    // be got wrong by a future lane type that forgets to be checked.
+    bool progress_authority = false;
     // Material floor for the preconditioner: it runs only when the position has
     // at least this many men. 0 disables the floor.
     //
@@ -341,6 +357,10 @@ struct PnDnFwd {
 // `s.<option>` access valid while making the option set independently
 // copyable.
 struct Search : SearchConfig {
+    // When this search began. Only the progress stream reads it, and only to
+    // put a wall-clock figure beside each proven bound so the growth per depth
+    // is visible as it happens. Nothing in the search depends on it.
+    std::chrono::steady_clock::time_point search_start{std::chrono::steady_clock::now()};
     Stats stats;
     BoundedTable tt;
     std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;

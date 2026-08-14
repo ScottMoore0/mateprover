@@ -304,6 +304,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         if (goal_is_help(config.goal) && !config.memory_is_total && config.memory_mb != 0) {
             out.memory_mb = config.memory_mb * kHelpMemoryLanes;
         }
+        // Not in a portfolio, so this search IS the unrestricted one.
+        out.progress_authority = true;
         out.tt.capacity = entry_capacity_for_mb(out.memory_mb);
         if (out.tt_reserve > 0) {
             out.tt.map.reserve(out.tt_reserve);
@@ -508,6 +510,10 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.max_defender_moves = entries[static_cast<std::size_t>(i)].max_defender_moves;
             t.threat_depth = entries[static_cast<std::size_t>(i)].threat_depth;
             t.forcing_mode = entries[static_cast<std::size_t>(i)].forcing;
+            // Only the unrestricted lane may publish a bound: a restricted
+            // lane that fails has proved nothing, because it never looked at
+            // the moves the restriction removed (98).
+            t.progress_authority = lane_is_unrestricted(entries[static_cast<std::size_t>(i)]);
             t.route = entries[static_cast<std::size_t>(i)].route;
             // A RESTRICTED lane searches the final depth only, even under
             // iterative deepening.
