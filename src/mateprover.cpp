@@ -280,6 +280,15 @@ void print_usage() {
 "                                mechanism the measurement above rejected\n"
 "  --shared-tt | --private-tt    share one exact proof table across workers\n"
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
+"  --heartbeat S                 print a STATUS line every S seconds while a\n"
+"                                depth is still running, showing nodes so far.\n"
+"                                Implies --progress. A depth can run for an\n"
+"                                hour and the proven-bound stream says nothing\n"
+"                                until it completes, so without this there is\n"
+"                                no way to tell a healthy long search from a\n"
+"                                stuck one. The line says \"searching\", never\n"
+"                                \"proven\": it asserts nothing about the\n"
+"                                position, unlike every other line here\n"
 "  --tt-shed-divisor N          shed 1/N of the table per eviction (default 2).\n"
 "                                NOT a memory setting: evict() scans a whole\n"
 "                                shard however little it sheds, so a small\n"
@@ -898,6 +907,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--or-split-plies' expects a number");
             config.or_split_plies = static_cast<int>(value);
+        } else if (arg == "--heartbeat") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--heartbeat' requires seconds");
+            config.heartbeat_seconds = std::atof(v);
+            if (config.heartbeat_seconds < 0.0) return usage_error("option '--heartbeat' expects a non-negative number");
+            if (config.heartbeat_seconds > 0.0) config.progress = true;
         } else if (arg == "--tt-shed-divisor") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--tt-shed-divisor' requires a number");

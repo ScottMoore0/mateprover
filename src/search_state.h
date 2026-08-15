@@ -317,6 +317,19 @@ struct SearchConfig {
     // Every line emitted is a theorem, not an estimate. That is the whole
     // difference between this and a playing engine's `info` output, which is a
     // running conjecture that may be withdrawn. Nothing here is ever withdrawn.
+    // Seconds between HEARTBEAT lines during a single depth. 0 disables it.
+    //
+    // The gap this closes: `progress` publishes a proven bound when a depth
+    // COMPLETES, so between the last completed depth and the answer there is no
+    // output at all. A depth-9 capture-quota search ran for an hour in exactly
+    // that silence, twice, and the only honest answer to "how much longer" was
+    // that the engine provided nothing to estimate from.
+    //
+    // A heartbeat is a STATUS and not a theorem. Every other line the progress
+    // stream emits is permanent -- "proven no solution within 8" is true
+    // forever -- and this one asserts nothing whatever about the position. The
+    // wording keeps them apart on sight.
+    double heartbeat_seconds = 0.0;
     bool progress = false;
     // Report E for both kings and stop. A diagnostic, so that the escape
     // count can be checked against hand-worked positions without a search.
@@ -651,6 +664,12 @@ struct Search : SearchConfig {
     bool refuted_any_depth = false;
     std::uint32_t deadline_countdown = 0;
 
+    // Where this search publishes its running node count, for the heartbeat.
+    // Written on a countdown rather than per node, and read by a monitor thread
+    // that sums every worker's slot -- so the hot path pays one masked test and
+    // an occasional relaxed store, and nothing is contended.
+    std::atomic<std::uint64_t>* node_report = nullptr;
+
     // When non-null, exact proof entries live in a table shared with the other
     // workers of this search instead of in the private `tt` map above.
     SharedProofTable* shared_table = nullptr;
@@ -717,6 +736,12 @@ struct Search : SearchConfig {
 inline bool search_cancelled(Search& s) {
     if (s.aborted) {
         return true;
+    }
+    // Publish progress for the heartbeat. Every 16384 nodes, so the store is
+    // rare enough to be free and frequent enough that a monitor sampling every
+    // few seconds sees a current figure.
+    if (s.node_report != nullptr && (s.stats.nodes & 0x3fffu) == 0) {
+        s.node_report->store(s.stats.nodes, std::memory_order_relaxed);
     }
     if (s.node_budget != 0 && s.stats.nodes >= s.node_budget) {
         s.aborted = true;

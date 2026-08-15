@@ -913,3 +913,24 @@ finding is only valid for the table it was measured on.
 
 Depth 8 across this line of work: 366 s → 156 s → 77 s → **61 s**. See
 architecture 123.
+
+### `--heartbeat S`: node counts while a depth is still running
+
+`--progress` publishes a proven bound when a depth *completes*. Between the last
+completed depth and the answer, the stream said nothing — so a depth-9
+capture-quota search ran for an hour, twice, in total silence, and the only
+honest answer to "how much longer?" was that the engine provided nothing to
+estimate from.
+
+`--heartbeat 30` prints nodes-so-far every thirty seconds. Each worker publishes
+its count on a 16,384-node countdown; a monitor thread sums the slots and prints.
+It takes no lock the search uses and reads only relaxed atomics, so it cannot
+perturb what it reports on.
+
+The line says **searching**, never *proven*. Every other line in this stream is
+permanent; this one asserts nothing about the position, and the wording keeps
+them apart on sight.
+
+It immediately showed something invisible before — throughput decaying *within* a
+depth as the table fills: 120M nodes in the first ten seconds, then 80M, 77M,
+59M, 53M, 53M.

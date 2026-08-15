@@ -85,6 +85,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             ws->has_deadline = s.has_deadline;
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
+            ws->node_report = &slots.back()->nodes;
             // The lane's own cancel, so a worker stops when the SEARCH is
             // abandoned and not only when a sibling beats its root move.
             ws->external_cancel = s.cancel;
@@ -412,6 +413,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
             ws->has_deadline = s.has_deadline;
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
+            ws->node_report = &slots.back()->nodes;
             ws->external_cancel = s.cancel;
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
@@ -731,6 +733,7 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
             ws->has_deadline = s.has_deadline;
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
+            ws->node_report = &slots.back()->nodes;
             ws->external_cancel = s.cancel;
             ws->shared_table = shared_table.get();
             // Workers DIVIDE the budget rather than each taking all of it.
@@ -823,6 +826,7 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             ws->has_deadline = s.has_deadline;
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
+            ws->node_report = &slots.back()->nodes;
             // The lane's own cancel, so a worker stops when the SEARCH is
             // abandoned and not only when a sibling beats its root move.
             ws->external_cancel = s.cancel;

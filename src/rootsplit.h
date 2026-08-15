@@ -18,6 +18,11 @@ namespace mateprover {
 struct WorkerSlot {
     std::atomic<int> current_root{0};
     std::atomic<bool> cancel{false};
+    // This worker's running node count, for the heartbeat. Updated by the
+    // worker on a countdown and read by the monitor thread; relaxed on both
+    // sides, because a heartbeat that is a few thousand nodes stale is a
+    // heartbeat that is fine.
+    std::atomic<std::uint64_t> nodes{0};
 };
 
 // Prove a defender node with its replies shared out.
@@ -822,6 +827,65 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
         }
         slot.current_root.store(n, std::memory_order_release);
     };
+
+    // THE HEARTBEAT.
+    //
+    // A single depth can run for an hour, and until this existed the stream
+    // said nothing between one completed depth and the next. The monitor sums
+    // every worker's published count and prints it on an interval; it takes no
+    // lock the search uses and reads only relaxed atomics, so it cannot slow or
+    // perturb what it is reporting on.
+    //
+    // The line is a STATUS. Every other line in this stream is permanent --
+    // "proven no solution within 8" is true forever -- and this one asserts
+    // nothing whatever about the position, so it says "searching" where the
+    // others say "proven".
+    //
+    // Joined by a guard rather than at the end of the function: this function
+    // returns from two places and a monitor left running would reference a
+    // destroyed frame.
+    std::atomic<bool> monitor_stop{false};
+    std::thread monitor;
+    struct MonitorGuard {
+        std::atomic<bool>& stop;
+        std::thread& thread;
+        ~MonitorGuard() {
+            if (thread.joinable()) {
+                stop.store(true, std::memory_order_relaxed);
+                thread.join();
+            }
+        }
+    } monitor_guard{monitor_stop, monitor};
+    if (s.heartbeat_seconds > 0.0 && s.progress_authority) {
+        const std::uint64_t base = s.stats.nodes;
+        try {
+            monitor = std::thread([&, base] {
+                const auto tick = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(s.heartbeat_seconds));
+                auto next = std::chrono::steady_clock::now() + tick;
+                while (!monitor_stop.load(std::memory_order_relaxed)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    if (std::chrono::steady_clock::now() < next) {
+                        continue;
+                    }
+                    next += tick;
+                    std::uint64_t total = base;
+                    for (const auto& slot : slots) {
+                        total += slot->nodes.load(std::memory_order_relaxed);
+                    }
+                    std::lock_guard<std::mutex> lock(progress_stream_mutex());
+                    std::cerr << "progress " << fen4(b) << "; searching depth " << depth
+                              << "; acn " << total << "; acs "
+                              << std::chrono::duration<double>(
+                                     std::chrono::steady_clock::now() - s.search_start).count()
+                              << ";\n";
+                    std::cerr.flush();
+                }
+            });
+        } catch (const std::system_error&) {
+            // A refused thread costs visibility and nothing else.
+        }
+    }
 
     std::vector<std::thread> pool;
     // max(): a zero worker count would make this reserve SIZE_MAX and throw.
