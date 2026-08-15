@@ -74,7 +74,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             return;
         }
         if (s.shared_tt) {
-            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb)));
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -91,6 +91,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
                 ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                ws->tt.shed_divisor = ws->tt_shed_divisor;
                 if (ws->tt_reserve > 0) {
                     ws->tt.map.reserve(ws->tt_reserve);
                 }
@@ -400,7 +401,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
             return;
         }
         if (s.shared_tt) {
-            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb)));
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -415,6 +416,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
                 ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                ws->tt.shed_divisor = ws->tt_shed_divisor;
                 if (ws->tt_reserve > 0) {
                     ws->tt.map.reserve(ws->tt_reserve);
                 }
@@ -748,6 +750,7 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
                 ws->memory_mb = std::max<std::size_t>(
                     1, s.memory_mb / static_cast<std::size_t>(std::max(1, thread_count)));
                 ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                ws->tt.shed_divisor = ws->tt_shed_divisor;
             }
             workers.push_back(std::move(ws));
         }
@@ -826,6 +829,7 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
                 ws->tt.capacity = entry_capacity_for_mb(ws->memory_mb);
+                ws->tt.shed_divisor = ws->tt_shed_divisor;
             }
             workers.push_back(std::move(ws));
         }

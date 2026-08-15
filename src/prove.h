@@ -48,6 +48,7 @@ bool move_is_threat(Search& s, const Board& b, const Move& m, int depth_budget) 
         s.threat_ctx->checks_mask = s.threat_depth > 0 ? 1 : 0;
         s.threat_ctx->emit_proof = false;
         s.threat_ctx->tt.capacity = entry_capacity_for_mb(s.memory_mb);
+        s.threat_ctx->tt.shed_divisor = s.tt_shed_divisor;
     }
     Search& t = *s.threat_ctx;
     t.attacker = s.attacker;

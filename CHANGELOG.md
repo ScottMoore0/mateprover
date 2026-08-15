@@ -820,3 +820,33 @@ can never be read as a disproof.
 
 Beyond GUIs, this lets MateProver run under matetrack's own UCI harness — an
 independent measurement path this project did not write. See architecture 120.
+
+### 2.4x on deep searches: eviction was scanning, not shedding
+
+`evict()` walks an entire table shard — an `unordered_map`, so a pointer chase
+over scattered nodes — and it did that once per call while shedding only an
+eighth of capacity. Eight times as many full scans as shedding a half needs.
+
+Depth 8 on the capture quota, 24 threads, 8 GB: **373.3 s to 156.4 s**, with the
+node count moving 1.2%. Half the wall clock of a deep search was iteration over a
+hash map, discarding entries. It is not a trade against table quality either — on
+a mate-in-10 at 64 MB, where the table matters most, shedding a half does 46%
+more nodes in the same 40 s.
+
+`--tt-shed-divisor N` exposes it, default 2. The name says what it is: the cost of
+the scan, not a memory setting.
+
+The projection this came from was also wrong. Depth 8 of the `d(3)` search was
+quoted at hours and takes **six minutes**; depth 9 is a few hours, not the 35–90
+this project had been repeating. That figure was scaled from a pre-optimisation
+measurement and never re-taken.
+
+Re-tuning the move-ordering weights for x-capture was tried and **rejected**: 21%
+fewer nodes on the training set, 4.5% worse on held-out positions. 108's principle
+holds from a new angle — ordering ranks moves by how fast they resolve a subtree,
+not by how much they advance the goal.
+
+Two defects fixed in `tools/autotune.py`: its saturation guard counted *solved*
+positions, so it refused any disproof corpus outright, and it did not check the
+engine's exit code, so a truncated run was reported as a changed verdict — the
+loudest alarm it has, for the most benign cause. See architecture 121.

@@ -280,6 +280,11 @@ void print_usage() {
 "                                mechanism the measurement above rejected\n"
 "  --shared-tt | --private-tt    share one exact proof table across workers\n"
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
+"  --tt-shed-divisor N          shed 1/N of the table per eviction (default 2).\n"
+"                                NOT a memory setting: evict() scans a whole\n"
+"                                shard however little it sheds, so a small\n"
+"                                fraction means many more full scans. Worth\n"
+"                                2.4x on a deep capture-quota search\n"
 "  --tt-reserve N                pre-reserve N table buckets\n"
 "\n"
 "  --uci                         speak the UCI protocol instead of reading EPD.\n"
@@ -891,6 +896,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--or-split-plies' expects a number");
             config.or_split_plies = static_cast<int>(value);
+        } else if (arg == "--tt-shed-divisor") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--tt-shed-divisor' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value) || value < 1) return usage_error("option '--tt-shed-divisor' expects a number >= 1");
+            config.tt_shed_divisor = value;
         } else if (arg == "--or-split-min-depth") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--or-split-min-depth' requires a depth");

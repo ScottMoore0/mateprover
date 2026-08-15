@@ -254,7 +254,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                                  quota_of(b, BLACK, VR_ESCAPE) != kNoQuota;
         if (config.cross_job_proofs && !escape_live) {
             job_table.reset(new SharedProofTable(config.shared_tt_shards, 0,
-                                                 entry_capacity_for_mb(config.memory_mb)));
+                                                 entry_capacity_for_mb(config.memory_mb),
+                                                 config.tt_shed_divisor));
             child_config.job_table = job_table.get();
         }
         out << "; successors " << moves.size() << "\n";
@@ -548,7 +549,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         if (cross_proofs == nullptr && config.cross_lane_proofs) {
             owned_cross.reset(new SharedProofTable(
                 config.shared_tt_shards, 0,
-                entry_capacity_for_mb(memory_share(static_cast<std::size_t>(lanes)))));
+                entry_capacity_for_mb(memory_share(static_cast<std::size_t>(lanes))),
+                config.tt_shed_divisor));
             cross_proofs = owned_cross.get();
         }
         std::vector<std::unique_ptr<Search>> searches;
@@ -621,6 +623,7 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             t.cancel = cancels.back().get();
             t.memory_mb = lane_memory[static_cast<std::size_t>(i)];
             t.tt.capacity = entry_capacity_for_mb(t.memory_mb);
+            t.tt.shed_divisor = t.tt_shed_divisor;
             if (config.time_limit > 0.0) {
                 t.has_deadline = true;
                 t.deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(

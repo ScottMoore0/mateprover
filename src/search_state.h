@@ -581,6 +581,10 @@ struct SearchConfig {
     // and can never be read as a disproof -- which is the invariant that makes
     // it safe to stop a prover at all.
     const std::atomic<bool>* stop_flag = nullptr;
+    // Fraction of the table shed per eviction, as 1/N. See BoundedTable: this
+    // is the cost of the SCAN, not a memory setting, and it was worth 1.95x on
+    // a deep search. Architecture 121.
+    std::size_t tt_shed_divisor = 2;
     std::size_t memory_mb = 256;
     bool memory_is_total = false;
 };

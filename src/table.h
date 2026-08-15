@@ -27,6 +27,19 @@ namespace mateprover {
 struct BoundedTable {
     std::unordered_map<TTKey, TTEntry, TTKeyHash> map;
     std::size_t capacity = 0; // 0 means unbounded
+    // How much to shed per eviction, as a fraction 1/shed_divisor of capacity.
+    //
+    // THIS IS NOT A MEMORY KNOB, IT IS THE COST OF THE SCAN. evict() walks the
+    // whole shard -- an unordered_map, so a pointer chase over nodes scattered
+    // in allocation order -- and it does that once per call however little it
+    // sheds. Shedding an eighth meant eight times as many full scans as
+    // shedding a half.
+    //
+    // Measured at depth 8 on the capture quota, 24 threads, 8 GB: shedding an
+    // eighth took 336.7 s, shedding a half took 172.9 s. Same search, same node
+    // count to within 2%. Half the wall clock of a deep run was iteration over
+    // a hash map, discarding entries.
+    std::size_t shed_divisor = 2;
     std::uint32_t generation = 1;
     std::uint64_t evictions = 0;
 
@@ -74,7 +87,7 @@ struct BoundedTable {
         }
         // Everything is current, so age alone cannot choose a victim. Shed down
         // to a low-water mark to keep this from re-triggering on every store.
-        const std::size_t low_water = capacity - capacity / 8;
+        const std::size_t low_water = capacity - capacity / std::max<std::size_t>(1, shed_divisor);
         if (map.size() <= low_water) {
             return;
         }
@@ -235,7 +248,8 @@ public:
         parallel_for_teardown(shards_.size(), [this](std::size_t i) { shards_[i].reset(); });
     }
 
-    SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total) {
+    SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total,
+                     std::size_t shed_divisor = 2) {
         std::size_t shards = 1;
         while (shards < shard_count) {
             shards <<= 1;
@@ -251,6 +265,7 @@ public:
             // shard occupancy close enough that a per-shard cap is a faithful
             // proxy for a global cap, without a global counter on the hot path.
             shards_.back()->table.capacity = capacity_total == 0 ? 0 : std::max<std::size_t>(1, capacity_total / shards);
+            shards_.back()->table.shed_divisor = shed_divisor;
         }
     }
 

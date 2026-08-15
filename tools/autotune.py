@@ -79,10 +79,26 @@ def load_corpus(path: Path, limit: int | None = None) -> list[str]:
 class Result:
     """One configuration's outcome on one corpus."""
 
-    def __init__(self, verdicts: dict, nodes: int, seconds: float):
+    def __init__(self, verdicts: dict, nodes: int, seconds: float, timed_out=None):
         self.verdicts = verdicts        # fen -> "dm 5" or None
         self.nodes = nodes
         self.seconds = seconds
+        self.timed_out = timed_out or set()
+
+    @property
+    def completed(self) -> int:
+        """Positions that finished, whether or not they had a solution.
+
+        THE CORRECT DENOMINATOR, and `solved` was the wrong one. A capped
+        position reports exactly the node limit, so a corpus too hard for its
+        budget scores identically for every candidate -- that is the saturation
+        the guard exists to catch. But a position with NO SOLUTION that searched
+        exhaustively is a perfectly good measurement: its node count is exact and
+        comparable. Counting solutions refused an entire class of workload for
+        having answered the question, which is the disproof workload this engine
+        spends most of its time on.
+        """
+        return sum(1 for fen in self.verdicts if fen not in self.timed_out)
 
     @property
     def solved(self) -> int:
@@ -109,17 +125,32 @@ def run(engine: Path, corpus: list[str], flags: list[str], node_limit: int,
     proc = subprocess.run(cmd, input="\n".join(corpus) + "\n", capture_output=True,
                           text=True, timeout=3600)
     seconds = time.monotonic() - start
-    verdicts, nodes = {}, 0
+    # A KILLED ENGINE IS NOT A CHANGED VERDICT.
+    #
+    # Without this, a run cut short -- by an outer timeout, a crash, or a flag
+    # the engine rejects -- yields truncated output, and the gate below reports
+    # the missing positions as "disappeared from the output": the loudest
+    # possible alarm for the most benign possible cause. That trains a reader to
+    # ignore the one message that must never be ignored.
+    if proc.returncode != 0:
+        raise RuntimeError(f"engine exited {proc.returncode}: {proc.stderr[:300]}")
+
+    verdicts, nodes, timed_out = {}, 0, set()
     for line in proc.stdout.splitlines():
         if ";" not in line:
             continue
         fen = line.split(";", 1)[0].strip()
         m = VERDICT_RE.search(line)
         verdicts[fen] = m.group(0) if m else None
+        # "; timeout;" means the search gave up; its ABSENCE on a line with no
+        # verdict means it searched exhaustively and there is none. Those are
+        # different outcomes, and only the first destroys the fitness signal.
+        if "; timeout;" in line:
+            timed_out.add(fen)
         n = NODES_RE.search(line)
         if n:
             nodes += int(n.group(1))
-    return Result(verdicts, nodes, seconds)
+    return Result(verdicts, nodes, seconds, timed_out)
 
 
 def gate(baseline: Result, candidate: Result) -> str | None:
@@ -365,8 +396,8 @@ def main():
     # This is not a warning to be read and ignored. Either raise --node-limit
     # or pick a corpus the budget can finish.
     probe = run(args.engine, corpus, list(args.base), args.node_limit)
-    if probe.solved < 0.6 * len(corpus):
-        print(f"\nREFUSING: the baseline solves only {probe.solved}/{len(corpus)} "
+    if probe.completed < 0.6 * len(corpus):
+        print(f"\nREFUSING: only {probe.completed}/{len(corpus)} positions COMPLETE "
               f"within --node-limit {args.node_limit:,}.")
         print("Capped positions all score the same, so the fitness carries no signal.")
         print("Raise --node-limit, or choose a corpus this budget can finish.")

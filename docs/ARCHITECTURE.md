@@ -198,6 +198,7 @@ did. If you are reading it for the first time:
 - [118. Automating The Search For Improvements](#118-automating-the-search-for-improvements)
 - [119. Evolving Pruning Theorems, And The One That Would Have Lost 4,034 Mates](#119-evolving-pruning-theorems-and-the-one-that-would-have-lost-4034-mates)
 - [120. A UCI Front End That Is Not Allowed To Be The Authority](#120-a-uci-front-end-that-is-not-allowed-to-be-the-authority)
+- [121. Half The Wall Clock Of A Deep Search Was Iterating A Hash Map To Throw Entries Away](#121-half-the-wall-clock-of-a-deep-search-was-iterating-a-hash-map-to-throw-entries-away)
 
 ## Impact-Ordered Architecture
 
@@ -9176,3 +9177,119 @@ with no shared authorship is worth more than the GUI support.
 The rule that governs the whole file: **UCI mode is a convenience and never the
 record.** Everything this engine claims rests on a distinction the protocol
 cannot carry.
+
+### 121. Half The Wall Clock Of A Deep Search Was Iterating A Hash Map To Throw Entries Away
+
+Two speedups proposed for the depth-9 `d(3)` run. The one I ranked first was
+weeks of work and I recommended isolating its cause first; the one I ranked
+second was free and rejected. What actually paid was neither, and it was one line.
+
+#### The estimate that was wrong by an order of magnitude
+
+Depth 9 was projected at 35-90 hours. That figure was scaled from a
+pre-optimisation measurement and never re-taken. Measured today:
+
+| depth | nodes | wall clock | ratio |
+|---|---:|---:|---:|
+| 6 | 1,852,838 | 0.21 s | |
+| 7 | 21,562,949 | 3.18 s | 11.6x |
+| 8 | 315,197,021 | **366 s** | 14.6x |
+
+Depth 8 in six minutes, against the 1.29 billion nodes and hours the earlier
+session recorded. Depth 9 projects to ~4.6 billion nodes and a few hours. **The
+projection was a stale number scaled by a guess, restated across several
+sessions without ever being re-measured** -- the same failure as the release
+readiness claim and the eviction counter.
+
+#### Where depth 8 actually spent its time
+
+`--profile` at depth 8, 24 threads, 8 GB:
+
+| | |
+|---|---|
+| workers alive | 6,573 worker-s of 6,733 available = 97.6% |
+| idle within alive | 8.5% |
+| teardown | 8 ms |
+| **tt_evictions** | **162,141,012** |
+
+Parallelism is finished: the split is fully engaged and the workers are busy.
+Dividing it out gives the real number:
+
+| | nodes per **worker-second** |
+|---|---:|
+| depth 7 | 338,000 |
+| depth 8 | **49,000** |
+
+**A node at depth 8 cost seven times a node at depth 7**, and that is not a
+threading loss. Nor is it capacity: 2 GB against 8 GB moved the node count 9%
+with no wall-clock gain.
+
+The difference between the two depths is that depth 7 evicted NOTHING and depth 8
+evicted 162 million times. And `evict()` walks the entire shard -- an
+`unordered_map`, so a pointer chase over ~175,000 nodes scattered in allocation
+order -- while shedding only `capacity / 8`. Eight times as many full scans as
+shedding a half would need.
+
+#### One line
+
+    const std::size_t low_water = capacity - capacity / 8;    ->    / 2
+
+Depth 8, 24 threads, 8 GB:
+
+| shed per eviction | wall clock | nodes |
+|---|---:|---:|
+| 1/8 (was the default) | 373.3 s | 315,141,390 |
+| **1/2** | **156.4 s** | 318,822,297 |
+
+**2.39x**, with the node count moving 1.2%. Half the wall clock of a deep search
+was iteration over a hash map, discarding entries.
+
+It is not a trade against table quality either, which was the obvious worry. On a
+mate-in-10 at 64 MB and a 40 s cap -- the case where the table is most precious --
+shedding a half did **46% more nodes** in the same time (129.8M against 89.0M).
+`tests/mates.epd` solves 12 of 12 under both.
+
+`--tt-shed-divisor` exposes it. The name says what it is: this is the cost of the
+SCAN, not a memory setting.
+
+#### The ordering weights are not a lever either
+
+The other proposal was to re-tune move ordering for x-capture, on the argument
+that the defaults are mate-oriented -- check +50,000 against capture +10,000 --
+while under a capture quota a capture IS the goal. Soundness-neutral, so free to
+try.
+
+The genetic search found 21% fewer nodes in one generation on a six-position
+training set, and the winner was **4.5% WORSE** on four held-out positions
+(27.5M against 26.3M). Third time this session an automated tuning result has
+reversed on fresh data, and the fastest yet -- one generation.
+
+The default weights stand, and 108's principle is confirmed from a new angle:
+**move ordering does not rank moves by how much they advance the goal, it ranks
+them by how quickly they resolve the subtree.** A capture goal does not want
+captures ordered first any more than an escape goal wanted checks ordered last.
+
+#### Two instrument defects found on the way
+
+`tools/autotune.py` refused to start on a disproof corpus, because its saturation
+guard counted SOLVED positions and a disproof solves nothing. The guard exists to
+catch positions capped by the node budget, whose scores are all identical; a
+position that searched exhaustively and found nothing is a perfectly good
+measurement. It now counts COMPLETED positions, which is the criterion it always
+meant.
+
+And the tool did not check the engine's exit code, so a run cut short by an outer
+timeout produced truncated output that the gate reported as `disappeared from the
+output` -- the loudest alarm it has, for the most benign cause there is. It cried
+wolf once in this session and I spent a measurement chasing it. An alarm that
+fires on harness failure is worse than no alarm, because it teaches the reader to
+discount the one message that must never be discounted.
+
+#### What this says about the flat table
+
+The remaining proposal was to replace `BoundedTable`'s `unordered_map` with a
+flat open-addressed array: no per-entry allocation, no pointer chase, and
+eviction that replaces in place instead of scanning. This section is evidence
+FOR that -- the cost it removes is exactly the cost measured here -- and evidence
+that it should be measured before it is built, since one line recovered 2.39x of
+a cost I had attributed to the allocator.
