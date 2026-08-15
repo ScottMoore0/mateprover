@@ -591,7 +591,21 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     const bool shortcut = s.ordered_check_shortcut && moves_scored && s.score_checks && !s.score_mates && s.goal == Goal::Mate;
 
     const int n = static_cast<int>(moves.size());
-    const int worker_count = std::min<int>(static_cast<int>(workers.size()), n);
+    const int pool_size = static_cast<int>(workers.size());
+    // THE POOL IS NOT CAPPED BY THE BRANCHING FACTOR ANY MORE.
+    //
+    // `min(threads, n)` was right when the root split was the only split: a
+    // worker with no root move to claim had nowhere to go. With sub-root
+    // splitting (112, 113) it has somewhere -- it drops into help_splits and
+    // takes children of whatever node is still open -- so capping the pool at
+    // the number of root moves now leaves threads unbuilt for no reason.
+    //
+    // It bites hardest exactly where the branching is smallest, which is the
+    // opposite of what you would want. The chess starting array has twenty
+    // legal moves, so a d(3) search on a sixteen-core machine built twenty
+    // workers and could never build more, whatever --threads said.
+    const bool sub_split = (s.or_split || s.reply_split) && pool_size > 1 && depth > 1;
+    const int worker_count = sub_split ? pool_size : std::min(pool_size, n);
 
     // Young-brothers-wait at the root.
     //
@@ -680,6 +694,8 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     registry.live_roots = 0;
     const bool split_replies = s.reply_split && worker_count > 1 && depth > 1;
     const bool split_moves = s.or_split && worker_count > 1 && depth > 1;
+    // Workers past index n never claim a root move -- there are none left -- so
+    // they go straight to help_splits and live on sub-root children.
     const bool any_split = split_replies || split_moves;
 
     for (int w = 0; w < worker_count; ++w) {
