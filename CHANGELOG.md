@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 574 automated checks cover perft against
+sharing no code with the engine. 583 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -794,3 +794,29 @@ were not merely stale but wrong.
   attached that was backwards. Refuting every sibling is what makes the work
   divisible; it is PROVING that does not divide.
 - The three automation tools were entirely undocumented and now have a section.
+
+### UCI mode, deliberately lossy
+
+`--uci` speaks the protocol. `go mate N` is in the UCI specification and is
+exactly this engine's question, so it maps to `score mate N` with the same N and
+the same key move the EPD interface reports.
+
+What the protocol cannot express is "no solution exists" — a GUI seeing no
+`score mate` cannot distinguish an exhaustive disproof from a timeout. Those are
+separated on `info string`, which a human can read and a GUI cannot act on, and
+`bestmove 0000` is returned rather than a legal move the engine never proved
+anything about. Certificates cannot travel, so `--emit-proof` is refused rather
+than silently ignored. The other five goals and three variant rules ride on
+`setoption`, which no GUI populates.
+
+The UCI answer is a RENDERING of the canonical result line, not a second search
+path — same `solve_line`, same portfolio, same gates — so it cannot drift from
+the engine. The suite checks the two interfaces agree on depth and key move.
+
+`stop` needed one line: `SearchConfig` is copied wholesale into every worker and
+lane, so a stop flag on the config is already visible everywhere, and
+`search_cancelled` marks it `timed_out` as well as `aborted` so a stopped search
+can never be read as a disproof.
+
+Beyond GUIs, this lets MateProver run under matetrack's own UCI harness — an
+independent measurement path this project did not write. See architecture 120.

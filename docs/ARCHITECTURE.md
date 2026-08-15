@@ -197,6 +197,7 @@ did. If you are reading it for the first time:
 - [117. Carrying The Table Between Jobs, And The Fourth Direction](#117-carrying-the-table-between-jobs-and-the-fourth-direction)
 - [118. Automating The Search For Improvements](#118-automating-the-search-for-improvements)
 - [119. Evolving Pruning Theorems, And The One That Would Have Lost 4,034 Mates](#119-evolving-pruning-theorems-and-the-one-that-would-have-lost-4034-mates)
+- [120. A UCI Front End That Is Not Allowed To Be The Authority](#120-a-uci-front-end-that-is-not-allowed-to-be-the-authority)
 
 ## Impact-Ordered Architecture
 
@@ -9111,3 +9112,67 @@ them, and its value is proportional to how hard the gate is.** A thousand times
 the candidates through a leaky gate is a thousand times the chance of a silently
 false proof, and this session produced a concrete, seductive, 48%-shaped example
 of exactly that.
+
+### 120. A UCI Front End That Is Not Allowed To Be The Authority
+
+The protocol was designed for engines that choose moves. This one answers a
+question, and the two overlap enough to be useful and not enough to be safe.
+
+#### What maps, and what cannot
+
+`go mate <x>` is in the specification -- "search for a mate in x moves" -- and
+`score mate N` means what `dm N` means. That is a real translation, not a bodge.
+
+Everything else about the answer is lost, in three different ways:
+
+| | |
+|---|---|
+| "no solution exists" | no representation at all. A GUI seeing no `score mate` cannot distinguish an exhaustive disproof from a timeout, which is the conflation OUTPUT_FORMAT.md exists to prevent. Separated here on `info string`, legible to a human and to nothing else. |
+| the certificate | too large to travel. `--emit-proof` is REFUSED rather than ignored: a caller who asked for a proof and got a bare `bestmove` could not tell "unsupported" from "none found", and the second is a claim about the position. |
+| five goals, three variant rules | reachable via `setoption`, populated by no GUI. In practice this is a directmate interface. |
+
+`bestmove 0000` when nothing was proved. The null move is the honest answer: the
+engine was never asked to recommend a move, and naming a legal one would assert
+something it never established.
+
+#### Rendering, not recomputation
+
+The whole front end drives `solve_line` -- the same entry point the EPD interface
+uses, with the same portfolio, routes and gates -- and reformats its result line.
+There is deliberately no second search path.
+
+That is a maintenance property rather than an aesthetic one. A UCI mode with its
+own search would be a second implementation of every decision this engine makes,
+and it would drift, silently, in a direction nobody was testing. As built, a UCI
+answer is provably a rendering of the canonical one, and the suite pins it: the
+same position must give the same depth and the same key move through both
+interfaces.
+
+#### The one line of plumbing that mattered
+
+`stop` needs to abandon a search from outside, and the cancellation already in
+the engine is per-worker and per-lane -- `Search::cancel` for a lane, and workers
+inheriting it as `external_cancel`. Threading a global flag through all of that
+looked like the job.
+
+It was one line, because **`SearchConfig` is copied wholesale into every worker
+and every portfolio lane.** A `stop_flag` on the CONFIG is therefore already
+visible to every Search in the program, and `search_cancelled` needed a single
+test added. It sets `timed_out` as well as `aborted`, so a stopped search reports
+"gave up" and can never be read as a disproof -- which is the invariant that
+makes it safe to stop a prover at all.
+
+#### What it is for
+
+Plugging the directmate mode into a GUI is the obvious use and the smaller one.
+The better one is that **matetrack drives engines over UCI**. This project already
+benchmarks against matetrack's position sets through a bespoke harness; a UCI
+mode lets the engine run under matetrack's own, which is an independent
+measurement path nobody here wrote. Given how much of this session was spent
+discovering that instruments were pointed at the wrong object -- an eviction
+counter reading zero, a fitness function scoring a constant -- a second harness
+with no shared authorship is worth more than the GUI support.
+
+The rule that governs the whole file: **UCI mode is a convenience and never the
+record.** Everything this engine claims rests on a distinction the protocol
+cannot carry.

@@ -38,6 +38,16 @@
 #include <intrin.h>
 #endif
 
+// The single source of truth for the version. CMakeLists.txt parses this line
+// rather than declaring its own: it used to declare 0.1.0 and pass it in, while
+// a direct g++ build of the same source fell back to "0.1.0-dev". Two builds of
+// identical code reported different versions, and neither string said which was
+// which.
+//
+// Above the includes rather than below them, because uci.h reports it in the
+// `id name` line the protocol requires.
+#define MATEPROVER_VERSION "0.1.0"
+
 // Modules are included in their original order into this single translation
 // unit, so the preprocessed result is textually equivalent to the previous
 // single-file build. Compilation stays a unity build deliberately: the search
@@ -58,6 +68,7 @@
 #include "retro.h"
 #include "report.h"
 #include "solve.h"
+#include "uci.h"
 
 using namespace mateprover;
 
@@ -66,12 +77,6 @@ using namespace mateprover;
 // split saturates, so detected-core-count parallelism wastes cores above this.
 constexpr int AUTO_THREAD_CAP = 16;
 
-// The single source of truth for the version. CMakeLists.txt parses this line
-// rather than declaring its own: it used to declare 0.1.0 and pass it in, while
-// a direct g++ build of the same source fell back to "0.1.0-dev". Two builds of
-// identical code reported different versions, and neither string said which was
-// which.
-#define MATEPROVER_VERSION "0.1.0"
 
 void print_version() {
     std::cout << "mateprover " << MATEPROVER_VERSION << "\n";
@@ -276,6 +281,15 @@ void print_usage() {
 "  --shared-tt | --private-tt    share one exact proof table across workers\n"
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
 "  --tt-reserve N                pre-reserve N table buckets\n"
+"\n"
+"  --uci                         speak the UCI protocol instead of reading EPD.\n"
+"                                A LOSSY CONVENIENCE INTERFACE: `go mate N` is\n"
+"                                exact and maps to `score mate N`, but UCI has\n"
+"                                no way to say \"proved no solution exists\", so\n"
+"                                that verdict and a timeout are separated on\n"
+"                                `info string` and nowhere else. Certificates\n"
+"                                cannot travel and --emit-proof is refused.\n"
+"                                The EPD line remains the record\n"
 "\n"
 "Analysis:\n"
 "  --all-solutions | --duals     report EVERY root move that solves, not just\n"
@@ -650,6 +664,7 @@ int main(int argc, char** argv) {
     int perft_depth = 0;
     bool perft_divide = false;
     bool read_stdin = false;
+    bool uci_mode = false;
     bool list_legal = false;
     bool list_san = false;
     bool list_unmoves = false;
@@ -758,6 +773,8 @@ int main(int argc, char** argv) {
             perft_depth = std::atoi(v);
             if (perft_depth <= 0) return usage_error("option " + arg + " requires a positive depth");
             perft_divide = (arg == "--perft-divide");
+        } else if (arg == "--uci") {
+            uci_mode = true;
         } else if (arg == "--print-config") {
             print_config = true;
         } else if (arg == "--answer-order-min-depth" && i + 1 < argc) {
@@ -1187,6 +1204,17 @@ int main(int argc, char** argv) {
     if (print_config) {
         emit_config_json(config);
         return 0;
+    }
+    if (uci_mode) {
+        // --emit-proof is REFUSED here rather than silently ignored. A caller
+        // who asked for a certificate and got a bare `bestmove` would have no
+        // way to distinguish "not supported" from "no proof was found", and the
+        // second is a claim about the position.
+        if (config.emit_proof) {
+            return usage_error("--emit-proof is not available in --uci mode: a proof tree "
+                               "cannot travel over the protocol. Use the EPD interface");
+        }
+        return run_uci_loop(config);
     }
 
     // Solve several positions at once, each into its own buffer, emitting the

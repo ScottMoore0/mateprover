@@ -259,7 +259,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-574 automated checks covering:
+583 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion
@@ -358,6 +358,56 @@ appears when the search hit its budget, so "gave up" is distinguishable from
 
 `--help` lists the full set, including search-tuning flags and their rollback
 counterparts.
+
+## UCI
+
+```
+mateprover --uci
+```
+
+A **lossy convenience interface**, and worth understanding before relying on it.
+
+`go mate <x>` is in the UCI specification — *"search for a mate in x moves"* —
+and it is exactly this engine's question, so that half maps cleanly:
+
+```
+position fen 8/2Q5/R7/8/1k4K1/8/8/8 w - -
+go mate 2
+info depth 2 nodes 99 time 2 nps 35855 score mate 2 pv a6b6 b4a3 c7a7
+bestmove a6b6
+```
+
+What UCI cannot express is **"no solution exists"**. A GUI that sees no
+`score mate` cannot tell an exhaustive disproof from a search that ran out of
+budget, and conflating those two is the one thing `docs/OUTPUT_FORMAT.md` exists
+to prevent. So they are separated on `info string`, which a human can read and a
+GUI cannot act on:
+
+```
+info string PROVED: no solution exists within the depth searched
+info string no verdict: the search hit its budget or was stopped
+bestmove 0000
+```
+
+`bestmove 0000` is the null move: there is no move to recommend, because the
+engine was never asked to recommend one, and naming a legal move there would
+assert something it never proved.
+
+Certificates cannot travel — a mate-in-8 proof tree runs to megabytes — so
+`--emit-proof` is **refused** in this mode rather than silently doing nothing.
+The other five goals and the three variant rules are reachable through
+`setoption` (`Goal`, `Checks`, `Captures`, `Escape`) but no GUI knows to set
+them, so in practice this is a directmate interface.
+
+**The UCI answer is a rendering, never a second search.** It drives the same
+`solve_line` the EPD interface does — same portfolio, same routes, same gates —
+and reformats the result line, so it cannot drift from the engine's real
+behaviour. The suite checks that the mate depth and key move agree with the EPD
+answer on the same position.
+
+**The EPD line and the certificate remain the record.** UCI is for plugging the
+directmate mode into a GUI or a standard harness; it is not the interface any
+claim on this page rests on.
 
 ## Searching for improvements automatically
 

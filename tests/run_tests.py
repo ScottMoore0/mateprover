@@ -1338,6 +1338,94 @@ def test_candidate_predicates_observe_and_never_prune(engine: Path, res: Results
               "unknown feature" in bad, bad[:160])
 
 
+def test_uci_mode_is_a_faithful_rendering(engine: Path, res: Results) -> None:
+    """--uci speaks the protocol, and must say exactly what the EPD line says.
+
+    UCI is a lossy convenience interface here, and the losses are deliberate and
+    documented. What must NOT be lost is agreement: the UCI answer is produced by
+    reformatting the canonical result line, not by a second search, so a mate the
+    EPD interface proves must appear as `score mate N` with the same N and the
+    same key move. That property is what stops this mode drifting away from the
+    engine over time.
+
+    The other half is the distinction the protocol cannot express. A GUI seeing
+    no `score mate` cannot tell an exhaustive disproof from a search that ran out
+    of budget, and conflating those is the one thing OUTPUT_FORMAT.md exists to
+    prevent. They are separated on `info string`, and this checks that a proved
+    absence says PROVED and never claims a mate.
+    """
+    print("\n[uci] the UCI mode renders the canonical answer and loses only what it must")
+
+    def session(commands, waits):
+        proc = subprocess.Popen([str(engine), "--uci"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, text=True, bufsize=1)
+        got = []
+        try:
+            for cmd, token in zip(commands, waits):
+                proc.stdin.write(cmd + "\n")
+                proc.stdin.flush()
+                if token is None:
+                    continue
+                while True:
+                    line = proc.stdout.readline()
+                    if not line:
+                        break
+                    got.append(line.rstrip())
+                    if line.split()[:1] == [token]:
+                        break
+            proc.stdin.write("quit\n")
+            proc.stdin.flush()
+            proc.wait(timeout=30)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+        return got
+
+    handshake = session(["uci", "isready"], ["uciok", "readyok"])
+    res.check("uci handshake completes", "uciok" in handshake and "readyok" in handshake,
+              str(handshake[:3]))
+    res.check("the engine identifies itself",
+              any(l.startswith("id name MateProver") for l in handshake), str(handshake[:2]))
+
+    # A proved mate: same depth and same key move as the EPD interface reports.
+    fen, dm = "6k1/8/8/8/8/5K2/5Q1N/8 w - -", 5
+    epd = run(engine, ["-z", str(dm), "-"], fen + "\n")
+    epd_bm = re.search(r"bm (\S+?);", epd)
+    out = session(["uci", f"position fen {fen}", f"go mate {dm}"],
+                  ["uciok", None, "bestmove"])
+    text = "\n".join(out)
+    res.check("a proved mate appears as `score mate N` with the same N",
+              f"score mate {dm}" in text, text[-300:])
+    res.check("the UCI key move is the EPD key move",
+              bool(epd_bm) and f"bestmove {epd_bm.group(1)}" in text,
+              f"epd={epd_bm.group(1) if epd_bm else '?'} uci={text[-120:]}")
+
+    # A proved ABSENCE: no score, an explicit PROVED, and never a mate claim.
+    out = session(["uci", "position fen 8/8/8/4k3/8/8/8/4K2R w - -", "go mate 2"],
+                  ["uciok", None, "bestmove"])
+    text = "\n".join(out)
+    res.check("a proved absence never reports a mate", "score mate" not in text, text[-200:])
+    res.check("a proved absence says so, distinguishably from a timeout",
+              "info string PROVED" in text, text[-200:])
+    res.check("a position with no proved move answers bestmove 0000",
+              "bestmove 0000" in text, text[-100:])
+
+    # An illegal move must be refused, not quietly analysed as a different game.
+    out = session(["uci", "position startpos moves e2e4 e2e4", "go mate 1"],
+                  ["uciok", None, "bestmove"])
+    res.check("an illegal move in `position ... moves` is rejected",
+              any("rejected" in l for l in out), str(out[:4]))
+
+    # The certificate cannot travel, so asking for one is an error rather than
+    # a silent omission a caller could read as "no proof was found".
+    try:
+        bad = run(engine, ["--uci", "--emit-proof", "-"], "quit\n")
+    except RuntimeError as exc:
+        bad = str(exc)
+    res.check("--emit-proof is refused in UCI mode rather than ignored",
+              "not available in --uci mode" in bad, bad[:160])
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3634,6 +3722,7 @@ def main() -> int:
     test_splits_do_not_move_the_output(args.engine, res)
     test_cross_lane_proofs_do_not_move_the_depth(args.engine, res)
     test_candidate_predicates_observe_and_never_prune(args.engine, res)
+    test_uci_mode_is_a_faithful_rendering(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

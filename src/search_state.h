@@ -569,6 +569,18 @@ struct SearchConfig {
     //
     // Same shape as `--threads auto`: the default adapts, an explicit value is
     // obeyed literally.
+    // UCI `stop`, and anything else that must abandon a whole run from outside.
+    //
+    // On the CONFIG rather than on Search, which is what makes it one edit
+    // instead of a plumbing exercise: every worker and every portfolio lane
+    // copies the config wholesale, so a flag here is already visible to every
+    // Search in the program without a single pointer being threaded anywhere.
+    //
+    // Raising it is an ABORT, never a verdict. search_cancelled sets
+    // `timed_out` alongside `aborted`, so a stopped search reports "gave up"
+    // and can never be read as a disproof -- which is the invariant that makes
+    // it safe to stop a prover at all.
+    const std::atomic<bool>* stop_flag = nullptr;
     std::size_t memory_mb = 256;
     bool memory_is_total = false;
 };
@@ -727,6 +739,14 @@ inline bool search_cancelled(Search& s) {
         } else {
             --s.deadline_countdown;
         }
+    }
+    if (s.stop_flag != nullptr && s.stop_flag->load(std::memory_order_relaxed)) {
+        // timed_out as well as aborted: section 8r's rule is that a line with no
+        // marker means "searched exhaustively, no mate exists", and a stopped
+        // search has settled nothing.
+        s.timed_out = true;
+        s.aborted = true;
+        return true;
     }
     if (s.cancel != nullptr && s.cancel->load(std::memory_order_relaxed)) {
         s.aborted = true;
