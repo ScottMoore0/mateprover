@@ -962,3 +962,32 @@ accepts every store and returns nothing, and the enclosing search's tables were
 not being sized — so the DFPN preconditioner, which writes its guidance there,
 was silently contributing nothing. `HintTable` now carries a size from
 construction, so "forgot to size it" cannot be a silent behaviour change.
+
+### `d(3)` says which problem it means, and the alternative is measured
+
+Architecture 104 recorded `d(3) ≥ 9` without stating the rule it was measured
+under. Every figure there is `cap3+3` — **both** sides win outright on their third
+capture — so `d(N)` is "how fast can White make N captures *without letting Black
+make N first*", a race rather than a one-sided count. The section read as though
+it described the asymmetric problem, and nobody had run that one.
+
+Now measured. `--captures 3:126` gives Black an allowance it cannot reach, so
+Black can only win by mate:
+
+| depth | race `cap3+3` | alternative `cap3+126` |
+|---|---|---|
+| 7 | no win, 22,427,185 | no win, 21,742,346 |
+| 8 | no win, 352,010,893 | no win, **1,533,755,964** |
+
+`d(3) ≥ 9` holds under both, as do `d(1) = 3` and `d(2) = 5` with identical
+principal variations — so the headline survives the ambiguity. The race stays as
+the headline rule and the alternative is recorded beside it.
+
+The two diverge at depth 8, and opposite to expectation: the alternative is
+weakly *easier to solve* (fewer Black resources) but **4.4× more expensive to
+search**, because in the race a line where Black reaches three captures is cut
+immediately. Black's counter-quota was doing substantial pruning.
+
+104 also gains the `d(1)` and `d(2)` tables it never had — they were a single
+prose sentence with no node counts beside a `d(3)` result carrying four rows and
+two independent configurations.

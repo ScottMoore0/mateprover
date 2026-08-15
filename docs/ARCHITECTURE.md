@@ -7768,9 +7768,40 @@ performance changes.
 
 ### 104. d(3) >= 9, Confirmed Twice
 
+**WHICH PROBLEM THIS IS.** Every figure in this section is `cap3+3`: BOTH sides
+win outright on their third capture. So d(N) is not "how fast can White make N
+captures", it is "how fast can White make N captures **without letting Black make
+N first**". This was stated nowhere for a long time, and the section read as
+though it described the asymmetric problem instead. The alternative is recorded
+below, with measurements, because the two are genuinely different questions and
+the difference is not small.
+
 White forces one capture from the starting array in three moves and two in five.
 Three takes at least nine -- four more moves than two did, and the jump is large
 enough to be worth stating how it was established.
+
+| quota 1 | verdict | nodes |
+|---|---|---:|
+| depth 1 | no win | 1 |
+| depth 2 | no win | 41 |
+| depth 3 | **win** | 2,263 |
+
+`1.b3 Nc6 2.Bb2 Rb8 3.Bxg7`. Depths 1 and 2 are exhaustive refusals, so 3 is
+minimal.
+
+| quota 2 | verdict | nodes |
+|---|---|---:|
+| depth 4 | no win | 13,882 |
+| depth 5 | **win** | 348,544 |
+
+`1.e3 Nc6 2.Qf3 Rb8 3.Qxf7+ Kxf7 4.Bc4+ d5 5.Bxd5+`, and the race is visible in
+it: White's captures land on plies 5 and 9 while Black RECAPTURES THE QUEEN on
+ply 6. White wins 2-1, having given up a queen to do it. Set Black's allowance
+to 1 and the win vanishes entirely -- `cap2+1` is refuted at depth 5 -- because
+`3...Kxf7` becomes Black's winning move three plies before White's second capture
+lands. Restore Black to 3 and the same line works again. That is the whole of
+what "race" means here, and it is why the asymmetric problem below is a different
+question rather than a relabelling.
 
 | quota 3 | verdict | nodes | time |
 |---|---|---|---|
@@ -7797,6 +7828,37 @@ candidates for closing that gap and both are rejected.
 
 The context for how large this became: before 99, depth 6 alone ran twelve hours
 and returned a timeout at 13.98 billion nodes. It now answers in two seconds.
+
+#### The alternative rule: Black cannot win by captures
+
+The natural other reading -- White wins by three captures, Black wins only by
+mate -- is `--captures 3:126`, an allowance Black cannot reach. It had never been
+run. Measured:
+
+| depth | race, `cap3+3` | alternative, `cap3+126` |
+|---|---|---|
+| 5 | no win, 160,084 | no win, 156,087 |
+| 6 | no win, 1,868,333 | no win, 1,806,885 |
+| 7 | no win, 22,427,185 | no win, 21,742,346 |
+| 8 | no win, 352,010,893 | no win, **1,533,755,964** |
+
+**d(3) >= 9 holds under both**, so the headline survives the ambiguity, as do
+d(1) = 3 and d(2) = 5, which are identical under either rule with identical
+principal variations.
+
+But the two problems diverge, and in the direction opposite to the obvious one.
+Removing Black's winning condition removes Black RESOURCES, so every White
+strategy that works in the race still works here -- the alternative is weakly
+easier to SOLVE. It is 4.4x more expensive to SEARCH, because in the race a line
+where Black reaches three captures ends at once and its subtree is cut. **Black's
+counter-quota was doing substantial pruning**, and the alternative discards it,
+so those lines run to full depth before failing.
+
+Depths 5 to 7 agree within 3%; the divergence appears at depth 8, which is where
+lines first get long enough for Black to accumulate three captures. The headline
+result is the same, the cost of establishing it is not, and a depth-9 attempt
+under the alternative rule should be budgeted at several times the race version's
+already considerable expense.
 
 ### 105. A Progress Stream That Publishes Theorems, Not Estimates
 
