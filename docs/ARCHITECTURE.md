@@ -195,6 +195,7 @@ did. If you are reading it for the first time:
 - [115. The Idle Time Was Not Idle Time. It Was The Free.](#115-the-idle-time-was-not-idle-time-it-was-the-free)
 - [116. Sharing Proofs Between Lanes, And The Last Of The Free](#116-sharing-proofs-between-lanes-and-the-last-of-the-free)
 - [117. Carrying The Table Between Jobs, And The Fourth Direction](#117-carrying-the-table-between-jobs-and-the-fourth-direction)
+- [118. Automating The Search For Improvements](#118-automating-the-search-for-improvements)
 
 ## Impact-Ordered Architecture
 
@@ -8883,3 +8884,132 @@ building it.
 The general lesson is the same one 114 recorded. The reasoning that motivated
 this was a fixed cost that turned out not to be fixed, and it took twelve trivial
 positions and one command to find out. Size the prize before building the thing.
+
+### 118. Automating The Search For Improvements
+
+Three of the four tiers proposed for automatic improvement, built and run. The
+tools are `tools/autotune.py` (configuration search, ordering search) and
+`tools/adversarial.py` (position search, differential fuzzing).
+
+#### What the engine had to give up first
+
+Only one source change was needed: the five move-ordering bonuses were literals
+and are now `OrderWeights` in the config, reachable through `--order-weights
+c,p,q,r,m`.
+
+They are the right five to expose because **ordering is soundness-neutral**. The
+weights change the ORDER moves are tried and never the SET, so no assignment of
+them -- including a deliberately absurd one -- can change a verdict, a depth or a
+certificate. Only the node count moves. That is a rare property in this program,
+and it means an automatic search over these five numbers cannot produce a wrong
+answer however badly it goes.
+
+One invariant is not about ordering at all and is enforced at the CLI:
+`check_term` is +/-50000 and prove.h reads `|score| >= 50000` as "this move gives
+check". So the static terms must stay below 50000, or a quiet move would be read
+as a check -- which under a stalemate goal is exactly how a CHECKMATE gets
+accepted as a stalemate (54). `--order-weights 30000,30000,10,10,10` is refused
+with that reason.
+
+#### The fitness must be nodes, and the corpus must fit the budget
+
+Wall clock on this machine drifts 15% between identical runs while the effects
+worth tuning are 3-10%, so a wall-clock objective measures the drift. Node counts
+at `--threads 1` are exactly reproducible, so one repetition suffices and a 1%
+difference is real. `--node-limit` gives a deterministic per-position budget --
+the flag's own comment anticipated this use.
+
+**But a capped position reports exactly the cap.** The first run of the ordering
+search used a corpus where 7 of 8 positions exceeded the budget, so the total was
+the cap times the count and 40 evaluations moved the objective by 7 nodes out of
+2.2 million. The tool now refuses to start when the baseline solves under 60% of
+the corpus, with that reason. A saturated fitness is not a weak signal, it is no
+signal, and it looks exactly like a converged search.
+
+#### The gate
+
+Lexicographic, and nothing is compared until correctness holds: every position
+the baseline solved is still solved, no reported depth changes, optionally the
+full suite passes, and only then maximise solved and minimise nodes. A scalar
+objective would accept a configuration reporting `dm 7` where the answer is
+`dm 5`, and the difference is invisible in a score.
+
+#### What the ordering search actually did
+
+Trained on `tests/mates.epd` (easy, 12 positions), validated on 8 held out:
+
+| | training | held out |
+|---|---|---|
+| default `10000,8000,50,40,30` | 90,276 nodes | 17,292,631 nodes |
+| evolved `10000,8088,50,40,59` | 90,236 nodes | 16,316,759 nodes (**-5.6%**) |
+
+A 5.6% gain, deterministic and exactly reproducible. Then confirmed on a THIRD
+corpus it had never seen, 25 positions from the evaluation set:
+
+| | solved | nodes |
+|---|---|---|
+| default | **10/25** | 76,946,420 |
+| evolved | 9/25 | 77,209,734 |
+
+**It overfitted.** The gain reversed on fresh data -- the sixth time a sample has
+reversed on its corpus in this project. And the shape of it was visible before
+the third run: the training corpus gave *no* signal (0.04%) while the held-out
+set gave 5.6%, which is backwards. A search that cannot see the training set move
+is not learning, it is drifting, and the validation set it drifts into is just a
+second training set once it has been used to pick a winner.
+
+The evolved weights are NOT shipped. The default stands.
+
+#### The soundness claim held, and was checked rather than assumed
+
+Across the 9 positions solved by both weight sets, **zero depths changed**. The
+one difference was a position that ran out of node budget under the evolved
+weights -- an outcome of the cap, not of correctness. The ordering search also
+runs the full gate on every candidate, and prints a loud failure if a verdict
+ever moves, because if that fires the soundness-neutrality claim is wrong and
+that matters far more than any tuning.
+
+#### The adversarial half, which is the better half
+
+| mode | result |
+|---|---|
+| `perft` -- differential move generation vs python-chess | 95 random positions, **0 mismatches** |
+| `fuzz` -- verdicts vs an independent brute-force oracle | 74 positions, **0 failures** |
+| `hunt` -- evolve positions maximising node count | 35,616 -> 112,530 nodes in 6 generations |
+
+`fuzz` spends its effort on the direction that has no certificate behind it. When
+the engine says "mate in N" it emits a proof tree python-chess can replay, so
+that path already defends itself. When it says nothing there is no artefact at
+all, and the only available check is an independent search -- which is what
+`brute_force_mate` is: slow, obviously correct, and written against a different
+move generator. It checks all three directions: a claimed mate the oracle cannot
+find, a mate the oracle finds and the engine missed, and a claimed depth that is
+not minimal.
+
+`hunt` made a position 3.2x more expensive in six generations, which is a
+corpus-building tool: every measurement in this document rests on corpora, and
+this is a way to grow them toward where the engine is weak rather than where a
+composer happened to look.
+
+#### The tool found a bug in itself first
+
+`perft` reported 47 mismatches out of 74 on its first run. The engine was right:
+`--perft N` prints one line per depth from 1 to N, and the tool matched the first
+`nodes` in the output, comparing depth 1 against depth N. A fuzzer is code, it
+has bugs like any other code, and its findings mean nothing until it has been
+checked against a case where the answer is known.
+
+#### What this is worth
+
+The honest summary is that automation found no shippable improvement today and
+two real things about the process: a fitness function that silently carried no
+signal, and a tuning result that reversed on fresh data. Both are failures the
+tools now make visible by construction -- the saturation guard refuses to run,
+and the third-corpus discipline is written into the report.
+
+That matches what this document has recorded for many sessions: the bottleneck
+was never generating candidates, it was measuring them carefully enough that the
+answer holds. A tool that runs a thousand candidates through a deterministic,
+lexicographic, held-out gate is doing the part a human does worst. It is also
+why the gate matters more than the search: a thousand times the proposals through
+a leaky gate is a thousand times the chance of a silently false proof.

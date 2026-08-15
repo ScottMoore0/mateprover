@@ -15,16 +15,17 @@ namespace mateprover {
 
 // Move-ordering terms that need no child board: capture, promotion, and moving
 // piece. Shared by the fused and split scoring paths so the two cannot drift.
-int static_move_terms(const Board& b, const Move& m) {
+int static_move_terms(const Board& b, const Move& m,
+                      const OrderWeights& w = default_order_weights()) {
     int score = 0;
-    if (b.sq[m.to] != '.' || m.ep) score += 10000;
-    if (m.promo) score += 8000;
+    if (b.sq[m.to] != '.' || m.ep) score += w.capture;
+    if (m.promo) score += w.promo;
     // tolower returns int; the cast makes the narrowing explicit rather than
     // implicit. Safe for the ASCII piece letters this board stores.
     const char p = static_cast<char>(std::tolower(static_cast<unsigned char>(b.sq[m.from])));
-    if (p == 'q') score += 50;
-    if (p == 'r') score += 40;
-    if (p == 'b' || p == 'n') score += 30;
+    if (p == 'q') score += w.queen;
+    if (p == 'r') score += w.rook;
+    if (p == 'b' || p == 'n') score += w.minor;
     return score;
 }
 
@@ -120,7 +121,8 @@ int child_move_terms(const Board& nb, bool score_mates, bool score_checks, Goal 
     return score;
 }
 
-int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, Goal goal, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo) {
+int move_score(const Board& b, const Move& m, bool score_mates, bool score_checks, Goal goal, bool fast_check_score, bool move_reserve, std::size_t move_reserve_capacity, bool static_pseudo,
+               const OrderWeights& w = default_order_weights()) {
     int score = 0;
     if (score_mates) {
         Board nb = make_move(b, m);
@@ -136,7 +138,7 @@ int move_score(const Board& b, const Move& m, bool score_mates, bool score_check
         }
         score += check_term(gives_check, goal);
     }
-    return score + static_move_terms(b, m);
+    return score + static_move_terms(b, m, w);
 }
 
 void stable_bucket_order(std::vector<Move>& moves) {
@@ -374,7 +376,7 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
                 m.score = child_move_terms(nb, cfg.score_mates, cfg.score_checks, cfg.goal,
                                            cfg.move_reserve, cfg.move_reserve_capacity,
                                            cfg.static_pseudo)
-                        + static_move_terms(b, m);
+                        + static_move_terms(b, m, cfg.order_weights);
             }
             legal.push_back(m);
         }
@@ -390,7 +392,7 @@ std::vector<Move> legal_moves_fused(const Board& b, const SearchConfig& cfg, boo
             continue; // illegal: the mover left their own king attacked
         }
         if (want_scores) {
-            int score = static_move_terms(b, m);
+            int score = static_move_terms(b, m, cfg.order_weights);
             if (cfg.score_checks && enemy_king >= 0 &&
                 attacked_on_planes(pl.occ, pl.by_color, pl.by_type, enemy_king, us)) {
                 score += 50000;
@@ -461,7 +463,7 @@ std::vector<Move> pseudo_defender_moves(Search& s, const Board& b) {
         ++s.stats.order_calls;
         s.stats.order_moves += pseudo.size();
         for (Move& m : pseudo) {
-            int score = static_move_terms(b, m);
+            int score = static_move_terms(b, m, s.order_weights);
             if (s.score_checks && move_gives_check_fast(b, m)) {
                 score += 50000;
             }

@@ -231,6 +231,14 @@ void print_usage() {
 "                                splits at all while a worker is idle to take\n"
 "                                the children -- supply follows demand, at\n"
 "                                whatever depth the pool happens to run dry\n"
+"  --order-weights c,p,q,r,m     move-ordering bonuses for a capture, a\n"
+"                                promotion, and a queen, rook or minor move\n"
+"                                (default 10000,8000,50,40,30). Ordering changes\n"
+"                                the ORDER moves are tried and never the SET, so\n"
+"                                no setting can change a verdict, a depth or a\n"
+"                                certificate -- only the node count. They must\n"
+"                                sum below 50000, the magnitude that marks a\n"
+"                                checking move. Intended for tools/autotune.py\n"
 "  --or-split-plies N            plies below the root at which an OR node may\n"
 "                                split (default 99: demand decides, not depth)\n"
 "  --or-split-min-depth N        remaining depth below which a node is not worth\n"
@@ -798,6 +806,44 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--root-sequential-first' expects a number");
             config.root_sequential_first = static_cast<int>(value);
+        } else if (arg == "--order-weights") {
+            // c,p,q,r,m -- one flag rather than five, because an automatic
+            // search sets them together and a partial assignment is never
+            // wanted. The invariant is checked HERE rather than at the use
+            // site: the static terms must stay below the 50000 that prove.h
+            // reads as "this move gives check", and a run that broke it would
+            // not crash, it would quietly accept a checkmate as a stalemate.
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--order-weights' requires capture,promo,queen,rook,minor");
+            OrderWeights w;
+            int* fields[5] = {&w.capture, &w.promo, &w.queen, &w.rook, &w.minor};
+            const std::string spec(v);
+            std::size_t start = 0;
+            int seen = 0;
+            for (; seen < 5; ++seen) {
+                const std::size_t comma = spec.find(',', start);
+                const std::string part = comma == std::string::npos
+                                             ? spec.substr(start)
+                                             : spec.substr(start, comma - start);
+                std::size_t parsed = 0;
+                if (part.empty() || !parse_size(part.c_str(), parsed) || parsed > 40000) {
+                    return usage_error("option '--order-weights' expects five numbers in 0..40000");
+                }
+                *fields[seen] = static_cast<int>(parsed);
+                if (comma == std::string::npos) {
+                    ++seen;
+                    break;
+                }
+                start = comma + 1;
+            }
+            if (seen != 5) {
+                return usage_error("option '--order-weights' expects five comma-separated numbers");
+            }
+            if (w.max_static() >= 50000) {
+                return usage_error("option '--order-weights': the terms must sum below 50000, "
+                                   "the magnitude that marks a checking move");
+            }
+            config.order_weights = w;
         } else if (arg == "--or-split-plies") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--or-split-plies' requires a count");

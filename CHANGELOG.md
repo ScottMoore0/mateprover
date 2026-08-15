@@ -719,3 +719,30 @@ cross-lane sharing did not reproduce; it was a borderline position moving on
 timing at a 5 s cap. And reuse buys nothing from avoiding table allocation --
 a 64-fold change in `-M` moves a trivial batch by 0.01 s, because the table is
 lazy and grows only to what is stored. See architecture 117.
+
+### Automated search: two tools, and the move-ordering weights exposed
+
+`tools/autotune.py` searches the configuration (coordinate descent over declared
+knobs) and the five move-ordering weights (a genetic search).
+`tools/adversarial.py` searches for POSITIONS instead: `perft` and `fuzz` check
+the engine against python-chess and against an independent brute-force oracle,
+and `hunt` evolves positions that maximise the node count.
+
+The one source change is `--order-weights c,p,q,r,m`, which exposes the ordering
+bonuses that were literals. Those five are the right ones to automate because
+ordering is soundness-neutral -- it changes the ORDER moves are tried and never
+the SET, so no setting can change a verdict, a depth or a certificate. The CLI
+refuses any assignment reaching 50000, which is the magnitude prove.h reads as
+"this move gives check".
+
+Both tuners score on NODES rather than seconds -- this machine drifts 15% between
+identical runs while the effects are 3-10% -- and gate lexicographically:
+nothing is compared until every baseline verdict and depth is unchanged.
+
+Neither found a shippable improvement. The ordering search produced a 5.6% gain
+on its held-out set that REVERSED on a third corpus (10/25 solved became 9/25),
+which is overfitting and is reported as such. Its soundness claim did hold:
+across the positions solved by both weight sets, zero depths changed. `perft`
+and `fuzz` found no engine bugs over 169 random positions -- though `perft`
+found a bug in itself first, having compared depth 1 against depth N. See
+architecture 118.

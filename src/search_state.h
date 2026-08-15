@@ -109,6 +109,9 @@ struct SearchConfig {
     // lazy scan runs instead, since there is no subtree left to shape and
     // materialising the list to sort it would be pure cost.
     int answer_order_min_depth = 2;
+    // Move-ordering weights. Soundness-neutral by construction -- see
+    // OrderWeights -- which is what makes them safe to hand to tools/autotune.py.
+    OrderWeights order_weights;
     bool score_mates = false;
     bool score_checks = true;
     bool fast_check_score = false;

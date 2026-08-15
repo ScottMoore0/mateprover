@@ -159,6 +159,41 @@ struct Proof {
     int fail_depth = 0;
 };
 
+// The move-ordering terms that need no child board, as data rather than as
+// literals, so a search can be run at weights nobody has typed by hand.
+//
+// ORDERING IS SOUNDNESS-NEUTRAL, which is what makes this safe to hand to an
+// automatic search. These weights change the ORDER moves are tried, never the
+// SET, so no assignment of them -- including a deliberately absurd one -- can
+// change a verdict, a depth or a certificate. Only the node count moves. That
+// is a rare property in this program and it is the whole reason these five
+// numbers are the ones exposed.
+//
+// ONE INVARIANT, and it is not about ordering at all. check_term is +/-50000
+// and prove.h reads |score| >= 50000 as "this move gives check", skipping a
+// terminal test it can already decide. So the static terms must never reach
+// 50000 or a quiet move would be read as a check -- which under a stalemate
+// goal is how a CHECKMATE gets accepted as a stalemate (54). `max_static()`
+// states the bound and the CLI refuses any assignment that breaks it.
+struct OrderWeights {
+    int capture = 10000;
+    int promo = 8000;
+    int queen = 50;
+    int rook = 40;
+    int minor = 30;
+
+    // The largest score static_move_terms can produce: a promoting capture by
+    // the best-scoring piece.
+    int max_static() const {
+        return capture + promo + std::max(queen, std::max(rook, minor));
+    }
+};
+
+inline const OrderWeights& default_order_weights() {
+    static const OrderWeights w;
+    return w;
+}
+
 struct RouteResult {
     Proof proof;
     int proved_depth = 0;
