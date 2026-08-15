@@ -766,6 +766,75 @@ struct TTEntry {
     }
 };
 
+// A BOUNDED store for move-ordering hints.
+//
+// This replaces an `unordered_map` that had no capacity, no eviction and no
+// periodic clear -- one per worker, thirty-two of them, growing for the whole
+// search. At depth 9 of the capture-quota problem that structure took the
+// process to 30.8 GB of commit on a 29.7 GB machine with `-M 3072` set, and the
+// engine spent thirty-six minutes servicing 124,000 hard page faults a second
+// instead of searching. The transposition table beside it was bounded and
+// behaving perfectly; shrinking THAT did nothing, because the leak was here and
+// does not scale with -M at all.
+//
+// A hint is the safest thing in this program to bound. It changes which move is
+// tried first and nothing else -- losing one costs ordering quality and cannot
+// change a verdict, a depth or a certificate -- so a direct-mapped array that
+// simply overwrites on collision is not a compromise, it is the right shape.
+// Fixed size, no allocation after construction, O(1) always.
+struct HintTable {
+    struct Slot {
+        TTKey key{};
+        Move move{};
+        bool used = false;
+    };
+    // Sized at construction rather than left empty. An unsized table accepts
+    // every store and returns nothing, which is not a smaller cache -- it is a
+    // silently disabled one. That is exactly what happened when the enclosing
+    // search's tables were not resized: the DFPN preconditioner writes its
+    // guidance here, every write went nowhere, and the only symptom was the
+    // preconditioner quietly ceasing to pay for itself.
+    std::vector<Slot> slots = std::vector<Slot>(1u << 16);
+    std::size_t mask = (1u << 16) - 1;
+
+    void resize(std::size_t entries) {
+        std::size_t n = 1;
+        while (n < entries) {
+            n <<= 1;
+        }
+        slots.assign(n, Slot{});
+        mask = n - 1;
+    }
+
+    bool probe(const TTKey& key, Move& out) const {
+        if (slots.empty()) {
+            return false;
+        }
+        const Slot& slot = slots[TTKeyHash{}(key) & mask];
+        if (!slot.used || !(slot.key == key)) {
+            return false;
+        }
+        out = slot.move;
+        return true;
+    }
+
+    void store(const TTKey& key, const Move& move) {
+        if (slots.empty()) {
+            return;
+        }
+        Slot& slot = slots[TTKeyHash{}(key) & mask];
+        slot.key = key;
+        slot.move = move;
+        slot.used = true;
+    }
+
+    void clear() {
+        if (!slots.empty()) {
+            slots.assign(slots.size(), Slot{});
+        }
+    }
+};
+
 } // namespace mateprover
 
 #endif // MATEPROVER_TYPES_H_INCLUDED

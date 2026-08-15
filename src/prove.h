@@ -48,6 +48,8 @@ bool move_is_threat(Search& s, const Board& b, const Move& m, int depth_budget) 
         s.threat_ctx->checks_mask = s.threat_depth > 0 ? 1 : 0;
         s.threat_ctx->emit_proof = false;
         s.threat_ctx->tt.capacity = entry_capacity_for_mb(s.memory_mb);
+        s.threat_ctx->attacker_proofs.resize(s.hint_entries);
+        s.threat_ctx->defender_refutations.resize(s.hint_entries);
         s.threat_ctx->tt.shed_divisor = s.tt_shed_divisor;
     }
     Search& t = *s.threat_ctx;
@@ -475,8 +477,9 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     const TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
     if (s.proof_hints) {
         ++s.stats.proof_hint_probes;
-        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
-            if (move_to_front(moves, hint->second)) {
+        Move hint_move;
+if (s.attacker_proofs.probe(hint_key, hint_move)) {
+            if (move_to_front(moves, hint_move)) {
                 ++s.stats.proof_hint_hits;
             }
         }
@@ -535,7 +538,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
             store_exact_proof_table(s, key, depth, proof);
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[hint_key] = amove;
+                s.attacker_proofs.store(hint_key, amove);
             }
             return proof;
         }
@@ -1589,8 +1592,9 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
     if (s.refutation_hints) {
         const TTKey& refutation_key = get_hint_key();
         ++s.stats.refutation_hint_probes;
-        if (auto hint = s.defender_refutations.find(refutation_key); hint != s.defender_refutations.end()) {
-            if (move_to_front(replies, hint->second)) {
+        Move hint_move;
+if (s.defender_refutations.probe(refutation_key, hint_move)) {
+            if (move_to_front(replies, hint_move)) {
                 ++s.stats.refutation_hint_hits;
             }
         }
@@ -1654,7 +1658,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
             }
             if (s.refutation_hints) {
                 ++s.stats.refutation_hint_stores;
-                s.defender_refutations[get_hint_key()] = dmove;
+                s.defender_refutations.store(get_hint_key(), dmove);
             }
             // AND-node composition (GAP-1): the attacker needs the goal after
             // EVERY reply, so one reply he can never win from is a permanent
@@ -1883,8 +1887,9 @@ Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
     if (s.proof_hints) {
         const TTKey& proof_key = get_hint_key();
         ++s.stats.proof_hint_probes;
-        if (auto hint = s.attacker_proofs.find(proof_key); hint != s.attacker_proofs.end()) {
-            if (move_to_front(moves, hint->second)) {
+        Move hint_move;
+if (s.attacker_proofs.probe(proof_key, hint_move)) {
+            if (move_to_front(moves, hint_move)) {
                 ++s.stats.proof_hint_hits;
             }
         }
@@ -2039,13 +2044,13 @@ Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
             }
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[get_hint_key()] = amove;
+                s.attacker_proofs.store(get_hint_key(), amove);
             }
             Proof proof{true, pv, cert};
             store_exact_proof_table(s, key, depth, proof);
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[hint_key] = amove;
+                s.attacker_proofs.store(hint_key, amove);
             }
             return proof;
         }
@@ -2102,7 +2107,7 @@ Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
                 }
                 if (s.proof_hints) {
                     ++s.stats.proof_hint_stores;
-                    s.attacker_proofs[get_hint_key()] = amove;
+                    s.attacker_proofs.store(get_hint_key(), amove);
                 }
                 Proof proof{true, pv, cert};
                 store_exact_proof_table(s, key, depth, proof);
@@ -2267,7 +2272,7 @@ Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
             }
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[get_hint_key()] = amove;
+                s.attacker_proofs.store(get_hint_key(), amove);
             }
             store_exact_proof_table(s, key, depth, proof);
             return proof;

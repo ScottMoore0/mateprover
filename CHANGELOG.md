@@ -934,3 +934,31 @@ them apart on sight.
 It immediately showed something invisible before — throughput decaying *within* a
 depth as the table fills: 120M nodes in the first ten seconds, then 80M, 77M,
 59M, 53M, 53M.
+
+### Fixed: the move-ordering hint maps were unbounded
+
+`attacker_proofs` and `defender_refutations` were `unordered_map`s with no
+capacity, no eviction and no periodic clear — one pair per worker, thirty-two of
+them, growing for the entire search.
+
+At depth 9 of the `d(3)` capture-quota problem, with `-M 3072` set, the process
+reached **30.84 GB of commit on a 29.7 GB machine** and spent thirty-six minutes
+servicing **124,000 hard page faults per second** instead of searching.
+Throughput had collapsed 24×, from 8.2M nodes/sec to 300K. The transposition
+table beside it was bounded and behaving perfectly, which is why shrinking `-M`
+from 8192 to 3072 changed nothing: the leak was elsewhere and does not scale
+with `-M` at all.
+
+Replaced with `HintTable`, a fixed-size direct-mapped array that overwrites on
+collision. A hint only reorders moves — losing one costs ordering quality and
+can never change a verdict, a depth or a certificate — so discarding on
+collision is the right shape rather than a compromise. `--hint-entries N` tunes
+it; the default is 2^18 slots per worker, about 17 MB each.
+
+Same search, `-M 3072`, depth 8: commit **30.84 GB → 4.83 GB**, timing unchanged.
+
+The suite caught a second, quieter fault immediately: an unsized `HintTable`
+accepts every store and returns nothing, and the enclosing search's tables were
+not being sized — so the DFPN preconditioner, which writes its guidance there,
+was silently contributing nothing. `HintTable` now carries a size from
+construction, so "forgot to size it" cannot be a silent behaviour change.

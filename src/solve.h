@@ -583,6 +583,8 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
             // "no solution": a restricted lane's failure is silent about every
             // move its restriction removed.
             t.cross_authoritative = lane_is_unrestricted(entries[static_cast<std::size_t>(i)]);
+            t.attacker_proofs.resize(t.hint_entries);
+            t.defender_refutations.resize(t.hint_entries);
             t.threads = lane_threads[static_cast<std::size_t>(i)];
             t.checks_mask = entries[static_cast<std::size_t>(i)].checks_mask;
             t.king_squares = entries[static_cast<std::size_t>(i)].king_squares;
@@ -720,6 +722,10 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
     // succeeded reported with a default-constructed config and silently
     // dropped --emit-proof.
     static_cast<SearchConfig&>(s) = config;
+    // The preconditioner runs on THIS search and writes its move guidance into
+    // these, so leaving them unsized disables DFPN's whole contribution.
+    s.attacker_proofs.resize(config.hint_entries);
+    s.defender_refutations.resize(config.hint_entries);
     RouteResult route_result;
     const char* winning_entry = nullptr;
 

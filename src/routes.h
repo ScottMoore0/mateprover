@@ -86,6 +86,8 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->node_report = &slots.back()->nodes;
+            ws->attacker_proofs.resize(ws->hint_entries);
+            ws->defender_refutations.resize(ws->hint_entries);
             // The lane's own cancel, so a worker stops when the SEARCH is
             // abandoned and not only when a sibling beats its root move.
             ws->external_cancel = s.cancel;
@@ -218,8 +220,9 @@ Proof prove_shallow_mate1(Search& s, const Board& b) {
     if (s.proof_hints) {
         const TTKey& proof_key = get_hint_key();
         ++s.stats.proof_hint_probes;
-        if (auto hint = s.attacker_proofs.find(proof_key); hint != s.attacker_proofs.end()) {
-            if (move_to_front(moves, hint->second)) {
+        Move hint_move;
+if (s.attacker_proofs.probe(proof_key, hint_move)) {
+            if (move_to_front(moves, hint_move)) {
                 ++s.stats.proof_hint_hits;
             }
         }
@@ -246,7 +249,7 @@ Proof prove_shallow_mate1(Search& s, const Board& b) {
             ++s.stats.immediate_mates;
             if (s.proof_hints) {
                 ++s.stats.proof_hint_stores;
-                s.attacker_proofs[get_hint_key()] = amove;
+                s.attacker_proofs.store(get_hint_key(), amove);
             }
             std::string cert;
             if (s.emit_proof) {
@@ -414,6 +417,8 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->node_report = &slots.back()->nodes;
+            ws->attacker_proofs.resize(ws->hint_entries);
+            ws->defender_refutations.resize(ws->hint_entries);
             ws->external_cancel = s.cancel;
             ws->shared_table = shared_table.get();
             if (ws->shared_table == nullptr) {
@@ -734,6 +739,8 @@ RouteResult run_help_route(Search& s, const Board& b, int max_depth) {
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->node_report = &slots.back()->nodes;
+            ws->attacker_proofs.resize(ws->hint_entries);
+            ws->defender_refutations.resize(ws->hint_entries);
             ws->external_cancel = s.cancel;
             ws->shared_table = shared_table.get();
             // Workers DIVIDE the budget rather than each taking all of it.
@@ -827,6 +834,8 @@ RouteResult run_selfmate_route(Search& s, const Board& b, int max_depth) {
             ws->deadline = s.deadline;
             ws->cancel = &slots.back()->cancel;
             ws->node_report = &slots.back()->nodes;
+            ws->attacker_proofs.resize(ws->hint_entries);
+            ws->defender_refutations.resize(ws->hint_entries);
             // The lane's own cancel, so a worker stops when the SEARCH is
             // abandoned and not only when a sibling beats its root move.
             ws->external_cancel = s.cancel;

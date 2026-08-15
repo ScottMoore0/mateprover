@@ -280,6 +280,10 @@ void print_usage() {
 "                                mechanism the measurement above rejected\n"
 "  --shared-tt | --private-tt    share one exact proof table across workers\n"
 "  --shared-tt-shards N          shards for the shared table (default 256)\n"
+"  --hint-entries N              move-ordering hint slots per worker (default\n"
+"                                262144, about 17 MB each). A hint only\n"
+"                                reorders moves, so losing one costs ordering\n"
+"                                quality and can never change a verdict\n"
 "  --heartbeat S                 print a STATUS line every S seconds while a\n"
 "                                depth is still running, showing nodes so far.\n"
 "                                Implies --progress. A depth can run for an\n"
@@ -907,6 +911,12 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--or-split-plies' expects a number");
             config.or_split_plies = static_cast<int>(value);
+        } else if (arg == "--hint-entries") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--hint-entries' requires a count");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--hint-entries' expects a number");
+            config.hint_entries = value;
         } else if (arg == "--heartbeat") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--heartbeat' requires seconds");

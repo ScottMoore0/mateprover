@@ -77,8 +77,9 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
     if (s.refutation_hints) {
         const TTKey& refutation_key = get_hint_key();
         ++s.stats.refutation_hint_probes;
-        if (auto hint = s.defender_refutations.find(refutation_key); hint != s.defender_refutations.end()) {
-            if (move_to_front(replies, hint->second)) {
+        Move hint_move;
+if (s.defender_refutations.probe(refutation_key, hint_move)) {
+            if (move_to_front(replies, hint_move)) {
                 ++s.stats.refutation_hint_hits;
             }
         }
@@ -152,7 +153,7 @@ Proof prove_defender_split(Search& s, SplitRegistry& reg, const Board& b, int de
         }
         if (s.refutation_hints) {
             ++s.stats.refutation_hint_stores;
-            s.defender_refutations[get_hint_key()] = sp->moves[static_cast<std::size_t>(refuted_at)];
+            s.defender_refutations.store(get_hint_key(), sp->moves[static_cast<std::size_t>(refuted_at)]);
         }
         Proof out;
         out.refuted = refuted_flag;
@@ -257,8 +258,9 @@ bool run_selfmate_root_split(Search& s, std::vector<std::unique_ptr<Search>>& wo
     }
     if (s.proof_hints) {
         const TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
-        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
-            move_to_front(moves, hint->second);
+        Move hint_move;
+if (s.attacker_proofs.probe(hint_key, hint_move)) {
+            move_to_front(moves, hint_move);
         }
     }
 
@@ -588,8 +590,9 @@ bool run_root_split_depth(Search& s, std::vector<std::unique_ptr<Search>>& worke
     }
     if (s.proof_hints) {
         TTKey hint_key = move_hint_key(b, 'A', s.attacker, s.goal);
-        if (auto hint = s.attacker_proofs.find(hint_key); hint != s.attacker_proofs.end()) {
-            move_to_front(moves, hint->second);
+        Move hint_move;
+if (s.attacker_proofs.probe(hint_key, hint_move)) {
+            move_to_front(moves, hint_move);
         }
     }
     // Mate goal only; see the note in prove.h.

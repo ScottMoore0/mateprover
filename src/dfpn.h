@@ -264,7 +264,7 @@ PnDn dfpn_selfmate_attacker(Search& s, const Board& b, int depth,
         if (total.pn >= thpn || total.dn >= thdn || dfpn_budget_exhausted(s) || s.aborted) {
             dfpn_store(s, key, total);
             if (total.pn == 0 && s.proof_hints) {
-                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = moves[best];
+                s.attacker_proofs.store(move_hint_key(b, 'A', s.attacker, s.goal), moves[best]);
             }
             return total;
         }
@@ -446,7 +446,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             dfpn_store(s, key, v);
             ++s.stats.dfpn_proved;
             if (s.proof_hints) {
-                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = m;
+                s.attacker_proofs.store(move_hint_key(b, 'A', s.attacker, s.goal), m);
             }
             return v;
         }
@@ -504,7 +504,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
             dfpn_store(s, key, here);
             dfpn_publish(s, b, depth, 'A', here);
             if (here.pn == 0 && s.proof_hints) {
-                s.attacker_proofs[move_hint_key(b, 'A', s.attacker, s.goal)] = moves[best];
+                s.attacker_proofs.store(move_hint_key(b, 'A', s.attacker, s.goal), moves[best]);
             }
             return here;
         }

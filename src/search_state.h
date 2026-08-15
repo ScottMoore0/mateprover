@@ -121,6 +121,10 @@ struct SearchConfig {
     bool fast_check_score = false;
     bool refutation_hints = false;
     bool proof_hints = true;
+    // Hint-table entries per worker, rounded up to a power of two. A hint only
+    // reorders moves, so this trades ordering quality for a fixed footprint --
+    // 2^18 slots is about 17 MB a worker.
+    std::size_t hint_entries = 1u << 18;
     std::size_t tt_reserve = 0;
     bool move_reserve = true;
     std::size_t move_reserve_capacity = 96;
@@ -625,8 +629,10 @@ struct Search : SearchConfig {
     std::chrono::steady_clock::time_point search_start{std::chrono::steady_clock::now()};
     Stats stats;
     BoundedTable tt;
-    std::unordered_map<TTKey, Move, TTKeyHash> defender_refutations;
-    std::unordered_map<TTKey, Move, TTKeyHash> attacker_proofs;
+    // BOUNDED. These were unbounded hash maps, one pair per worker, growing for
+    // the whole search with no eviction. See HintTable for what that cost.
+    HintTable defender_refutations;
+    HintTable attacker_proofs;
 
     // Cooperative cancellation. `cancel` is null for an ordinary
     // single-threaded search, so the per-node check costs one null test and
