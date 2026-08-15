@@ -13,6 +13,44 @@
 
 namespace mateprover {
 
+constexpr std::size_t EST_BYTES_PER_ENTRY = 192;
+
+// The same budget, for the FLAT path, where an entry costs a great deal less.
+//
+// EST_BYTES_PER_ENTRY was sized for an `unordered_map` entry plus its separately
+// allocated node. A `FlatSlot` is 56 bytes with nothing on the heap, so dividing
+// a budget by 192 hands the flat table under a third of what was asked for: a
+// `-M 8192` request became 44.7M slots occupying 2.51 GB. The engine was quietly
+// running with a table two-thirds smaller than requested, and the only symptom
+// was being slower than it needed to be.
+//
+// 64 rather than 56, because the side map holding lines for proved positions is
+// real memory too and is not free. With `line_cap` at a thirty-second of the
+// slot count, that map contributes roughly eight bytes per slot amortised; the
+// rest is headroom, since this budget has always been an estimate rather than a
+// ceiling (see the note on `memory_mb`).
+//
+// A constant that was right for a structure that no longer exists. That is the
+// third one this session -- an eviction counter reading the wrong table, a
+// fitness function counting the wrong outcome, and now a budget divided by the
+// wrong entry size.
+constexpr std::size_t EST_BYTES_PER_FLAT_ENTRY = 64;
+
+// Convert a capacity expressed in hash-map entries into flat slots for the same
+// memory. Callers size everything from entry_capacity_for_mb, so scaling here
+// keeps one source of truth for the budget.
+inline std::size_t flat_entries_for(std::size_t map_entries) {
+    return map_entries * (EST_BYTES_PER_ENTRY / EST_BYTES_PER_FLAT_ENTRY);
+}
+
+inline std::size_t entry_capacity_for_mb(std::size_t megabytes) {
+    if (megabytes == 0) {
+        return 0; // explicit "unbounded"
+    }
+    return (megabytes * 1024u * 1024u) / EST_BYTES_PER_ENTRY;
+}
+
+
 // A memo of exact verdicts with a bounded entry count.
 //
 // The safety argument for bounding is short: the table is a pure memo of
@@ -77,7 +115,10 @@ struct BoundedTable {
         slots.assign(n, FlatSlot{});
         mask = n - 1;
         used = 0;
-        line_cap = std::max<std::size_t>(1024, n / 8);
+        // A thirty-second, not an eighth. Proofs are 7% of stores (measured),
+        // so this is still generous, and every byte here is a byte not spent on
+        // slots -- which hold the verdicts the search actually reads.
+        line_cap = std::max<std::size_t>(1024, n / 32);
         lines_.clear();
         flat = true;
     }
@@ -393,7 +434,8 @@ public:
             shards_.back()->table.capacity = capacity_total == 0 ? 0 : std::max<std::size_t>(1, capacity_total / shards);
             shards_.back()->table.shed_divisor = shed_divisor;
             if (flat && capacity_total != 0) {
-                shards_.back()->table.enable_flat(std::max<std::size_t>(1024, capacity_total / shards));
+                shards_.back()->table.enable_flat(
+                    std::max<std::size_t>(1024, flat_entries_for(capacity_total) / shards));
             }
         }
     }
@@ -491,15 +533,6 @@ private:
 // This is an estimate, not an exact accounting -- the node-based container
 // cannot give a hard byte bound -- so `-M` is honoured as a documented entry
 // ceiling derived from this figure rather than as a guaranteed RSS limit.
-constexpr std::size_t EST_BYTES_PER_ENTRY = 192;
-
-inline std::size_t entry_capacity_for_mb(std::size_t megabytes) {
-    if (megabytes == 0) {
-        return 0; // explicit "unbounded"
-    }
-    return (megabytes * 1024u * 1024u) / EST_BYTES_PER_ENTRY;
-}
-
 } // namespace mateprover
 
 #endif // MATEPROVER_TABLE_H_INCLUDED

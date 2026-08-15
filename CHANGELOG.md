@@ -894,3 +894,22 @@ moves, so the `d(3)` search could never build more than twenty workers. Depth 8:
 Together with 121, depth 8 has gone 366 s → 156 s → 77 s. `d(3)` at depth 9
 should be **20–40 minutes**, against the 35–90 hours this project was quoting a
 day ago. See architecture 122.
+
+### The memory budget was being divided by the wrong entry size
+
+`entry_capacity_for_mb` divides by `EST_BYTES_PER_ENTRY` = 192, sized for an
+`unordered_map` entry plus its heap node. A flat slot is **56 bytes**. So since
+the flat table landed, `-M 8192` had been producing 2.51 GB of table — under a
+third of what was asked for — with no symptom but being slower than necessary.
+
+Depth 8, 32 threads, `-M 8192`: **74.6 s to 60.9 s**, with the node count falling
+23%. Every figure in the previous release, including the flat table's 1.76×, was
+measured with a table two-thirds too small, so that gain was understated.
+
+The knee moved *down*: 8 GB now beats 16 GB, because a megabyte buys three times
+the entries it used to. Fourth time a memory conclusion here has needed re-taking
+after something else moved beneath it, which is now stated as a rule — a memory
+finding is only valid for the table it was measured on.
+
+Depth 8 across this line of work: 366 s → 156 s → 77 s → **61 s**. See
+architecture 123.

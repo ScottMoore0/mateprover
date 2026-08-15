@@ -200,6 +200,7 @@ did. If you are reading it for the first time:
 - [120. A UCI Front End That Is Not Allowed To Be The Authority](#120-a-uci-front-end-that-is-not-allowed-to-be-the-authority)
 - [121. Half The Wall Clock Of A Deep Search Was Iterating A Hash Map To Throw Entries Away](#121-half-the-wall-clock-of-a-deep-search-was-iterating-a-hash-map-to-throw-entries-away)
 - [122. The Flat Table, And The Thread Cap That Was Never Right](#122-the-flat-table-and-the-thread-cap-that-was-never-right)
+- [123. A Budget Divided By The Wrong Entry Size](#123-a-budget-divided-by-the-wrong-entry-size)
 
 ## Impact-Ordered Architecture
 
@@ -9411,3 +9412,45 @@ against the 35-90 HOURS this document was quoting a day ago.
 
 The exponential is untouched. Branching is 12-15x per ply, so all of it together
 is a fifth of one ply, and depth 10 remains a week and a half away.
+
+### 123. A Budget Divided By The Wrong Entry Size
+
+`entry_capacity_for_mb` divides a megabyte budget by `EST_BYTES_PER_ENTRY`, which
+is 192 -- an `unordered_map` entry plus its separately allocated node. A
+`FlatSlot` is **56 bytes** with nothing on the heap.
+
+So from the moment 122 landed, `-M 8192` produced 44.7M slots occupying
+**2.51 GB**. The engine ran with a table under a third of the requested size and
+the only symptom was being slower than it needed to be. Every measurement in 122,
+including its 1.76x, was taken that way -- so the flat table's advantage was
+understated, not overstated.
+
+Depth 8, capture quota, 32 threads:
+
+| | wall clock | nodes |
+|---|---:|---:|
+| `-M 8192`, budget divided by 192 | 74.6 s | 454,240,352 |
+| `-M 8192`, divided by 64 | **60.9 s** | 350,394,534 |
+| `-M 16000`, divided by 64 | 68.9 s | 330,836,390 |
+
+**1.23x**, and the node count falls 23% because the table now holds what was asked
+for. 64 rather than 56 because the side map of proof lines is real memory too;
+`line_cap` drops from a thirty-second of the slot count rather than an eighth,
+since proofs are 7% of stores and every byte there is a byte not spent on
+verdicts.
+
+**The knee moved DOWN.** 8 GB now beats 16 GB, where before more was always
+better, because a megabyte buys three times the entries it used to -- `-M 8192`
+today is what `-M 24000` would have been yesterday. This is the fourth time a
+memory conclusion in this document has had to be re-taken after something else
+moved beneath it (39, 110, 121, here), and the pattern is now clear enough to
+state as a rule: **a memory finding is only valid for the table it was measured
+on, and any change to the table's shape invalidates it.**
+
+Third constant this session that was correct for a structure that no longer
+existed: an eviction counter reading a table the search never used (114), a
+fitness function counting solutions on a corpus that has none (121), and a budget
+divided by the size of an entry the engine had stopped allocating.
+
+Depth 8 across this line of work: **366 s -> 156 s -> 77 s -> 61 s**, a factor of
+six, and not one second of it from the search.
