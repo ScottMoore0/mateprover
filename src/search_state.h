@@ -584,6 +584,9 @@ struct SearchConfig {
     // Fraction of the table shed per eviction, as 1/N. See BoundedTable: this
     // is the cost of the SCAN, not a memory setting, and it was worth 1.95x on
     // a deep search. Architecture 121.
+    // Direct-mapped flat proof table instead of a hash map. Off until measured;
+    // see architecture 122.
+    bool flat_tt = true;
     std::size_t tt_shed_divisor = 2;
     std::size_t memory_mb = 256;
     bool memory_is_total = false;

@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 583 automated checks cover perft against
+sharing no code with the engine. 587 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -863,3 +863,34 @@ Memory, re-measured now that eviction scanning no longer dominates: 2 GB 173.6 s
 8 GB 156.4 s, 16 GB 154.0 s. Removing the confound flipped the sign — 2 GB had
 measured *faster* than 8 GB — and left the magnitude small. The knee is 8 GB and
 doubling again buys 1.6%.
+
+### The flat proof table: 1.76x, and the worker cap lifted
+
+`--flat-tt` (on by default) replaces the hash map with a direct-mapped array.
+121 measured eviction *scanning* as still ~42% of a deep search even after
+`--tt-shed-divisor` made scans four times rarer; a direct-mapped table removes
+the scan rather than making it rarer, because a collision is resolved by
+overwriting the slot and `evict()` becomes a no-op.
+
+Depth 8 under the capture quota, 32 threads, 8 GB: **136.1 s to 77.3 s**. The
+node count rises 37% — direct mapping discards harder than an aged hash map —
+and the per-node cost falls far enough that it does not matter.
+
+The safety argument is unchanged and absolute: the table is a memo of verdicts
+that are pure functions of an exact key, every slot stores its key and probe
+compares it, so a collision is a miss and never a wrong answer. Lines live in a
+small side map for the 7% of stores that are proofs, and clearing it can only
+shorten a reported variation, never change a verdict. The whole suite runs
+through the flat path and a new gate compares entire output lines, certificate
+included.
+
+`worker_count = min(threads, n)` no longer caps the pool at the root branching
+factor. It was right when the root split was the only split; sub-root splitting
+gave a spare worker somewhere to go, and the cap was never revisited. It bit
+hardest where branching was smallest — the chess starting array has twenty legal
+moves, so the `d(3)` search could never build more than twenty workers. Depth 8:
+166.1 s at 20 threads, 153.5 s at 32.
+
+Together with 121, depth 8 has gone 366 s → 156 s → 77 s. `d(3)` at depth 9
+should be **20–40 minutes**, against the 35–90 hours this project was quoting a
+day ago. See architecture 122.

@@ -1426,6 +1426,39 @@ def test_uci_mode_is_a_faithful_rendering(engine: Path, res: Results) -> None:
               "not available in --uci mode" in bad, bad[:160])
 
 
+def test_flat_table_changes_nothing_but_the_speed(engine: Path, res: Results) -> None:
+    """The flat proof table must give the same answers as the hash map.
+
+    A direct-mapped array resolves a collision by OVERWRITING, so it discards
+    more than the map did and discards different things -- the node counts move
+    a great deal and are expected to. What must not move is any answer.
+
+    The safety argument is the same one that has always covered eviction, and it
+    is absolute rather than probabilistic: the table is a memo of verdicts that
+    are pure functions of an exact key, so a missing or overwritten entry costs
+    time and cannot manufacture a proof or a disproof. This checks the argument
+    rather than trusting it, including on a position with NO solution, where a
+    wrongly-remembered entry would produce the silent failure this engine exists
+    to prevent.
+    """
+    print("\n[table] the flat table changes node counts and nothing else")
+
+    effort = re.compile(r"ac[ns] [0-9.e+-]+;\s*")
+    cases = [
+        ("6k1/8/8/8/8/5K2/5Q1N/8 w - -", ["-z", "5"], "a mate in 5"),
+        ("8/2k5/8/4K1R1/8/8/6Q1/8 w - -", ["-z", "3"], "a mate in 3"),
+        ("8/8/8/4k3/8/8/8/4K2R w - -", ["-z", "2"], "a position with no mate"),
+        ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - -",
+         ["--captures", "2", "-z", "5"], "an x-capture win"),
+    ]
+    for fen, extra, label in cases:
+        base = ["--no-portfolio", "--emit-proof", "--threads", "1", *extra]
+        off = effort.sub("", run(engine, [*base, "--no-flat-tt", "-"], f"{fen}\n").strip())
+        on = effort.sub("", run(engine, [*base, "--flat-tt", "-"], f"{fen}\n").strip())
+        res.check(f"--flat-tt output is unchanged on {label}", off == on,
+                  f"off={off!r} on={on!r}")
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3723,6 +3756,7 @@ def main() -> int:
     test_cross_lane_proofs_do_not_move_the_depth(args.engine, res)
     test_candidate_predicates_observe_and_never_prune(args.engine, res)
     test_uci_mode_is_a_faithful_rendering(args.engine, res)
+    test_flat_table_changes_nothing_but_the_speed(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

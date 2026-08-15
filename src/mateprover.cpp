@@ -652,6 +652,8 @@ const BoolOption kBoolOptions[] = {
     {"--no-cross-lane-proofs", &SearchConfig::cross_lane_proofs, false},
     {"--owner-helps", &SearchConfig::owner_helps, true},
     {"--no-owner-helps", &SearchConfig::owner_helps, false},
+    {"--flat-tt", &SearchConfig::flat_tt, true},
+    {"--no-flat-tt", &SearchConfig::flat_tt, false},
     {"--tt-lines", &SearchConfig::tt_lines, true},
     {"--no-tt-lines", &SearchConfig::tt_lines, false},
     {"--tt-depth-evict", &SearchConfig::tt_depth_evict, true},

@@ -74,7 +74,7 @@ RouteResult run_depth_first_route_from(Search& s, const Board& b, int start_dept
             return;
         }
         if (s.shared_tt) {
-            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor));
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor, s.flat_tt));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));
@@ -401,7 +401,7 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
             return;
         }
         if (s.shared_tt) {
-            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor));
+            shared_table.reset(new SharedProofTable(s.shared_tt_shards, s.tt_reserve, entry_capacity_for_mb(s.memory_mb), s.tt_shed_divisor, s.flat_tt));
         }
         workers.reserve(static_cast<std::size_t>(thread_count));
         slots.reserve(static_cast<std::size_t>(thread_count));

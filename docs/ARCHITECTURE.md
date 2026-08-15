@@ -199,6 +199,7 @@ did. If you are reading it for the first time:
 - [119. Evolving Pruning Theorems, And The One That Would Have Lost 4,034 Mates](#119-evolving-pruning-theorems-and-the-one-that-would-have-lost-4034-mates)
 - [120. A UCI Front End That Is Not Allowed To Be The Authority](#120-a-uci-front-end-that-is-not-allowed-to-be-the-authority)
 - [121. Half The Wall Clock Of A Deep Search Was Iterating A Hash Map To Throw Entries Away](#121-half-the-wall-clock-of-a-deep-search-was-iterating-a-hash-map-to-throw-entries-away)
+- [122. The Flat Table, And The Thread Cap That Was Never Right](#122-the-flat-table-and-the-thread-cap-that-was-never-right)
 
 ## Impact-Ordered Architecture
 
@@ -9332,3 +9333,81 @@ eviction that replaces in place instead of scanning. This section is evidence
 FOR that -- the cost it removes is exactly the cost measured here -- and evidence
 that it should be measured before it is built, since one line recovered 2.39x of
 a cost I had attributed to the allocator.
+
+### 122. The Flat Table, And The Thread Cap That Was Never Right
+
+Both engineering items from 121, and the estimates for each were wrong in
+opposite directions.
+
+#### The worker pool was capped by the branching factor
+
+`worker_count = min(threads, n)` was correct when the root split was the only
+split: a worker with no root move to claim had nowhere to go. Sub-root splitting
+(112, 113) gave it somewhere -- it drops into `help_splits` and takes children of
+whatever node is open -- and the cap was never revisited.
+
+It bites hardest where the branching is SMALLEST, which is backwards. The chess
+starting array has twenty legal moves, so the d(3) search built twenty workers
+and could never build more, whatever `--threads` said.
+
+Depth 8, 8 GB: 166.1 s at 20 threads, **153.5 s at 32**.
+
+8%, against the 1.2-1.4x predicted, and the correction is embarrassing in a
+useful way: this is a **16-core machine with SMT**, not a 32-core one. Twenty
+workers already covered all sixteen physical cores. The "twelve idle cores" were
+second threads on cores already busy. They do help -- the workload is
+memory-latency bound, so a sibling runs while the first thread waits on DRAM --
+but that is worth a tenth, not a third. `nproc` says 32 and means something
+different from what I read it to mean.
+
+#### The flat table
+
+121 measured that eviction SCANNING was still ~42% of a deep search after
+`--tt-shed-divisor` made scans four times rarer, by fitting `time = base + k*d`
+to the divisor sweep. A direct-mapped array removes the scan rather than making
+it rarer: a collision is resolved by overwriting the slot, so `evict()` becomes a
+no-op and eviction costs a store.
+
+Depth 8, capture quota, 32 threads, 8 GB:
+
+| | wall clock | nodes |
+|---|---:|---:|
+| hash map | 136.1 s | 321,114,478 |
+| **flat** | **77.3 s** | 440,406,843 |
+
+**1.76x**, which is what the 42% model predicted almost exactly -- the one
+estimate this session that came out where it was aimed.
+
+Note the node count: **37% MORE**. Direct mapping discards harder than an aged
+hash map, so the search redoes more work; the per-node cost fell so far that it
+does not matter. That is the trade stated plainly, and it is why the gate
+compares answers rather than nodes.
+
+Three things make it safe, and the first is the only one that is absolute:
+
+- **The safety argument is unchanged.** The table is a memo of verdicts that are
+  pure functions of an exact key, so a missing or overwritten entry costs time
+  and cannot manufacture a proof or a disproof. Every slot stores its key and
+  probe compares it, so a collision is a miss and never a wrong answer.
+- Lines cannot live in a fixed-size slot, so `pv` and `cert` sit in a small side
+  map, populated only for proofs -- 7% of stores, measured. It is bounded and
+  clearing it can only SHORTEN a reported line, never change a verdict, which
+  lives entirely in the slot.
+- The whole suite runs through it, and
+  `test_flat_table_changes_nothing_but_the_speed` compares whole output lines
+  including the certificate, on a mate, a no-mate control and an x-capture win.
+
+The risk case -- a table small enough to matter -- improves too. A mate-in-10 at
+64 MB with a 40 s cap does **59% more nodes** flat (214.2M against 134.8M), and
+30 mate-in-8s at a 5 s cap solve 20 of 30 either way.
+
+On by default.
+
+#### Where d(3) at depth 9 now stands
+
+Depth 8 went 366 s -> 156 s (121) -> 77 s here, a **4.75x** improvement across
+two sessions' work, none of it in the search. Depth 9 should be **20-40 minutes**
+against the 35-90 HOURS this document was quoting a day ago.
+
+The exponential is untouched. Branching is 12-15x per ply, so all of it together
+is a fifth of one ply, and depth 10 remains a week and a half away.

@@ -24,8 +24,67 @@ namespace mateprover {
 // Replacement is generation-aged. Entries carry the pass in which they were
 // last useful, refreshed on every probe hit, and a shard over capacity first
 // sheds entries that no probe touched during the current pass.
+// ONE SLOT OF THE FLAT TABLE.
+//
+// Fixed size and no owned storage, which is the whole point: an entry costs one
+// contiguous 56-byte object, and replacing one is a write rather than an
+// allocation, a free and a rehash. The principal variation and the certificate
+// do NOT live here -- see BoundedTable::lines_ -- because they are variable
+// length and only 7% of stores carry them.
+//
+// `gen == 0` marks a slot never written. Generations start at 1.
+struct FlatSlot {
+    TTKey key{};
+    int max_disproved = TTEntry::NO_DISPROOF;
+    int min_proved = TTEntry::NO_PROOF;
+    std::uint32_t gen = 0;
+    bool refuted = false;
+};
+
 struct BoundedTable {
     std::unordered_map<TTKey, TTEntry, TTKeyHash> map;
+    // ---- The flat path.
+    //
+    // 121 measured that iterating this map to discard entries was ~42% of a deep
+    // search even after evict() was made four times rarer. A direct-mapped array
+    // removes the scan entirely rather than making it less frequent: a
+    // collision is resolved by overwriting the slot, so eviction is a store and
+    // costs nothing at all.
+    //
+    // DIRECT-MAPPED, with no probe chain. That is the standard chess-engine
+    // design and it is what keeps the cost O(1) in the worst case as well as the
+    // average. The price is that two positions hashing to one slot evict each
+    // other repeatedly; the safety argument is unchanged and absolute -- the
+    // table is a memo of verdicts that are pure functions of an exact key, so a
+    // missing or overwritten entry costs time and can never change an answer.
+    std::vector<FlatSlot> slots;
+    // pv and cert for keys that have a PROOF, which the flat slots cannot hold.
+    // Disproofs -- 93% of stores, measured -- carry neither, so the hot path
+    // never touches this.
+    std::unordered_map<TTKey, std::pair<std::vector<Move>, std::string>, TTKeyHash> lines_;
+    std::size_t mask = 0;
+    std::size_t used = 0;
+    std::size_t line_cap = 0;
+    bool flat = false;
+
+    // Size the array to a power of two so the index is a mask rather than a
+    // modulo, and reserve the line map to a fraction of it.
+    void enable_flat(std::size_t entries) {
+        std::size_t n = 1;
+        while (n < entries) {
+            n <<= 1;
+        }
+        slots.assign(n, FlatSlot{});
+        mask = n - 1;
+        used = 0;
+        line_cap = std::max<std::size_t>(1024, n / 8);
+        lines_.clear();
+        flat = true;
+    }
+
+    std::size_t index_of(const TTKey& key) const {
+        return TTKeyHash{}(key) & mask;
+    }
     std::size_t capacity = 0; // 0 means unbounded
     // How much to shed per eviction, as a fraction 1/shed_divisor of capacity.
     //
@@ -44,6 +103,26 @@ struct BoundedTable {
     std::uint64_t evictions = 0;
 
     bool probe(const TTKey& key, TTEntry& out) {
+        if (flat) {
+            FlatSlot& slot = slots[index_of(key)];
+            if (slot.gen == 0 || !(slot.key == key)) {
+                return false;
+            }
+            slot.gen = generation;      // still earning its space
+            out = TTEntry{};
+            out.max_disproved = slot.max_disproved;
+            out.min_proved = slot.min_proved;
+            out.refuted = slot.refuted;
+            out.gen = slot.gen;
+            if (slot.min_proved != TTEntry::NO_PROOF) {
+                auto line = lines_.find(key);
+                if (line != lines_.end()) {
+                    out.pv = line->second.first;
+                    out.cert = line->second.second;
+                }
+            }
+            return true;
+        }
         auto it = map.find(key);
         if (it == map.end()) {
             return false;
@@ -54,6 +133,11 @@ struct BoundedTable {
     }
 
     void store(const TTKey& key, TTEntry entry) {
+        if (flat) {
+            merge(key, entry.min_proved != TTEntry::NO_PROOF ? entry.min_proved : entry.max_disproved,
+                  entry.min_proved != TTEntry::NO_PROOF, entry.pv, entry.cert, entry.refuted);
+            return;
+        }
         entry.gen = generation;
         map[key] = std::move(entry);
         if (capacity != 0 && map.size() > capacity) {
@@ -61,12 +145,46 @@ struct BoundedTable {
         }
     }
 
+
     // Read-modify-write of the depth bounds for one key. Merging rather than
     // overwriting is what lets a single entry accumulate both a disproof bound
     // and a proof bound as the search visits the position at several depths.
     void merge(const TTKey& key, int depth, bool proved,
                const std::vector<Move>& pv, const std::string& cert,
                bool refuted = false) {
+        if (flat) {
+            FlatSlot& slot = slots[index_of(key)];
+            if (slot.gen == 0) {
+                ++used;
+            } else if (!(slot.key == key)) {
+                // A different position owned this slot. Overwriting it IS the
+                // eviction, and it is a store rather than a scan.
+                ++evictions;
+                slot = FlatSlot{};
+            }
+            slot.key = key;
+            slot.gen = generation;
+            if (refuted) {
+                slot.refuted = true;    // absorbing: nothing downgrades it
+            }
+            if (proved) {
+                if (depth < slot.min_proved) {
+                    slot.min_proved = depth;
+                    if (!pv.empty() || !cert.empty()) {
+                        // Bounded, and clearing it can only SHORTEN a reported
+                        // line -- never change a verdict, which lives entirely
+                        // in the slot above.
+                        if (lines_.size() >= line_cap) {
+                            lines_.clear();
+                        }
+                        lines_[key] = {pv, cert};
+                    }
+                }
+            } else if (depth > slot.max_disproved) {
+                slot.max_disproved = depth;
+            }
+            return;
+        }
         TTEntry& entry = map[key];
         entry.absorb(depth, proved, pv, cert, refuted);
         entry.gen = generation;
@@ -76,6 +194,9 @@ struct BoundedTable {
     }
 
     void evict() {
+        if (flat) {
+            return;     // replacement happened in place; there is nothing to scan
+        }
         // First pass: drop anything untouched during the current generation.
         for (auto it = map.begin(); it != map.end();) {
             if (it->second.gen != generation) {
@@ -163,10 +284,15 @@ struct BoundedTable {
 
     void clear() {
         map.clear();
+        if (flat) {
+            slots.assign(slots.size(), FlatSlot{});
+            lines_.clear();
+            used = 0;
+        }
     }
 
     std::size_t size() const {
-        return map.size();
+        return flat ? used : map.size();
     }
 };
 
@@ -249,7 +375,7 @@ public:
     }
 
     SharedProofTable(std::size_t shard_count, std::size_t reserve_total, std::size_t capacity_total,
-                     std::size_t shed_divisor = 2) {
+                     std::size_t shed_divisor = 2, bool flat = false) {
         std::size_t shards = 1;
         while (shards < shard_count) {
             shards <<= 1;
@@ -266,6 +392,9 @@ public:
             // proxy for a global cap, without a global counter on the hot path.
             shards_.back()->table.capacity = capacity_total == 0 ? 0 : std::max<std::size_t>(1, capacity_total / shards);
             shards_.back()->table.shed_divisor = shed_divisor;
+            if (flat && capacity_total != 0) {
+                shards_.back()->table.enable_flat(std::max<std::size_t>(1024, capacity_total / shards));
+            }
         }
     }
 
@@ -294,6 +423,11 @@ public:
     // Adopt entries computed before the table existed, so the sequential
     // prelude of the cost gate is carried forward rather than redone.
     void import_from(const BoundedTable& src) {
+        // Only the hash-map path is ever imported from: `import_from` carries the
+        // enclosing search's private table into the shared one, and that private
+        // table is only populated on the sequential prelude, which never runs
+        // flat. Stated rather than assumed, because a silent no-op here would
+        // lose a warm table and only show up as a slower search.
         for (const auto& kv : src.map) {
             store(kv.first, kv.second);
         }
