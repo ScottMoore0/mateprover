@@ -505,7 +505,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 567 automated checks cover perft against
+sharing no code with the engine. 574 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.
@@ -746,3 +746,27 @@ across the positions solved by both weight sets, zero depths changed. `perft`
 and `fuzz` found no engine bugs over 169 random positions -- though `perft`
 found a bug in itself first, having compared depth 1 against depth N. See
 architecture 118.
+
+### Candidate pruning theorems, measured but never acted on
+
+`--predicate EXPR` takes a conjunction of threshold tests over twelve cheap
+board features and evaluates it at every attacker node -- then searches as though
+it had said nothing. When the node returns, its true verdict is known, so a
+candidate that fired where a mate existed is refuted by counterexample, exactly
+and permanently, while one that fired where the search failed has its subtree
+counted as what it would be worth if a person ever proved it.
+
+Implemented as a wrapper around `prove_attacker` rather than an edit inside it,
+so no candidate can affect a verdict even by accident. The suite pins both
+halves: the answer is unchanged under every candidate, and a false candidate is
+seen to be refuted.
+
+`tools/predicates.py` runs a genetic search over candidates and checks its own
+instrument first against GAP-1's Axiom 1 (proved) and `depth>=1` (false).
+
+Nothing was promoted. 48 of 50 candidates were refuted in minutes; the two
+survivors were refuted in seconds once shown harder positions. One of them
+claimed an attacker in check can never mate, appeared to save 48% of all nodes,
+and loses mates 4,034 times over ten mate-in-8 positions -- which is why the
+tool's ranking is lexicographic in counterexamples and not a weighted sum.
+See architecture 119.

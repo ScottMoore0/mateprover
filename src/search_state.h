@@ -109,6 +109,10 @@ struct SearchConfig {
     // lazy scan runs instead, since there is no subtree left to shape and
     // materialising the list to sort it would be pure cost.
     int answer_order_min_depth = 2;
+    // A candidate pruning predicate, evaluated and MEASURED but never acted
+    // on. See predicate.h for why falsification can be automated and promotion
+    // cannot. Inert unless --predicate is given.
+    Predicate predicate;
     // Move-ordering weights. Soundness-neutral by construction -- see
     // OrderWeights -- which is what makes them safe to hand to tools/autotune.py.
     OrderWeights order_weights;

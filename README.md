@@ -240,7 +240,7 @@ or directly:
 python tests/run_tests.py --engine build/mateprover
 ```
 
-567 automated checks covering:
+574 automated checks covering:
 
 - **perft** against published reference counts for six standard positions,
   exercising castling rights, en-passant capture and expiry, promotion

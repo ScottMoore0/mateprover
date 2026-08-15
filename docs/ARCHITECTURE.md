@@ -196,6 +196,7 @@ did. If you are reading it for the first time:
 - [116. Sharing Proofs Between Lanes, And The Last Of The Free](#116-sharing-proofs-between-lanes-and-the-last-of-the-free)
 - [117. Carrying The Table Between Jobs, And The Fourth Direction](#117-carrying-the-table-between-jobs-and-the-fourth-direction)
 - [118. Automating The Search For Improvements](#118-automating-the-search-for-improvements)
+- [119. Evolving Pruning Theorems, And The One That Would Have Lost 4,034 Mates](#119-evolving-pruning-theorems-and-the-one-that-would-have-lost-4034-mates)
 
 ## Impact-Ordered Architecture
 
@@ -9013,3 +9014,100 @@ answer holds. A tool that runs a thousand candidates through a deterministic,
 lexicographic, held-out gate is doing the part a human does worst. It is also
 why the gate matters more than the search: a thousand times the proposals through
 a leaky gate is a thousand times the chance of a silently false proof.
+
+### 119. Evolving Pruning Theorems, And The One That Would Have Lost 4,034 Mates
+
+118 built three of the four tiers of automatic improvement and left the fourth,
+on the ground that soundness cannot be established by testing. That is still
+true. What can be automated completely is the other half: FALSIFICATION.
+
+#### The arrangement
+
+`--predicate EXPR` takes a conjunction of at most four threshold tests over
+twelve cheap board features -- `depth`, `men`, `amen`, `dmen`, `amat`, `dmat`,
+`aqueens`, `arooks`, `aminors`, `apawns`, `dflights` (E for the defender king,
+reused from the x-escape rule) and `aincheck`. The engine evaluates it at every
+attacker node **and then searches as though it had said nothing.** When the node
+returns, its true verdict is known, so:
+
+| the candidate fired and the node | what that is |
+|---|---|
+| was PROVED | a **counterexample**. The candidate claimed there was no solution below here and there was one. Exact, permanent, and one is enough. |
+| FAILED | the subtree it would have skipped, which is what the candidate is worth IF a person ever proves it |
+| was ABANDONED | nothing. An abandoned subtree settled nothing, so pruning it would have been a guess rather than a save. |
+
+Implemented as a WRAPPER around `prove_attacker` rather than an edit inside it.
+The body has nine returns and an observer that missed one would under-count
+silently; more importantly, a wrapper keeps the measurement wholly outside the
+search, so there is no path by which a candidate can affect a verdict even by
+accident. `test_candidate_predicates_observe_and_never_prune` pins both halves:
+the answer is unchanged under every candidate tried, and a candidate that is
+FALSE is seen to be refuted.
+
+#### The instrument checks itself before it is believed
+
+`tools/predicates.py` seeds every run with two predicates whose status is already
+settled, and refuses to continue if either behaves wrongly:
+
+    known TRUE   amen<=1     fires     59   counterexamples 0
+    known FALSE  depth>=1    fires 24,607   counterexamples 2,233
+
+`amen<=1` is GAP-1's Axiom 1 -- a bare attacker king cannot mate -- proved in
+docs/GAP1_DERIVATION.md. If a proved theorem showed a counterexample, the
+observer would be wrong rather than the theorem, and nothing else the tool said
+would mean anything.
+
+#### What the search found, and why it is worthless
+
+Fifty candidates over five generations on `tests/mates.epd`. Forty-eight were
+refuted by counterexample. Two survived:
+
+| candidate | fires | apparent saving |
+|---|---:|---:|
+| `dflights>=1&aincheck==1` | 74 | 0.10% |
+| `depth>=1&aqueens>=1&aincheck==1` | 67 | 0.09% |
+| `amen<=1` (proved, for scale) | 59 | 0.07% |
+
+Both survivors are dominated by the plainer `aincheck==1`, which fires the same
+74 times for the same 0.10% -- the extra clauses were noise the search had no
+signal to discard. And `aincheck==1` says an attacker who is IN CHECK can never
+mate, which is simply false: he may capture the checker with mate, or block with
+mate.
+
+The corpus was too small to contain a counterexample. On ten mate-in-8 positions:
+
+| candidate | fires | counterexamples | apparent saving |
+|---|---:|---:|---:|
+| `amen<=1` (proved) | 46,911 | **0** | 1.02% |
+| `aincheck==1` | 2,427,349 | **4,034** | **48.19%** |
+| `dflights>=1&aincheck==1` | 2,349,797 | **2,696** | 44.78% |
+
+**A tool that ranked by saving would have shipped a predicate that loses mates
+four thousand times, and it would have looked like a 48% speedup.** That is the
+entire argument for the counterexample column, and it is why `score()` in the
+tool is lexicographic rather than a weighted sum: a candidate with one
+counterexample is not a slightly worse candidate, it is a false statement, and no
+amount of saving trades against that.
+
+The proved theorem survived both corpora, as a proved theorem must.
+
+#### What this tier is actually for
+
+Nothing was promoted, and nothing was expected to be. The value is that the
+refutation loop is now automatic and exact: 48 of 50 candidates died in minutes,
+and the two that lived died in seconds once shown harder positions. A human never
+had to look at any of them.
+
+What a person still has to do is the only part that was ever the bottleneck --
+prove the survivor. This document's own record says how rare that is: of the
+pruning mechanisms measured here, 88's fatal-anti-check fired on 87% of
+candidates and converted nothing, and 102's quota dominance ran 900,000 probes
+for zero hits. Both were TRUE and both were worthless. Truth is necessary and
+nowhere near sufficient.
+
+The general shape, and it is the fourth time this document has arrived at it from
+a different direction: **automation is far better at killing ideas than at having
+them, and its value is proportional to how hard the gate is.** A thousand times
+the candidates through a leaky gate is a thousand times the chance of a silently
+false proof, and this session produced a concrete, seductive, 48%-shaped example
+of exactly that.

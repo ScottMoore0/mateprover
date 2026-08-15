@@ -1766,7 +1766,47 @@ inline bool position_is_refuted_axiomatically(const Search& s, const Board& b, i
     return false;
 }
 
+// THE CANDIDATE-PREDICATE OBSERVER.
+//
+// A wrapper rather than an edit to the body below, for two reasons. The body has
+// nine return statements and an observer that missed one would under-count
+// silently; and this keeps the measurement completely outside the search, so
+// there is no path by which a candidate can affect a verdict even by accident.
+// With no predicate configured it is one predictable branch per node.
+//
+// The arithmetic is the whole mechanism:
+//
+//   fired and the node was PROVED    a counterexample. The candidate claimed
+//                                    there was no solution below here and there
+//                                    was one. That is a disproof of the
+//                                    candidate, it is exact, and one is enough.
+//   fired and the node FAILED        the subtree is added to what the candidate
+//                                    would have saved -- but only if the node
+//                                    was not abandoned, because an abandoned
+//                                    subtree settled nothing and pruning it
+//                                    would have been a guess rather than a save.
+Proof prove_attacker_observed(Search& s, const Board& b, int depth);
+
 Proof prove_attacker(Search& s, const Board& b, int depth) {
+    if (!s.predicate.active()) {
+        return prove_attacker_observed(s, b, depth);
+    }
+    const bool fired = depth > 0 && b.stm == s.attacker &&
+                       predicate_fires(s.predicate, b, s.attacker, depth);
+    const std::uint64_t before = s.stats.nodes;
+    Proof out = prove_attacker_observed(s, b, depth);
+    if (fired) {
+        ++s.stats.pred_fires;
+        if (out.ok) {
+            ++s.stats.pred_counterexamples;
+        } else if (!s.aborted) {
+            s.stats.pred_nodes_saved += s.stats.nodes - before;
+        }
+    }
+    return out;
+}
+
+Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
     if (search_cancelled(s)) {
         return {};
     }

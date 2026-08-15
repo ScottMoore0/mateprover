@@ -194,6 +194,68 @@ inline const OrderWeights& default_order_weights() {
     return w;
 }
 
+// ---------------------------------------------------------------------------
+// A CANDIDATE PRUNING THEOREM. The evaluator lives in predicate.h; only the
+// data is here, because SearchConfig is defined before the board is and a
+// candidate has to be carriable in the config.
+//
+// It never prunes. See predicate.h for why falsification can be automated at
+// scale and promotion to a live prune cannot.
+enum PredFeature {
+    PF_DEPTH = 0,   // remaining depth at this node
+    PF_MEN,         // men on the board
+    PF_AMEN,        // attacker men
+    PF_DMEN,        // defender men
+    PF_AMAT,        // attacker material, Q9 R5 B3 N3 P1
+    PF_DMAT,        // defender material
+    PF_AQUEENS,
+    PF_AROOKS,
+    PF_AMINORS,     // bishops and knights
+    PF_APAWNS,
+    PF_DFLIGHTS,    // E for the defender king: squares it could legally step to
+    PF_AINCHECK,    // is the ATTACKER, who is to move here, in check
+    PF_COUNT,
+};
+
+enum PredOp { PO_LE = 0, PO_GE, PO_LT, PO_GT, PO_EQ, PO_NE };
+
+struct PredClause {
+    std::uint8_t feature = 0;
+    std::uint8_t op = 0;
+    int value = 0;
+};
+
+// A conjunction of at most four threshold tests. Deliberately the simplest
+// language that can express the shapes real pruning theorems take -- "the
+// attacker has only a king", "the depth is 1 and no check is available" -- and
+// deliberately not expressive enough to fit noise: four clauses over twelve
+// integer features cannot memorise a corpus.
+struct Predicate {
+    std::array<PredClause, 4> clauses{};
+    int count = 0;
+
+    bool active() const { return count > 0; }
+};
+
+inline const char* pred_feature_name(int f) {
+    switch (f) {
+        case PF_DEPTH: return "depth";
+        case PF_MEN: return "men";
+        case PF_AMEN: return "amen";
+        case PF_DMEN: return "dmen";
+        case PF_AMAT: return "amat";
+        case PF_DMAT: return "dmat";
+        case PF_AQUEENS: return "aqueens";
+        case PF_AROOKS: return "arooks";
+        case PF_AMINORS: return "aminors";
+        case PF_APAWNS: return "apawns";
+        case PF_DFLIGHTS: return "dflights";
+        case PF_AINCHECK: return "aincheck";
+        default: return "?";
+    }
+}
+
+
 struct RouteResult {
     Proof proof;
     int proved_depth = 0;
@@ -490,6 +552,13 @@ struct Stats {
     std::uint64_t teardown_search_micros = 0;
     std::uint64_t cross_lane_stores = 0;
     std::uint64_t cross_lane_hits = 0;
+    // Candidate pruning predicate, in observer mode. `pred_counterexamples` is
+    // the only one that decides anything: one is a disproof of the candidate,
+    // exactly and permanently. The other two say what it would be worth if it
+    // ever survived long enough to be proved.
+    std::uint64_t pred_fires = 0;
+    std::uint64_t pred_counterexamples = 0;
+    std::uint64_t pred_nodes_saved = 0;
     std::uint64_t dfpn_movegen = 0;
     std::uint64_t dfpn_mate_tests = 0;
     std::uint64_t deadline_checks = 0;
@@ -586,6 +655,9 @@ struct Stats {
         teardown_search_micros += o.teardown_search_micros;
         cross_lane_stores += o.cross_lane_stores;
         cross_lane_hits += o.cross_lane_hits;
+        pred_fires += o.pred_fires;
+        pred_counterexamples += o.pred_counterexamples;
+        pred_nodes_saved += o.pred_nodes_saved;
         dfpn_movegen += o.dfpn_movegen;
         dfpn_mate_tests += o.dfpn_mate_tests;
         deadline_checks += o.deadline_checks;
@@ -614,7 +686,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 87 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 90 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {

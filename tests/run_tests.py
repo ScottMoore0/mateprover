@@ -1278,6 +1278,66 @@ def test_cross_lane_proofs_do_not_move_the_depth(engine: Path, res: Results) -> 
     res.check("no position stops being solved", not lost, "; ".join(lost))
 
 
+def test_candidate_predicates_observe_and_never_prune(engine: Path, res: Results) -> None:
+    """--predicate measures a candidate pruning theorem. It must never act on one.
+
+    A pruning theorem says "no solution below here" without searching, and one
+    that is wrong does not make the engine slow, it makes it report a sound
+    problem as unsolvable -- silently. Soundness cannot be established by
+    testing, so the engine never prunes on a candidate; it only counts what one
+    would have done. Two properties make that measurement worth anything.
+
+    INERT. Running with a candidate must produce exactly the same answer as
+    running without, whatever the candidate says. If a candidate could change a
+    verdict then the observer is a prune wearing a disguise.
+
+    FALSIFYING. A candidate that is FALSE must be caught. `depth>=1` fires at
+    every attacker node and claims none of them has a solution, so on a position
+    that does have one it must report counterexamples. An observer that reports
+    none for that is measuring nothing, and would hand back every false candidate
+    it was given as a survivor.
+
+    The pair matters: 119 records a candidate the search liked -- 48% of nodes
+    apparently saved -- that turned out to lose mates 4,034 times on a harder
+    corpus. Ranking by saving without the counterexample column ships that.
+    """
+    print("\n[predicate] candidate theorems are measured, never acted on")
+
+    fen, dm = "6k1/8/8/8/8/5K2/5Q1N/8 w - -", 5
+    stdin = f"{fen}\n"
+    base = ["--no-portfolio", "--threads", "1", "-z", str(dm)]
+    effort = re.compile(r"ac[ns] [0-9.]+;\s*")
+
+    plain = effort.sub("", run(engine, [*base, "-"], stdin).strip())
+    for candidate in ("depth>=1", "amen<=1", "aincheck==1", "men<=3&dflights>=8"):
+        got = effort.sub("", run(engine, [*base, "--predicate", candidate, "-"], stdin).strip())
+        res.check(f"--predicate {candidate} leaves the answer alone", got == plain,
+                  f"\n  without: {plain}\n  with:    {got}")
+
+    # --profile writes to stderr, which run() discards, so this reads both.
+    proc = subprocess.run([str(engine), *base, "--predicate", "depth>=1", "--profile", "-"],
+                          input=stdin.encode(), capture_output=True, timeout=600)
+    out = proc.stdout.decode() + proc.stderr.decode()
+    fires = re.search(r'"pred_fires":(\d+)', out)
+    cex = re.search(r'"pred_counterexamples":(\d+)', out)
+    res.check("a candidate that fires everywhere is seen to fire",
+              bool(fires) and int(fires.group(1)) > 0,
+              fires.group(0) if fires else "no counter reported")
+    res.check("a FALSE candidate is refuted by counterexample",
+              bool(cex) and int(cex.group(1)) > 0,
+              cex.group(0) if cex else "no counter reported")
+
+    # The engine must refuse what it cannot faithfully measure. A predicate
+    # that silently parsed to something other than what was written would make
+    # every number measured about it meaningless.
+    try:
+        bad = run(engine, [*base, "--predicate", "wibble<=3", "-"], stdin)
+    except RuntimeError as exc:
+        bad = str(exc)
+    res.check("an unknown feature is refused rather than ignored",
+              "unknown feature" in bad, bad[:160])
+
+
 def test_corpus_ergonomics(engine: Path, res: Results) -> None:
     """The shipped corpus must work when simply piped in.
 
@@ -3573,6 +3633,7 @@ def main() -> int:
     test_root_split_proves_the_same_answer(args.engine, res)
     test_splits_do_not_move_the_output(args.engine, res)
     test_cross_lane_proofs_do_not_move_the_depth(args.engine, res)
+    test_candidate_predicates_observe_and_never_prune(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
     test_selfmate_goal(args.engine, res)

@@ -19,6 +19,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <cstddef>
 #include <iostream>
 #include <limits>
@@ -47,6 +48,7 @@
 #include "board.h"
 #include "movegen.h"
 #include "kingescape.h"
+#include "predicate.h"
 #include "ordering.h"
 #include "prooftable.h"
 #include "prove.h"
@@ -231,6 +233,19 @@ void print_usage() {
 "                                splits at all while a worker is idle to take\n"
 "                                the children -- supply follows demand, at\n"
 "                                whatever depth the pool happens to run dry\n"
+"  --predicate EXPR              measure a CANDIDATE pruning theorem without\n"
+"                                ever acting on it. EXPR is a conjunction of\n"
+"                                threshold tests joined by &, over depth, men,\n"
+"                                amen, dmen, amat, dmat, aqueens, arooks,\n"
+"                                aminors, apawns, dflights and aincheck --\n"
+"                                for example 'amen<=1' or 'depth<=2&dflights>=5'.\n"
+"                                The engine reports how often it fired, how\n"
+"                                many nodes it would have skipped, and how many\n"
+"                                COUNTEREXAMPLES it hit -- nodes where it said\n"
+"                                there was no solution and there was one. One\n"
+"                                counterexample kills the candidate; none is\n"
+"                                evidence and never a proof. See tools/\n"
+"                                predicates.py and architecture 119\n"
 "  --order-weights c,p,q,r,m     move-ordering bonuses for a capture, a\n"
 "                                promotion, and a queen, rook or minor move\n"
 "                                (default 10000,8000,50,40,30). Ordering changes\n"
@@ -806,6 +821,15 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--root-sequential-first' expects a number");
             config.root_sequential_first = static_cast<int>(value);
+        } else if (arg == "--predicate") {
+            // A CANDIDATE, never a prune. The engine measures it and reports
+            // three counters; it does not act on it. See predicate.h.
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--predicate' requires an expression");
+            std::string why;
+            if (!parse_predicate(v, config.predicate, why)) {
+                return usage_error("option '--predicate': " + why);
+            }
         } else if (arg == "--order-weights") {
             // c,p,q,r,m -- one flag rather than five, because an automatic
             // search sets them together and a partial assignment is never
