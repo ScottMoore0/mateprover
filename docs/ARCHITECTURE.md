@@ -9252,6 +9252,45 @@ shedding a half did **46% more nodes** in the same time (129.8M against 89.0M).
 `--tt-shed-divisor` exposes it. The name says what it is: this is the cost of the
 SCAN, not a memory setting.
 
+#### The full curve, and why it is not monotone
+
+| shed per eviction | wall clock | nodes |
+|---|---:|---:|
+| 1/8 (the old default) | 373.3 s | 315,141,390 |
+| 1/4 | 215.7 s | 314,628,992 |
+| 1/3 | 181.7 s | 317,332,289 |
+| **1/2 (shipped)** | **156.4 s** | 318,822,297 |
+| 1/1 | **>560 s** | (did not finish) |
+
+Monotone down to a half and then a cliff. I predicted 1/1 would be "nearly free"
+on the grounds that shedding four times more had raised the node count by 1.2% --
+wrong, and the reason is in `evict()` rather than in the search: with a divisor of
+1 the low-water mark is ZERO, so the second pass erases everything including
+entries stored moments earlier under the current generation. The table can never
+accumulate anything and every verdict is recomputed forever.
+
+So a half is not a compromise between scanning and re-searching, it is the corner
+of the curve, and the shipped default is right.
+
+#### Memory, re-measured without the confound
+
+The earlier reading -- 2 GB against 8 GB flat at depth 8 -- was taken while
+eviction scanning consumed half the run, and the two effects pull opposite ways:
+a bigger table holds more, and also costs more to scan on every eviction. With
+scans four times cheaper the confound is gone. At shed 1/2:
+
+| `-M` | wall clock | nodes |
+|---|---:|---:|
+| 2048 | 173.6 s | 358,870,217 |
+| 8192 | **156.4 s** | 318,822,297 |
+| 16000 | 154.0 s | 312,746,075 |
+
+Removing the confound flipped the SIGN -- 2 GB had measured faster than 8 GB, and
+now measures 11% slower -- and left the magnitude small. The knee is at 8 GB;
+doubling again buys 1.6%. Memory is not a further lever here, and this is the
+second time in this document that a memory conclusion has had to be re-taken
+after something else moved underneath it (39, 110).
+
 #### The ordering weights are not a lever either
 
 The other proposal was to re-tune move ordering for x-capture, on the argument

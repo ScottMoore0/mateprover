@@ -850,3 +850,16 @@ Two defects fixed in `tools/autotune.py`: its saturation guard counted *solved*
 positions, so it refused any disproof corpus outright, and it did not check the
 engine's exit code, so a truncated run was reported as a changed verdict — the
 loudest alarm it has, for the most benign cause. See architecture 121.
+
+### Both re-measurements confirm the defaults
+
+The shed-divisor curve is monotone from 1/8 down to 1/2 (373.3 s → 156.4 s) and
+then falls off a cliff at 1/1 (>560 s, did not finish): with a divisor of 1 the
+low-water mark is zero, so eviction erases entries stored moments earlier and the
+table can never accumulate anything. A half is the corner of the curve, not a
+compromise, and the shipped default is right.
+
+Memory, re-measured now that eviction scanning no longer dominates: 2 GB 173.6 s,
+8 GB 156.4 s, 16 GB 154.0 s. Removing the confound flipped the sign — 2 GB had
+measured *faster* than 8 GB — and left the magnitude small. The knee is 8 GB and
+doubling again buys 1.6%.
