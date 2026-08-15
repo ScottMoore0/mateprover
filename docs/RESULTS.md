@@ -480,6 +480,15 @@ capability -- changing *which problem* is searched rather than how fast the same
 problem is searched -- is saturated at eight lanes over the restriction set the
 engine implements.
 
+Since that was written the engine gained three orthogonal **variant rules**
+(x-check, x-capture, x-escape), which are new problems rather than faster
+searches of the old one, and a set of tools that search for improvements
+automatically (118, 119). The tools have produced no shipped improvement and two
+useful findings about measurement: a fitness function that carried no signal
+because every position hit its budget and scored the cap, and a candidate pruning
+theorem that appeared to save 48% of all nodes and loses mates 4,034 times. The
+axis above is unchanged.
+
 A new restriction family was the most promising of those, and it now looks
 unlikely. Comparing the positions the engine cannot reach against the ones it can
 shows **no structural difference at all** -- not in material, not in king
@@ -515,10 +524,27 @@ best per position gains two of forty (41). The two experiments agree on the
 exchange rate, which is the useful part -- that six-way diversity ceiling is
 worth about the same as an eight-times speedup.
 
-Root splitting, re-measured under DFPN after being found inert under the previous
-default route, is still inert: eight threads against one scored 0.96x and 1.04x
-on two runs and not one extra position (43). A proof must refute every sibling,
-so dividing the siblings between threads removes no work.
+**Root splitting was reported inert here twice, and both reports were wrong.**
+The first measured a route the split had never been wired into; the second
+measured it underneath a proof-number preconditioner that was consuming 96% of
+the wall clock single-threaded, so the split was scaling a twenty-fifth of the
+run. With both fixed it is worth **9.0x on 24 threads** on a depth-7
+capture-quota search (109-115). The argument attached to those numbers -- "a
+proof must refute every sibling, so dividing the siblings between threads removes
+no work" -- was exactly backwards: refuting every sibling is precisely what makes
+the work divisible, and it is proving that does not divide, because the first
+sibling that succeeds ends the node.
+
+Two thirds of the eventual gain came from outside the search entirely. Standing
+the preconditioner down under a live variant rule was one; freeing the shared
+transposition table concurrently was the other, and at a 4 GB budget that was
+**44% of a deep run** spent returning memory after the verdict was already known.
+Both had been invisible because the instrument that would have shown the second
+-- an eviction counter -- was reading a table the search never used, and reported
+zero at every memory size while node counts moved 60%.
+
+The exchange rate below is unaffected, and it is the part that matters: 9.0x is
+about three positions of forty at mate-in-8, not a depth notch.
 
 What remains genuinely unexamined is a search that reasons about *why* a defence
 fails rather than enumerating that it does. That is a different engine, not an

@@ -13,11 +13,30 @@ one, and each with its own result token: directmate (`dm`), stalemate (`sm`),
 selfmate (`sfm`), selfstalemate (`ssm`), helpmate (`hm`) and helpstalemate
 (`hsm`). A checkmate *fails* a stalemate goal.
 
-**Two variant rules**, orthogonal to all six: x-check, where a side wins on its
-Nth check, and x-capture, where it wins on its Nth capture. Per-side quotas, so
-5+2 is as ordinary as 3+3, and they compose — 3-check selfmate is a job you can
-run. Under a mate goal a filled quota is the win being forced; under the others
-the game ended without reaching the terminal the stipulation names.
+**Three variant rules**, orthogonal to all six goals and to each other:
+
+| rule | flag | a side… |
+|---|---|---|
+| x-check | `--checks N` \| `W:B` | **wins** on giving its Nth check |
+| x-capture | `--captures N` \| `W:B` | **wins** on making its Nth capture |
+| x-escape | `--escape N` \| `W:B` | **loses** when its own king reaches escape count N |
+
+Per-side quotas, so 5+2 is as ordinary as 3+3, and they compose — `--checks 3
+--captures 5` is a legal game, and 3-check selfmate is a job you can run. Under
+a mate goal a filled quota is the win being forced; under the other goals the
+game ended without reaching the terminal the stipulation names.
+
+x-escape is the odd one and worth reading twice. **E** is how many squares a king
+could legally step to, computed with that king *removed from the board*, so it
+measures the squares rather than the king's own blocking. It is not a countdown:
+it is recomputed at every position, can rise and fall, and **reaching the limit
+loses**, so the winner is the other side. The starting array is E 0 for both
+sides. Range 1..8, since a king's ring holds at most eight squares.
+`--escape-count` reports E for both kings and stops, without searching.
+
+Six goals times three rules, each rule per-side and composable, is the whole
+matrix — there is no goal that a rule does not apply to, and no pair of rules
+that cannot be run together.
 
 ```
 $ echo "8/2Q5/R7/8/1k4K1/8/8/8 w - -" | mateprover -z 2 -
@@ -269,11 +288,17 @@ python tests/run_tests.py --engine build/mateprover
 - **differentials for every exact pruning switch**: the same verdicts, moves and
   variations with each one on and off, run single-threaded so the comparison can
   be on the whole line rather than the depth alone;
-- **the variant rules** -- x-check and x-capture -- orthogonal to all six goals: the allowance
-  round-trips through the FEN in both accepted spellings, the win is found at
-  every depth, a move that is both mate and the final check is certified as
-  mate, the allowance is part of the transposition key, and a forged check-win
-  certificate is rejected three ways;
+- **the three variant rules** -- x-check, x-capture and x-escape -- orthogonal to
+  all six goals: the allowance round-trips through the FEN in both accepted
+  spellings, the win is found at every depth, a move that is both mate and the
+  final check is certified as mate, the allowance is part of the transposition
+  key, and a forged check-win certificate is rejected three ways;
+- **the sub-root parallel splits**, which are allowed to change how long an
+  answer takes and nothing else: the verdict, the reported line and the whole
+  certificate must be byte-identical with each split on and off;
+- **candidate pruning theorems**, which are measured and never acted on: any
+  candidate must leave the answer untouched, and a candidate that is FALSE must
+  be caught by counterexample rather than quietly reported as a survivor;
 - **the measurement harness**, which produces every published number and is
   checked like the engine: strict result parsing, self-describing records,
   measurement identity, and the load-time invariants that make a shared resume
@@ -321,17 +346,55 @@ appears when the search hit its budget, so "gave up" is distinguishable from
 |---|---|
 | `-z N` | requested mate depth |
 | `-M N` | table budget in MB, honoured as an entry ceiling; `0` unbounded |
-| `--threads N` \| `auto` | root-split parallel search; `auto` = min(cores, 16) because the split saturates there |
+| `--threads N` \| `auto` | parallel search; `auto` = min(cores, 16). That cap dates from when the split saturated at 4.75x; it now reaches **9.0x at 24 threads**, so an explicit `--threads N` above 16 is worth trying on a big machine |
 | `--time-limit S` | wall-clock budget; expiry reports `timeout`, never a mate |
 | `--direct-depth` | prove "a mate within N" rather than the shortest mate; materially better solve rate at a fixed budget |
 | `--portfolio` | spend the time budget across restricted searches as well as the unrestricted one; sound, since a restriction only removes attacker options |
 | `--portfolio-parallel` | run those searches concurrently, each with the full budget; uses cores that root splitting saturates on |
+| `--escape-count` | report E for both kings and stop, without searching |
 | `--emit-proof` | append the recursive JSON proof certificate |
 | `--perft N` / `--perft-divide N` | move-generation self-check |
 | `--profile` | per-position counters on stderr |
 
 `--help` lists the full set, including search-tuning flags and their rollback
 counterparts.
+
+## Searching for improvements automatically
+
+Three tools search for changes rather than waiting to be told about them. All
+three score on **node counts at one thread**, never on wall clock: this machine
+drifts 15% between identical runs while the effects worth having are 3-10%, and
+node counts are exactly reproducible, so one repetition is enough.
+
+| tool | what it searches |
+|---|---|
+| `tools/autotune.py tune` | coordinate descent over configuration knobs |
+| `tools/autotune.py ordering` | a genetic search over the five move-ordering weights (`--order-weights`) |
+| `tools/adversarial.py hunt` | evolves POSITIONS that maximise the node count |
+| `tools/adversarial.py fuzz` | verdicts against an independent brute-force oracle |
+| `tools/adversarial.py perft` | move generation against python-chess |
+| `tools/predicates.py` | candidate pruning theorems, by refuting the false ones |
+
+Two design points carry all the weight.
+
+**Every gate is lexicographic in correctness.** Nothing is compared on speed
+until every baseline verdict and depth is unchanged. A scalar objective would
+happily accept a configuration reporting `dm 7` where the answer is `dm 5`, and
+that difference is invisible in a score.
+
+**Candidates that prune are measured, never obeyed.** `--predicate` evaluates a
+candidate theorem at every attacker node and then searches as though it had said
+nothing, so when the node returns its true verdict is known and a candidate that
+fired where a mate existed is refuted by counterexample. Falsification is exact
+and automatic; **promotion to a live prune is not, and needs a proof written by a
+person.** Soundness cannot be established by testing, and the one candidate this
+search liked best appeared to save 48% of all nodes and loses mates 4,034 times
+over ten mate-in-8 positions.
+
+Neither tuner has produced a shipped improvement. Both have produced findings
+about the process — a fitness function that silently carried no signal because
+every position hit its budget and scored the cap, and a tuning result that won on
+its held-out set and reversed on a third. Architecture 118 and 119 record both.
 
 ## Correctness
 
@@ -356,18 +419,19 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
-- **Scope: directmates, stalemates and selfmates.** MateProver proves "White to
-  move mates in N" (`dm N`), "White forces stalemate in N" (`--stalemate`, `sm
-  N`) and "White forces Black to mate White in N" (`--selfmate`, `sfm N`).
-  Chest, the program it is measured against, also solves self-stalemate,
-  helpmate and help-stalemate. On those three families MateProver has no answer.
-- **The selfmate goal is newer than the others and single-threaded.** It has its
-  own preconditioner (worth +124 positions of 200 on hard problems), its own
+- **The goals differ in maturity, not in availability.** All six ship and all
+  six are measured against the reference implementation in `docs/RESULTS.md`.
+  Directmate is the most tuned by a wide margin; the cooperative goals
+  (`--helpmate`, `--helpstalemate`) are a different search entirely — both sides
+  are OR nodes, so there is no defender, no proof-number preconditioner, no
+  restriction portfolio and no adversarial root split, none of which are defined
+  against a partner. The figures elsewhere on this page are **directmate**
+  figures and do not describe the others.
+- **The selfmate goal is newer than the directmate one.** It has its own
+  preconditioner (worth +124 positions of 200 on hard problems), its own
   verified certificates, and a restriction portfolio that measurably helps
-  (+17 of 200). It does use the root split, which is deterministic across thread
-  counts but measurably worthless — 1.06x — exactly as for directmate. Measured
-  reach at s#5–s#10 is 35.3% before the preconditioner; the tuned figure has not
-  been re-measured across the full corpus.
+  (+17 of 200). Measured reach at s#5–s#10 is 35.3% before the preconditioner;
+  the tuned figure has not been re-measured across the full corpus.
 - **The stalemate goal is measured, and it is at its ceiling.** On 579 composed
   problems from a public collection the engine solves 94.7%, with a real
   frontier: 100% through `=9`, 28.6% at `=12`, 9.1% at `=16`. Every restriction
@@ -396,9 +460,23 @@ immediately. Perft is a permanent gate for that reason.
   a constrained request never returns an unconstrained answer.
   `--allow-unimplemented` searches unrestricted instead. Chest 3.19 itself has
   none of these; they are WinChest extensions.
-- Beyond the frontier, more hardware does not help: parallelism is worth about
-  one extra position in forty per doubling, and root splitting nothing at all.
-  The remaining engineering headroom is under half a depth notch.
+- **Parallelism helps on one position far more than it used to, and the old
+  claim on this page was wrong.** It read "root splitting nothing at all", which
+  was measured against a route the split was never wired into. Corrected and
+  re-measured: on a depth-7 capture-quota search the split reaches **9.0x on 24
+  threads**. Most of that came from two fixes rather than from the search --
+  standing the proof-number preconditioner down under a variant rule, which had
+  been consuming 96% of the wall clock single-threaded, and freeing the shared
+  transposition table concurrently, which at a 4 GB budget was **44% of the run**
+  spent handing memory back after the answer was already known. What remains is
+  Amdahl: the parallel region is 95%+ busy, and the ceiling is the largest single
+  subtree. Architecture 109-115 has the whole sequence, including the two
+  conclusions it had to retract.
+- **Converting speed into reach is still the hard part.** A doubling of speed is
+  worth roughly one extra position in forty, so the 9.0x above is worth about
+  three depth-8 positions in forty and not a depth notch. Speed and reach are
+  different problems and this project has repeatedly measured that the second
+  does not follow from the first.
 
 ## Project context
 

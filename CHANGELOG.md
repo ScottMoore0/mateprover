@@ -770,3 +770,27 @@ claimed an attacker in check can never mate, appeared to save 48% of all nodes,
 and loses mates 4,034 times over ten mate-in-8 positions -- which is why the
 tool's ranking is lexicographic in counterexamples and not a weighted sum.
 See architecture 119.
+
+### Documentation reconciled with what actually ships
+
+The README had drifted several sessions behind the code, and two of its claims
+were not merely stale but wrong.
+
+- It announced **two** variant rules; there are three. x-escape — a side loses
+  when its own king's escape count reaches N — was undocumented, along with the
+  `--escape-count` diagnostic. The goals-by-rules matrix is now stated: six
+  goals, three rules, each rule per-side and composable.
+- Its Limitations section said MateProver "has no answer" for selfstalemate,
+  helpmate and helpstalemate. All three ship, are measured against the reference
+  implementation, and the same README said so eleven lines from the top. It now
+  describes how the cooperative goals differ instead — both sides are OR nodes,
+  so the preconditioner, the portfolio and the adversarial split are all
+  undefined there.
+- It said parallelism "is worth about one extra position in forty per doubling,
+  and root splitting nothing at all". The split is worth 9.0x on 24 threads. The
+  exchange rate between speed and reach is unchanged and still the point: 9.0x is
+  about three positions of forty, not a depth notch.
+- `docs/RESULTS.md` carried the same inert-root-split claim, with an argument
+  attached that was backwards. Refuting every sibling is what makes the work
+  divisible; it is PROVING that does not divide.
+- The three automation tools were entirely undocumented and now have a section.
