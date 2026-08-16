@@ -379,6 +379,17 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
     if (b.stm != s.attacker) {
         return {};
     }
+    // PREFETCH the table slot this node will probe, ~50 lines below, so the miss
+    // overlaps the move generation in has_legal_move rather than stalling after
+    // it. Issued here rather than beside the probe because a prefetch with no
+    // work behind it hides nothing.
+    //
+    // The cost is a wasted key construction at nodes that return before the
+    // probe -- a mated node, or one at depth 0. Whether that costs more than the
+    // overlap saves is a question for a measurement, not an argument; see 127.
+    if (s.tt_prefetch) {
+        s.tt.prefetch(tt_key(b, 0, 'A', s.attacker, s.goal));
+    }
     const bool have_move = has_legal_move(b, s.move_reserve, s.move_reserve_capacity,
                                           s.static_pseudo);
     if (!have_move) {

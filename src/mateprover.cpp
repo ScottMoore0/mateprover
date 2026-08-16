@@ -603,6 +603,8 @@ const BoolOption kBoolOptions[] = {
     {"--no-check-score", &SearchConfig::score_checks, false},
     {"--fast-check-score", &SearchConfig::fast_check_score, true},
     {"--exact-check-score", &SearchConfig::fast_check_score, false},
+    {"--tt-prefetch", &SearchConfig::tt_prefetch, true},
+    {"--no-tt-prefetch", &SearchConfig::tt_prefetch, false},
     {"--refutation-hints", &SearchConfig::refutation_hints, true},
     {"--no-refutation-hints", &SearchConfig::refutation_hints, false},
     {"--defender-history", &SearchConfig::defender_history_order, true},

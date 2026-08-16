@@ -1123,3 +1123,47 @@ sooner, cost 59%.
 Kept as a switch, defaulted off. Every proven depth is identical across the
 corpus with it on and off — only PVs differ, where duals exist — so it is exactly
 as soundness-neutral as claimed, and useless.
+
+### `d(3) = 9` exactly, under the rule where Black can only win by mate
+
+Depth 8 was already a proven refusal under `cap3:126`. Depth 9 is solved by
+**`1.b3`**, which wins against all twenty Black replies — 68,409,851,876 nodes
+over 6h37m. An exhibited strategy proves an upper bound (architecture 111) and
+the depth-8 refusal supplies the lower one, so this is exact: **`d(3) = 9` moves
+= 17 plies**. The first exact third-capture value in the project.
+
+Under the race rule `cap3+3` the bound remains `d(3) ≥ 10`. Not a contradiction —
+removing Black's winning condition removes Black *resources*, so the asymmetric
+problem is weakly easier to solve.
+
+Only five replies force all nine moves and they take **97% of the time**;
+`1...b5` collapses in three seconds.
+
+### Seven optimisation proposals, measured: one worked
+
+| proposal | estimated | measured |
+|---|---:|---:|
+| batch for a shared table | 1.5–3× | **0.97×** |
+| `reply_split` | 2–4× | **1.00×** |
+| independent lanes | 1.5–2× | **1.69×** |
+| retune `OrderWeights` | "possibly large" | **nothing beats the default** |
+| TT prefetch (`--tt-prefetch`, new) | 1.1–1.2× | **1.00×** |
+
+Six of seven estimates were wrong. The survivor is the only one that had a
+measurement behind it beforehand — 37% parallel efficiency at 24 threads, which
+correctly predicted that four lanes of six threads beat one of twenty-four.
+Node count *falls* 25% when they do: a wide search on one problem speculates,
+four narrow searches on four problems don't.
+
+`-M 12000` measured **15% slower than `-M 4000` at identical node counts** —
+pure memory latency. And the ceiling for all memory work is now bounded: the
+same search runs at 629K nodes/s against an 8 MB table that fits in cache
+against 357K on the working 8 GB table, so **1.76×** is everything prefetch,
+large pages and layout can ever return between them. Prefetch collected none of
+it and is defaulted off.
+
+`tools/candidates.py` ships the restricted-root candidate test: two-phase
+scheduling for the bimodal cost distribution, four lanes, iterative deepening,
+and raw engine output written to disk *before* anything is parsed — after a
+driver discarded 6h37m worth of principal variations by keeping only its own
+summary.

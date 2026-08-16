@@ -121,6 +121,10 @@ struct SearchConfig {
     bool fast_check_score = false;
     bool refutation_hints = false;
     bool proof_hints = true;
+    // Prefetch a node's table slot before the work that precedes its probe.
+    // Pure hint: it can change when a line arrives in cache, never which line.
+    // Default on only if it measures; see 127.
+    bool tt_prefetch = false;
     // Order defender replies by from/to refutation history. Soundness-neutral:
     // it permutes a list that is searched until one member refutes, and which
     // member refutes does not depend on the order they are tried in. Default off

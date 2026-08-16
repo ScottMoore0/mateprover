@@ -204,6 +204,7 @@ did. If you are reading it for the first time:
 - [124. A Heartbeat That Existed Only Where It Was Least Needed](#124-a-heartbeat-that-existed-only-where-it-was-least-needed)
 - [125. Depth 9 Cost 206x, And Not One Node Of It Was Slower](#125-depth-9-cost-206x-and-not-one-node-of-it-was-slower)
 - [126. The Defender Ordering Was Already Almost Perfect](#126-the-defender-ordering-was-already-almost-perfect)
+- [127. Seven Proposals, One Survivor](#127-seven-proposals-one-survivor)
 
 ## Impact-Ordered Architecture
 
@@ -7875,10 +7876,22 @@ run. Measured:
 **d(3) >= 9 holds under both**, and d(1) = 3 and d(2) = 5 are identical under
 either rule with identical principal variations.
 
-The two have since parted company at the frontier, and the difference must not be
-glossed. Depth 9 has been run under the RACE rule only, so what is established is
-**d(3) >= 10 under `cap3+3` and d(3) >= 9 under `cap3+126`**. Quoting the
-stronger bound for the alternative would be quoting a search nobody has run.
+The two then parted company, and under the alternative the answer is now EXACT:
+
+**d(3) = 9 under `cap3+126`, and d(3) >= 10 under `cap3+3`.**
+
+Depth 8 is a proven refusal under both. Under the alternative, depth 9 is solved
+by **`1.b3`**, which wins against all twenty Black replies -- 68,409,851,876
+nodes over 6h37m. Exhibiting a strategy proves an upper bound (111), and a proven
+refusal at 8 supplies the lower one, so 9 is exact. That the two rules give 9 and
+>= 10 is not a contradiction: removing Black's winning condition removes Black
+RESOURCES, so the alternative is weakly easier to solve, exactly as this section
+says below.
+
+Only five of the twenty replies -- `Nc6`, `d6`, `e6`, `f6`, `g6`, the central
+ones that contest the plan -- force White to use all nine moves, and they consume
+**97% of the wall clock**. `1...b5` collapses in three seconds at `dm 6`. See 127
+for what that distribution does to any attempt to parallelise the work.
 
 But the two problems diverge, and in the direction opposite to the obvious one.
 Removing Black's winning condition removes Black RESOURCES, so every White
@@ -9848,3 +9861,115 @@ reply ORDER -- a third of defender replies at depth 8 are at nodes that must be
 fully expanded, and those are true conjunctions, which is the one shape 111 says
 is worth parallelising. That mechanism exists and is disabled, having been
 measured 4.4x slower when the losing share was small enough not to matter.
+
+### 127. Seven Proposals, One Survivor
+
+126 ended by listing what was left for a proof-shaped run like the candidate
+test that settled d(3) under cap3:126. Seven items, each with an estimate. All
+seven were then measured on the same benchmark -- the four cheapest Black
+replies to 1.b3, ~690M nodes, every one a PROOF, which is the shape 125 and 126
+do not cover.
+
+| # | proposal | estimated | **measured** |
+|---:|---|---:|---:|
+| 1 | keep the raw engine output | -- | not a speedup; prevents redoing the work |
+| 2 | batch for a shared table | 1.5-3x | **0.97x** |
+| 3 | `reply_split` | 2-4x | **1.00x** |
+| 4 | independent lanes | 1.5-2x | **1.69x** |
+| 5 | two-phase probe | -- | scheduling only |
+| 6 | retune `OrderWeights` | "possibly large" | **no setting beats the default** |
+| 7 | TT prefetch | 1.1-1.2x | **1.00x** |
+
+**Six of seven estimates were wrong, and the one that held was the only one that
+had a measurement behind it beforehand** -- the 9.01x-on-24-threads figure from
+122, which says parallel efficiency is 37% and therefore that narrow lanes
+should beat one wide search.
+
+#### What worked, and why it is not a scheduling trick
+
+Four lanes of six threads against one lane of twenty-four:
+
+| config | secs | nodes |
+|---|---:|---:|
+| 1 x 24t | 167.9 | 689,415,989 |
+| 2 x 12t | 108.6 | 592,555,272 |
+| **4 x 6t** | **99.4** | **517,694,908** |
+| 4 x 4t | 110.1 | 443,215,930 |
+
+Note the node count FALLING 25%. This is not better core utilisation: a
+twenty-four-thread search on ONE problem speculates, and four six-thread
+searches on FOUR problems do not. The last row uses only sixteen threads, which
+is why it loses despite the lowest node count of all.
+
+**The parallelism this workload has is across problems, not inside one.** That
+is the same fact as 126's 97% first-reply refutation seen from the other side,
+and it is the reason a GPU cannot help: ten thousand lanes need ten thousand
+independent problems, and one hard position does not decompose into them --
+subtree sizes in the d(3) candidate test spanned 3 s to 2h14m, a 2,700x range,
+so nine thousand lanes would idle waiting on a few dozen.
+
+#### Why batching failed
+
+The claim was that subtrees after `1.b3 Nh6` and `1.b3 Na6` transpose heavily,
+since White plays the same plan against each. They do not: sharing the table
+across the four saved 0.8% of nodes. **The same plan is not the same tree.**
+
+Worse, `-M 12000` ran **15% slower than `-M 4000` at the same node count**. Not
+a search effect -- identical work, more time. The knee has moved below 4 GB and
+the cost is pure memory latency. That is the fourth time a memory conclusion in
+this document has been overturned by something moving underneath it (39, 110,
+121, 123, here), and the rule 123 states holds again.
+
+#### Why the ordering weights could not be improved
+
+Screened on a deterministic single-threaded proof:
+
+| weights `c,p,q,r,m` | nodes |
+|---|---:|
+| **10000,8000,50,40,30** (default) | **5,337,061** |
+| 40000,8000,50,40,30 | 5,337,061 |
+| 10000,8000,300,200,150 | 5,337,061 |
+| 10000,8000,10,10,10 | 6,083,730 |
+| **0**,8000,50,40,30 | **29,177,068** |
+
+Three settings tie to the digit because the capture bonus SATURATES: once it
+dominates the piece terms nothing else can reorder anything. Zeroing it costs
+5.5x. The knob has one meaningful position and is already in it.
+
+The hypothesis was that the weights are mate-oriented while the winning moves
+here are quiet -- `b3`, `e3`, `Nf3`. Wrong: the setup moves are quiet, but the
+tree below them is capture-hunting, and captures-first is right there.
+
+#### Prefetch: implemented, sound, and worth nothing
+
+`--tt-prefetch` issues the slot's prefetch at the top of an attacker node, so
+the miss overlaps `has_legal_move` rather than stalling after it. Seven paired
+single-threaded runs, alternated so drift falls on both:
+
+    median 0.997x   mean 1.002x   range 0.988x .. 1.026x
+
+Node counts identical in every pair (5,337,061), which is the soundness claim
+holding exactly. Kept as a switch, defaulted off.
+
+The ceiling was known before it was written and is the useful number: the same
+search runs at **629K nodes/s against an 8 MB table that fits in cache and 357K
+against the working 8 GB table**, so **1.76x** is the whole of what any memory
+work -- prefetch, large pages, layout -- can ever return. Prefetch collected
+none of it, which suggests the stall is not where a software hint can reach.
+Large pages attack the TLB rather than the cache and remain untested; they need
+a privilege this machine has not granted.
+
+#### The harness was the bottleneck, not the engine
+
+Four defects in one day, all in the shell around the prover, none in the prover:
+
+- a `--time-limit` killing a search whose output was then read as a refutation
+- `sort | head -6`, which would have hidden a surviving reply at the bottom
+- a driver that parsed `bm` and `dm` out of each result and DISCARDED the
+  principal variations, losing 6h37m of proof to a two-digit summary
+- an equality assertion on parallel node counts, which are not deterministic
+
+The third cost more time than every optimisation on this list would have saved.
+`tools/candidates.py` is the response: raw output written before anything is
+parsed, a missing verdict reported as BROKEN rather than as a number, two-phase
+scheduling for the bimodal cost distribution, and four lanes by default.
