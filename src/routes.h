@@ -484,7 +484,18 @@ RouteResult run_dfpn_route(Search& s, const Board& b, int max_depth) {
                 result.proof = std::move(split);
             }
         } else {
-            result.proof = prove_attacker(s, b, depth);
+            // The SOLO path needs a heartbeat too, and had none: the monitor
+            // used to live inside the root split, so a single-threaded search --
+            // including every portfolio lane, which gets one thread apiece --
+            // ran silently however long it took.
+            std::atomic<std::uint64_t> solo_nodes{0};
+            s.node_report = &solo_nodes;
+            {
+                HeartbeatMonitor<std::function<std::uint64_t()>> hb(
+                    s, b, depth, [&solo_nodes] { return solo_nodes.load(std::memory_order_relaxed); });
+                result.proof = prove_attacker(s, b, depth);
+            }
+            s.node_report = nullptr;
         }
         if (result.proof.ok) {
             result.proved_depth = static_cast<int>((result.proof.pv.size() + 1) / 2);

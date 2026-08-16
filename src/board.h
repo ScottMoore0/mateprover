@@ -695,6 +695,70 @@ inline void publish_root_move(const Search& s, const Board& b, int depth,
     std::cerr.flush();
 }
 
+// A heartbeat for ONE depth, wherever that depth is searched.
+//
+// This lived inside run_root_split_depth, so it existed only when the root
+// split did. A single-threaded search got no heartbeat at all -- and so did
+// every portfolio lane, because dividing eight threads over nine lanes leaves
+// each of them exactly one. `--heartbeat` was silently doing nothing in the two
+// configurations most likely to need it, which is the same shape of fault as an
+// eviction counter reading the wrong table.
+//
+// `count` is any callable returning the nodes searched so far. The split passes
+// a sum over its workers' published counters; a solo search passes its own.
+// Reads are relaxed and stale by design: a heartbeat a few thousand nodes
+// behind is a heartbeat that is fine.
+template <typename Count>
+class HeartbeatMonitor {
+public:
+    HeartbeatMonitor(const Search& s, const Board& b, int depth, Count count)
+        : s_(s), b_(b), depth_(depth) {
+        if (s.heartbeat_seconds <= 0.0 || !s.progress_authority) {
+            return;
+        }
+        try {
+            thread_ = std::thread([this, count] {
+                const auto tick = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(s_.heartbeat_seconds));
+                auto next = std::chrono::steady_clock::now() + tick;
+                while (!stop_.load(std::memory_order_relaxed)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    if (std::chrono::steady_clock::now() < next) {
+                        continue;
+                    }
+                    next += tick;
+                    std::lock_guard<std::mutex> lock(progress_stream_mutex());
+                    std::cerr << "progress " << fen4(b_) << "; searching depth " << depth_
+                              << "; acn " << count() << "; acs "
+                              << std::chrono::duration<double>(
+                                     std::chrono::steady_clock::now() - s_.search_start).count()
+                              << ";\n";
+                    std::cerr.flush();
+                }
+            });
+        } catch (const std::system_error&) {
+            // A refused thread costs visibility and nothing else.
+        }
+    }
+
+    ~HeartbeatMonitor() {
+        if (thread_.joinable()) {
+            stop_.store(true, std::memory_order_relaxed);
+            thread_.join();
+        }
+    }
+
+    HeartbeatMonitor(const HeartbeatMonitor&) = delete;
+    HeartbeatMonitor& operator=(const HeartbeatMonitor&) = delete;
+
+private:
+    const Search& s_;
+    const Board& b_;
+    int depth_;
+    std::atomic<bool> stop_{false};
+    std::thread thread_;
+};
+
 bool attacked_on_planes(std::uint64_t occ,
                         const std::array<std::uint64_t, 2>& by_color,
                         const std::array<std::uint64_t, 6>& by_type,

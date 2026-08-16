@@ -844,51 +844,21 @@ if (s.attacker_proofs.probe(hint_key, hint_move)) {
     // nothing whatever about the position, so it says "searching" where the
     // others say "proven".
     //
-    // Joined by a guard rather than at the end of the function: this function
-    // returns from two places and a monitor left running would reference a
-    // destroyed frame.
-    std::atomic<bool> monitor_stop{false};
-    std::thread monitor;
-    struct MonitorGuard {
-        std::atomic<bool>& stop;
-        std::thread& thread;
-        ~MonitorGuard() {
-            if (thread.joinable()) {
-                stop.store(true, std::memory_order_relaxed);
-                thread.join();
+    // The monitor is an OBJECT so its destructor joins it: this function returns
+    // from two places and a monitor left running would reference a destroyed
+    // frame. The implementation is shared with the solo path in run_dfpn_route
+    // -- see HeartbeatMonitor -- because it lived only here for a long time, and
+    // a single-threaded search therefore had no heartbeat at all however long it
+    // ran.
+    const std::uint64_t heartbeat_base = s.stats.nodes;
+    HeartbeatMonitor<std::function<std::uint64_t()>> monitor(
+        s, b, depth, [&slots, heartbeat_base] {
+            std::uint64_t total = heartbeat_base;
+            for (const auto& slot : slots) {
+                total += slot->nodes.load(std::memory_order_relaxed);
             }
-        }
-    } monitor_guard{monitor_stop, monitor};
-    if (s.heartbeat_seconds > 0.0 && s.progress_authority) {
-        const std::uint64_t base = s.stats.nodes;
-        try {
-            monitor = std::thread([&, base] {
-                const auto tick = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                    std::chrono::duration<double>(s.heartbeat_seconds));
-                auto next = std::chrono::steady_clock::now() + tick;
-                while (!monitor_stop.load(std::memory_order_relaxed)) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    if (std::chrono::steady_clock::now() < next) {
-                        continue;
-                    }
-                    next += tick;
-                    std::uint64_t total = base;
-                    for (const auto& slot : slots) {
-                        total += slot->nodes.load(std::memory_order_relaxed);
-                    }
-                    std::lock_guard<std::mutex> lock(progress_stream_mutex());
-                    std::cerr << "progress " << fen4(b) << "; searching depth " << depth
-                              << "; acn " << total << "; acs "
-                              << std::chrono::duration<double>(
-                                     std::chrono::steady_clock::now() - s.search_start).count()
-                              << ";\n";
-                    std::cerr.flush();
-                }
-            });
-        } catch (const std::system_error&) {
-            // A refused thread costs visibility and nothing else.
-        }
-    }
+            return total;
+        });
 
     std::vector<std::thread> pool;
     // max(): a zero worker count would make this reserve SIZE_MAX and throw.

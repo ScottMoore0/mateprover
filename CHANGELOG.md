@@ -991,3 +991,71 @@ immediately. Black's counter-quota was doing substantial pruning.
 104 also gains the `d(1)` and `d(2)` tables it never had — they were a single
 prose sentence with no node counts beside a `d(3)` result carrying four rows and
 two independent configurations.
+
+
+### `d(3) ≥ 10`, proven
+
+Depth 9 of the capture-quota search from the starting array returned
+`proven no solution within 9` after **3 h 04 min** and 68,315,107,395 nodes.
+White cannot force three captures in nine moves. All nine depths ran in one
+process against one table, so the series is a controlled measurement rather than
+a comparison between builds:
+
+| depth | plies | nodes at this depth | ratio | wall clock |
+|---:|---:|---:|---:|---:|
+| 6 | 11 | 1,713,416 | 11.7× | 2.2 s |
+| 7 | 13 | 20,106,922 | 11.7× | 4.2 s |
+| 8 | 15 | 330,029,716 | 16.4× | 46.8 s |
+| 9 | 17 | **67,963,096,502** | **205.9×** | 11,037.7 s |
+
+The bound is `d(3) ≥ 10` under the race rule `cap3+3`. Under the alternative
+`cap3+126`, where Black cannot win by captures, depth 9 has not been run and what
+stands is `d(3) ≥ 9`.
+
+**Two projections in the documentation were wrong and are corrected.** Depth 9
+was quoted at 90–240 hours in architecture 104 and at 20–40 minutes in 122; it
+took 3.07 hours. Both extrapolated a growth factor across builds that were
+changing underneath them by a factor of six.
+
+### Depth 9 cost 206× the depth before it, and the reason is not the machine
+
+A twelve-fold break from a trend that had held for four depths usually means a
+bug. It does not here, and the first measurement rules out every hardware
+explanation: the node **rate was flat**, 7.92 M/s early against 5.35 M/s late and
+6.19 M/s overall, versus depth 8's 5.77 M/s. Depth 9 ran *faster per node* than
+depth 8. No memory wall, no table thrash — 206× more nodes at an unchanged cost
+each.
+
+What changed is the defender. A depth increment adds one attacker ply and one
+defender ply, so growth factors as `R ~ W × B`. Disproving needs *every*
+attacker move to fail but only *one* defender move to hold, so `B` is 1 whenever
+the first move tried works. Depths 4–7 sit at `R ≈ 11.7`, which with `W ≈ 12`
+means `B ≈ 1.0` — Black refutes immediately, every time. Depth 9 at `R = 205.9`
+means **`B ≈ 17`**: Black now tries seventeen moves before finding one that holds.
+
+That is the d(2) sacrifice-and-check mechanism starting to extend, and it is the
+signature of approaching the true `d(3)`, where no Black move refutes at all.
+Depth 8's 16.4× was the leading edge, small enough at the time to read as noise.
+
+Table capacity is a competing explanation that produces the same shape and is
+**recorded as unresolved**; separating them needs a depth-9 re-run at two table
+sizes, at three hours each. Depth 10 now projects to 26–38 days, with the caveat
+that projections in this project have a poor record.
+
+### Fixed: `--heartbeat` was inert on every single-threaded search
+
+The monitor was written inside `run_root_split_depth`, so it existed only when
+the root split did. A `--threads 1` search printed nothing however long it ran,
+and so did **every portfolio lane**, since dividing eight threads over nine lanes
+gives each of them one. The flag accepted its argument, reported no error, and
+did nothing, in the two configurations most likely to be left unattended.
+
+It is now `HeartbeatMonitor<Count>`, a scoped object shared by both paths whose
+destructor joins the thread — which the split needed a hand-rolled guard for,
+because that function returns from two places. Verified on both: 38 lines on a
+38-second single-threaded depth 7 that previously printed nothing.
+
+Found by testing the instrument on a workload that finishes in seconds, after an
+evening spent watching a three-hour run through it. `--progress-moves` was
+checked at the same time and was always sound, being published from
+`prove_attacker` rather than from the split.

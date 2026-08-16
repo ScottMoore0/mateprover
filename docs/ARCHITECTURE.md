@@ -181,7 +181,7 @@ did. If you are reading it for the first time:
 - [101. Finding-Only Mode Is A Frontier Tool, And Costs On Everything Else](#101-finding-only-mode-is-a-frontier-tool-and-costs-on-everything-else)
 - [102. Quota Dominance Is Sound, And Cannot Pay](#102-quota-dominance-is-sound-and-cannot-pay)
 - [103. The Quota Ladder: The Premise Was Right And The Arithmetic Was Not](#103-the-quota-ladder-the-premise-was-right-and-the-arithmetic-was-not)
-- [104. d(3) >= 9, Confirmed Twice](#104-d3--9-confirmed-twice)
+- [104. d(3) >= 10](#104-d3--10)
 - [105. A Progress Stream That Publishes Theorems, Not Estimates](#105-a-progress-stream-that-publishes-theorems-not-estimates)
 - [106. The One Line In The Stream That Behaves Like Stockfish's](#106-the-one-line-in-the-stream-that-behaves-like-stockfishs)
 - [107. x-escape: The Rule That Is Measured Rather Than Counted](#107-x-escape-the-rule-that-is-measured-rather-than-counted)
@@ -201,6 +201,8 @@ did. If you are reading it for the first time:
 - [121. Half The Wall Clock Of A Deep Search Was Iterating A Hash Map To Throw Entries Away](#121-half-the-wall-clock-of-a-deep-search-was-iterating-a-hash-map-to-throw-entries-away)
 - [122. The Flat Table, And The Thread Cap That Was Never Right](#122-the-flat-table-and-the-thread-cap-that-was-never-right)
 - [123. A Budget Divided By The Wrong Entry Size](#123-a-budget-divided-by-the-wrong-entry-size)
+- [124. A Heartbeat That Existed Only Where It Was Least Needed](#124-a-heartbeat-that-existed-only-where-it-was-least-needed)
+- [125. Depth 9 Cost 206x, And Not One Node Of It Was Slower](#125-depth-9-cost-206x-and-not-one-node-of-it-was-slower)
 
 ## Impact-Ordered Architecture
 
@@ -7766,7 +7768,7 @@ more than the work. Both were cheap to measure and neither was predictable from
 the argument, which is the case for measuring rather than reasoning about
 performance changes.
 
-### 104. d(3) >= 9, Confirmed Twice
+### 104. d(3) >= 10
 
 **WHICH PROBLEM THIS IS.** Every figure in this section is `cap3+3`: BOTH sides
 win outright on their third capture. So d(N) is not "how fast can White make N
@@ -7777,8 +7779,8 @@ below, with measurements, because the two are genuinely different questions and
 the difference is not small.
 
 White forces one capture from the starting array in three moves and two in five.
-Three takes at least nine -- four more moves than two did, and the jump is large
-enough to be worth stating how it was established.
+Three takes **at least ten** -- five more moves than two did, and the jump is
+large enough to be worth stating how it was established.
 
 | quota 1 | verdict | nodes |
 |---|---|---:|
@@ -7803,31 +7805,56 @@ lands. Restore Black to 3 and the same line works again. That is the whole of
 what "race" means here, and it is why the asymmetric problem below is a different
 question rather than a relabelling.
 
-| quota 3 | verdict | nodes | time |
-|---|---|---|---|
-| depth 6 | no win | 1,655,628 | 2.00 s |
-| depth 7 | no win | 20,499,067 | 9.26 s |
-| depth 8 | **no win** | 1,294,199,343 | 1,747 s |
-| depth 8, re-run | **no win** | 1,292,432,074 | 2,093 s |
+Quota 3 is the one that took work. Every depth below comes from a SINGLE run of
+the current build -- one process, one table, iterative deepening from depth 1 --
+which is what makes the ratio column meaningful. Compared across builds it would
+be a comparison between engines that were not the same engine.
 
-Every row is from the UNRESTRICTED lane, which is the only one permitted to
-assert "no solution"; a restricted lane that finds nothing has proved nothing.
-None is a timeout.
+| depth | plies | nodes at this depth | ratio | wall clock |
+|---:|---:|---:|---:|---:|
+| 4 | 7 | 12,918 | 14.9x | 1.9 s |
+| 5 | 9 | 147,013 | 11.4x | 2.0 s |
+| 6 | 11 | 1,713,416 | 11.7x | 2.2 s |
+| 7 | 13 | 20,106,922 | 11.7x | 4.2 s |
+| 8 | 15 | 330,029,716 | 16.4x | 46.8 s |
+| 9 | 17 | **67,963,096,502** | **205.9x** | 11,037.7 s |
 
-The two depth-8 runs differ in configuration -- the second has the any-depth
-refutation axioms disabled -- and their node counts differ by 0.14%, which is
-thread scheduling rather than a change of search. Depths 6 and 7 were also run
-with the axioms off and produced node counts identical to the digit, so the
-axioms contribute nothing to this result and cannot be the source of a false
-refusal. Depth 7 was additionally cross-checked sequentially.
+`proven no solution within 9`, in three hours and four minutes, 68.3 billion
+nodes cumulative. Every row is from the UNRESTRICTED lane, which is the only one
+permitted to assert "no solution"; a restricted lane that finds nothing has
+proved nothing. None is a timeout.
 
-Depth 8 cost 188x depth 7, which itself cost 21x depth 6; the growth factor is
-itself growing. **Depth 9 projects to between 90 and 240 hours** on 24 cores, so
-d(3) exactly is out of reach by search alone. 102 and 103 were the two
-candidates for closing that gap and both are rejected.
+**d(3) >= 10.** Why depth 9 cost 206x when the four depths before it cost 12x
+apiece is 125, and it is not a defect: the node RATE was flat across the whole
+run and the defender simply stopped getting a free cutoff.
 
-The context for how large this became: before 99, depth 6 alone ran twelve hours
-and returned a timeout at 13.98 billion nodes. It now answers in two seconds.
+Earlier configurations were cross-checked before this run: depths 6 and 7 with
+the any-depth refutation axioms disabled produced node counts identical to the
+digit, and depth 7 was additionally checked sequentially, so the axioms
+contribute nothing here and cannot be the source of a false refusal.
+
+#### The projection was wrong by a factor of forty
+
+This section previously read "**Depth 9 projects to between 90 and 240 hours** on
+24 cores, so d(3) exactly is out of reach by search alone." It took **3.07
+hours** -- wrong by between 29x and 78x, and wrong in the direction that stopped
+the run being attempted for as long as it stood.
+
+The projection extrapolated a growth factor forward while 121, 122 and 123 were
+removing a factor of six from the constant underneath it. It was not a bad
+extrapolation of the tree; it was an extrapolation of an engine that stopped
+existing. **A projection is only valid for the engine it was measured on** --
+the same rule 123 states for memory findings, for the same reason, and this is
+the second time it has had to be learned.
+
+The old depth-8 row this section used to carry, 1,294,199,343 nodes in 1,747 s,
+is from that build. The current engine proves the same depth in 46.8 s and
+330,029,716 nodes: 3.9x fewer nodes and 37x less wall clock. For scale in the
+other direction: before 99, depth 6 alone ran twelve hours and timed out at 13.98
+billion nodes. It now answers in 2.2 seconds.
+
+Depth 10 is projected at 26 to 38 days on this machine, and that projection
+carries exactly the caveat above.
 
 #### The alternative rule: Black cannot win by captures
 
@@ -7842,9 +7869,13 @@ run. Measured:
 | 7 | no win, 22,427,185 | no win, 21,742,346 |
 | 8 | no win, 352,010,893 | no win, **1,533,755,964** |
 
-**d(3) >= 9 holds under both**, so the headline survives the ambiguity, as do
-d(1) = 3 and d(2) = 5, which are identical under either rule with identical
-principal variations.
+**d(3) >= 9 holds under both**, and d(1) = 3 and d(2) = 5 are identical under
+either rule with identical principal variations.
+
+The two have since parted company at the frontier, and the difference must not be
+glossed. Depth 9 has been run under the RACE rule only, so what is established is
+**d(3) >= 10 under `cap3+3` and d(3) >= 9 under `cap3+126`**. Quoting the
+stronger bound for the alternative would be quoting a search nobody has run.
 
 But the two problems diverge, and in the direction opposite to the obvious one.
 Removing Black's winning condition removes Black RESOURCES, so every White
@@ -7856,9 +7887,10 @@ so those lines run to full depth before failing.
 
 Depths 5 to 7 agree within 3%; the divergence appears at depth 8, which is where
 lines first get long enough for Black to accumulate three captures. The headline
-result is the same, the cost of establishing it is not, and a depth-9 attempt
-under the alternative rule should be budgeted at several times the race version's
-already considerable expense.
+result is the same as far as both have been taken, the cost of establishing it is
+not, and a depth-9 attempt under the alternative rule should be budgeted at
+several times the race version's three hours -- 4.4x at depth 8, and the factor
+was still growing.
 
 ### 105. A Progress Stream That Publishes Theorems, Not Estimates
 
@@ -9475,6 +9507,12 @@ against the 35-90 HOURS this document was quoting a day ago.
 The exponential is untouched. Branching is 12-15x per ply, so all of it together
 is a fifth of one ply, and depth 10 remains a week and a half away.
 
+**Both of those numbers were wrong, in opposite directions.** Depth 9 took 3.07
+hours rather than 20-40 minutes, and depth 10 is 26-38 days rather than a week
+and a half, because the 12-15x branching assumption this paragraph rests on broke
+at exactly the depth it was being used to predict. 125 has the measurement and
+the reason. The 4.75x above is unaffected -- it was measured, not projected.
+
 ### 123. A Budget Divided By The Wrong Entry Size
 
 `entry_capacity_for_mb` divides a megabyte budget by `EST_BYTES_PER_ENTRY`, which
@@ -9516,3 +9554,105 @@ divided by the size of an entry the engine had stopped allocating.
 
 Depth 8 across this line of work: **366 s -> 156 s -> 77 s -> 61 s**, a factor of
 six, and not one second of it from the search.
+
+### 124. A Heartbeat That Existed Only Where It Was Least Needed
+
+`--heartbeat S` prints a status line every S seconds so a long search says
+something between one completed depth and the next. It was written inside
+`run_root_split_depth`, so it existed only when the root split did.
+
+A single-threaded search therefore had no heartbeat at all. Neither did any
+portfolio lane -- dividing eight threads over nine lanes gives each of them
+exactly one, so the flag was silently inert in **both** of the configurations
+most likely to be left running unattended. The failure mode is not a wrong
+number, it is a flag that accepts its argument, reports no error, and does
+nothing, which is the same shape as the eviction counter in 114 that read a table
+the search never used.
+
+It was found by testing the instrument on a workload that finishes in seconds,
+after an evening spent watching a three-hour run through it. The lesson is cheap
+and repeatable: **an instrument has to be tested somewhere the answer is already
+known**, and a long search is the worst place to discover it is not reporting.
+
+The monitor is now `HeartbeatMonitor<Count>` in `board.h`, a scoped object whose
+destructor joins the thread -- which is what the split's hand-rolled version
+needed a separate `MonitorGuard` for, because that function returns from two
+places and a monitor outliving the frame it reads would be reading freed memory.
+`Count` is any callable returning nodes-so-far: the split passes a sum over its
+workers' published counters, the solo path passes its own. Verified firing on
+both paths, 38 lines on a 38-second single-threaded depth 7 that previously
+printed nothing.
+
+`--progress-moves` was checked at the same time and was always sound, because it
+is published from `prove_attacker` rather than from the split.
+
+### 125. Depth 9 Cost 206x, And Not One Node Of It Was Slower
+
+The nine-depth series in 104 grows 14.9x, 11.4x, 11.7x, 11.7x, 16.4x -- and then
+**205.9x**. A twelve-fold break from a trend that had held for four consecutive
+depths is the sort of number that is usually a bug, so it is worth recording why
+it is not.
+
+**The rate never moved.** Sampled from the run's own progress stream:
+
+| window (min) | nodes in window | rate |
+|---|---:|---:|
+| 0.0 - 12.8 | 6,071,550,604 | 7.92 M/s |
+| 50.8 - 69.8 | 6,788,513,792 | 5.95 M/s |
+| 107.8 - 126.8 | 7,402,668,032 | 6.49 M/s |
+| 164.8 - 183.8 | 6,097,879,040 | 5.35 M/s |
+
+6.19 M/s overall against depth 8's 5.77 M/s. Depth 9 ran **faster per node** than
+depth 8 did. There is no memory wall here, no table thrash, no lookup collapse:
+206x more nodes, 181x more wall clock, and the difference is the rate improving
+slightly. Every hypothesis about the machine is dead on this table alone, which
+is why it is the first thing measured.
+
+#### What actually changed is the defender
+
+Each depth increment adds TWO plies, one attacker and one defender, so the growth
+factor decomposes as `R ~ W x B`.
+
+Disproof is asymmetric, and 111 is the whole of why. At an attacker node every
+move must fail, so `W` is full width -- roughly 12 here after transpositions,
+with no cutoff available. At a defender node ONE refutation suffices, so `B` is 1
+whenever the first move tried happens to hold.
+
+- Depths 4 to 7 sit at `R ~ 11.7`. With `W ~ 12` that is **`B ~ 1.0`**: Black's
+  first move refutes essentially every time. "Do not concede three captures in
+  seven moves" is so easy that nearly any move does it.
+- Depth 9 is `R = 205.9`. With `W ~ 12` that is **`B ~ 17`**: Black now tries
+  about seventeen moves before finding one that holds.
+
+The conclusion survives the uncertainty in the split. Even if `W` rose to 20 as
+the position opened, `B` is still about 10. It went from order-1 to order-10, and
+that is the entire result.
+
+Structurally this is the d(2) mechanism failing to extend. At depth 9 White
+finally has room to build the sacrifice-then-check sequences that won quota 2 --
+`3.Qxf7+ Kxf7 4.Bc4+ d5 5.Bxd5+` -- and most Black replies now lose to them. Not
+all, so the search must enumerate the survivors. At the true d(3), by definition,
+zero Black moves refute and `B` reaches full width.
+
+**Depth 8's 16.4x was the warning.** 11.7, 11.7, 16.4, 205.9: the uptick was the
+leading edge of the same effect, small enough at the time to read as noise.
+
+#### The competing explanation, and how to settle it
+
+Table capacity. Depths 1 to 8 total 352M nodes against roughly 134M entries in
+the 8 GB flat table; depth 9 pushes 68 billion through it. A hit-rate collapse
+produces re-search that looks exactly like defender widening from the outside.
+
+The memory scaling in 123 showed depth-8 node count only weakly sensitive to `-M`
+past a floor, which favours the defender reading -- but that was measured below
+the break, and 123's own rule says a memory finding is valid only for what it was
+measured on. The discriminator is a depth-9 re-run at two table sizes, and at
+three hours each that is a real cost rather than a free check. **Unresolved, and
+recorded as unresolved.**
+
+#### What it predicts
+
+`B` is still climbing toward full width, so `R(10) >= 206` and probably more:
+13.3 to 20.5 trillion nodes, **26 to 38 days** at the measured rate. The flat
+15x-per-ply model that produced the "2 days" figure is dead, and it is the second
+projection in this document to be killed by the run it was projecting.
