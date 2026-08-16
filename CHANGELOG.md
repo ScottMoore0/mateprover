@@ -1167,3 +1167,29 @@ scheduling for the bimodal cost distribution, four lanes, iterative deepening,
 and raw engine output written to disk *before* anything is parsed — after a
 driver discarded 6h37m worth of principal variations by keeping only its own
 summary.
+
+### The reachability bound, measured and dead
+
+Architecture 127 named a contact-distance prune the largest remaining lever: no
+attacker man within reach of a defender man means no capture, so a node needing
+one could be cut unsearched. It was the only candidate that cuts *node count*
+rather than time per node.
+
+`contact` is now a predicate feature — empty-board move distance from any
+attacker man to any defender-occupied square, BFS tables built once. Measured
+over 3,053,854 attacker nodes:
+
+| predicate | fires |
+|---|---:|
+| `contact>=2` | **0** |
+| `contact>=1` | 3,053,854 |
+
+Exactly 1 everywhere. Admissibility demanded ignoring obstruction — a cleared
+board can only shorten a journey, never lengthen it — but a queen on an empty
+board reaches nearly every square in one move. **The obstruction was the whole
+bound.** Keeping it restores the power and loses the soundness, since blockers
+move; a version that survives has to reason about which blockers can vacate in
+time, which is a search rather than a bound.
+
+Kept as a feature, inert unless `--predicate` names it, so the result is
+reproducible and stronger formulations can be tested the same way.

@@ -205,6 +205,7 @@ did. If you are reading it for the first time:
 - [125. Depth 9 Cost 206x, And Not One Node Of It Was Slower](#125-depth-9-cost-206x-and-not-one-node-of-it-was-slower)
 - [126. The Defender Ordering Was Already Almost Perfect](#126-the-defender-ordering-was-already-almost-perfect)
 - [127. Seven Proposals, One Survivor](#127-seven-proposals-one-survivor)
+- [128. The Reachability Bound Fires Zero Times](#128-the-reachability-bound-fires-zero-times)
 
 ## Impact-Ordered Architecture
 
@@ -9973,3 +9974,75 @@ The third cost more time than every optimisation on this list would have saved.
 `tools/candidates.py` is the response: raw output written before anything is
 parsed, a missing verdict reported as BROKEN rather than as a number, two-phase
 scheduling for the bimodal cost distribution, and four lanes by default.
+
+### 128. The Reachability Bound Fires Zero Times
+
+127 left one lever unmeasured and called it the largest: a sound pruning bound
+on CONTACT. A capture needs an attacker man and a defender man one move apart,
+so if no attacker man can reach any defender man inside the remaining depth, no
+capture is possible and a node needing one can be cut unsearched. It was the
+only candidate that reduces NODE COUNT rather than time per node, which is why
+it was worth more than everything else on the list put together.
+
+It is worth nothing. `contact` is **exactly 1 at every attacker node**.
+
+| predicate | fires | of |
+|---|---:|---:|
+| `contact>=2` | **0** | 3,053,854 attacker nodes |
+| `contact>=1` | 3,053,854 | all of them |
+| `contact<=0` | 0 | none |
+
+#### Why the relaxation destroys the thing it was relaxing
+
+Admissibility required ignoring obstruction: a piece with the board cleared can
+only reach a square SOONER than it really can, so a distance computed that way
+never overstates, and `contact > depth` would be a real theorem about geometry.
+
+But a queen on an empty board reaches nearly every square in one move, and a
+rook every square in two. **The obstruction was the entire content of the
+bound.** Removing it to gain soundness removed the bound.
+
+Keeping obstruction restores the power and loses the soundness, because blockers
+move: the d1 queen is walled in by the d2 pawn only until the pawn advances. A
+version that survives would have to reason about which blockers can vacate in
+time, and that is a search, not a bound.
+
+There is a second unsoundness the measurement never even reached. The relaxation
+assumes the DEFENDER stands still, and a defender who walks a man into an
+attacker's reach creates contact the empty-board distance never saw. Fixing that
+means proving the defender always HAS a move that keeps its men out of reach --
+a statement about zugzwang, not geometry, and nobody has proved it.
+
+#### What ships
+
+`contact` stays as a predicate FEATURE, inert unless `--predicate` names it, so
+the result is reproducible and any stronger formulation can be tested the same
+way. The empty-board distance tables are built once by BFS, 6 x 64 x 64 bytes.
+
+The observer worked exactly as predicate.h describes -- it took one command to
+kill a candidate that three sections had been calling the most promising thing
+left. It reported zero counterexamples, which means nothing at all: a predicate
+that never fires cannot be refuted, and cannot pay either.
+
+#### The ledger, closed
+
+| lever | verdict |
+|---|---|
+| independent lanes | **1.69x, measured, in use** |
+| restricted-root testing | **~20x on the d(3) question, already used** |
+| movegen and make_move | ~40% of runtime; a faster legality scheme is the last real per-node lever |
+| large pages | ~1.2x guessed, untested -- needs a privilege this machine has not granted |
+| memory work overall | **ceiling 1.76x**, measured |
+| TT prefetch | 1.00x |
+| lazy move selection | sorting costs nothing: bucket sort and `std::stable_sort` are indistinguishable |
+| batching for a shared table | 0.97x |
+| `reply_split` | 1.00x |
+| `OrderWeights` retuning | no setting beats the default |
+| **reachability pruning** | **never fires** |
+
+Eleven levers, two of which pay, and both of those are about running MORE SEARCHES
+AT ONCE or ASKING A CHEAPER QUESTION rather than making the search faster. The
+per-node engine is within ~2.8x of everything anyone has been able to measure,
+and the two largest wins of the work that produced this list -- iterative
+deepening at 12x and restricted-root testing at ~20x -- were both defaults and
+framings, not code.

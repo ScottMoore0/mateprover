@@ -53,6 +53,132 @@ inline int pred_popcount(std::uint64_t x) {
     return n;
 }
 
+// ---------------------------------------------------------------------------
+// CONTACT DISTANCE, and why it is only ever a feature
+//
+// A capture needs an attacker man and a defender man one legal move apart. So a
+// natural bound suggests itself: if no attacker man can reach any defender man
+// inside the remaining depth, no capture can happen, and a node needing one can
+// be cut without searching.
+//
+// The relaxation is admissible in one direction. Ignoring obstruction can only
+// SHORTEN a piece's journey, so a distance computed on an empty board never
+// overstates the real one, and `contact > depth` really does mean the attacker
+// cannot reach anybody -- IF the defender stands still.
+//
+// The defender does not stand still. A defender who walks a man into an
+// attacker's reach creates contact the empty-board distance never saw, and the
+// bound would then prune a node where a capture was available. That is not a
+// theoretical worry: it is the shape of section 74's unsound bound, which
+// reported solvable problems as unsolvable and shipped.
+//
+// A sound version has to argue that the defender always HAS a move keeping its
+// men out of reach, which is a statement about zugzwang, not about geometry.
+// Nobody has proved it. So this ships as a feature the observer can measure and
+// falsify, exactly as predicate.h says: `--predicate contact>depth` will report
+// its fire rate, what it would have saved, AND any counterexample. One
+// counterexample kills it, and finding none does not make it true.
+using EmptyBoardDist = std::array<std::array<std::array<std::uint8_t, 64>, 64>, 6>;
+
+inline const EmptyBoardDist& empty_board_distance() {
+    // BFS from every square for every piece type, on a board with nothing on it.
+    // Built once; 6 x 64 x 64 bytes.
+    static const auto table = [] {
+        EmptyBoardDist d{};
+        for (auto& per_type : d) {
+            for (auto& per_from : per_type) {
+                per_from.fill(63);
+            }
+        }
+        auto on = [](int f, int r) { return f >= 0 && f < 8 && r >= 0 && r < 8; };
+        static const int kN[8][2] = {{1,2},{2,1},{2,-1},{1,-2},{-1,-2},{-2,-1},{-2,1},{-1,2}};
+        static const int kK[8][2] = {{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1},{0,-1},{1,-1}};
+        for (int type = 0; type < 6; ++type) {
+            for (int from = 0; from < 64; ++from) {
+                std::array<std::uint8_t, 64>& dist = d[static_cast<std::size_t>(type)]
+                                                      [static_cast<std::size_t>(from)];
+                dist[static_cast<std::size_t>(from)] = 0;
+                std::vector<int> frontier{from}, next;
+                for (int step = 1; step <= 8 && !frontier.empty(); ++step) {
+                    next.clear();
+                    for (int sq : frontier) {
+                        const int f = sq % 8, r = sq / 8;
+                        auto reach = [&](int tf, int tr) {
+                            if (!on(tf, tr)) return;
+                            const std::size_t t = static_cast<std::size_t>(tr * 8 + tf);
+                            if (dist[t] > step) {
+                                dist[t] = static_cast<std::uint8_t>(step);
+                                next.push_back(static_cast<int>(t));
+                            }
+                        };
+                        if (type == PT_KNIGHT) {
+                            for (auto& m : kN) reach(f + m[0], r + m[1]);
+                        } else if (type == PT_KING) {
+                            for (auto& m : kK) reach(f + m[0], r + m[1]);
+                        } else if (type == PT_PAWN) {
+                            // A pawn CAPTURES diagonally, so contact for a pawn
+                            // means a diagonal step. Colour-agnostic on purpose:
+                            // taking both directions can only shorten, which is
+                            // the safe side of this relaxation.
+                            reach(f - 1, r + 1); reach(f + 1, r + 1);
+                            reach(f - 1, r - 1); reach(f + 1, r - 1);
+                        } else {
+                            const bool diag = (type == PT_BISHOP || type == PT_QUEEN);
+                            const bool orth = (type == PT_ROOK || type == PT_QUEEN);
+                            for (int dir = 0; dir < 8; ++dir) {
+                                const bool is_diag = (dir % 2) == 1;
+                                if (is_diag ? !diag : !orth) continue;
+                                for (int n = 1; n < 8; ++n) {
+                                    reach(f + kK[dir][0] * n, r + kK[dir][1] * n);
+                                }
+                            }
+                        }
+                    }
+                    frontier.swap(next);
+                }
+            }
+        }
+        return d;
+    }();
+    return table;
+}
+
+// Fewest moves any attacker man needs to stand where a defender man stands.
+inline int contact_distance(const Board& b, Color attacker) {
+    const EmptyBoardDist& d = empty_board_distance();
+    const std::uint64_t theirs = b.by_color[other(attacker)];
+    if (!theirs) {
+        return 63;
+    }
+    int best = 63;
+    std::uint64_t mine = b.by_color[attacker];
+    while (mine) {
+        const int from = lsb_index(mine);
+        mine &= mine - 1;
+        int type = -1;
+        for (int t = 0; t < 6; ++t) {
+            if (b.by_type[t] & (1ull << from)) { type = t; break; }
+        }
+        if (type < 0) {
+            continue;
+        }
+        std::uint64_t targets = theirs;
+        while (targets) {
+            const int to = lsb_index(targets);
+            targets &= targets - 1;
+            const int v = d[static_cast<std::size_t>(type)][static_cast<std::size_t>(from)]
+                           [static_cast<std::size_t>(to)];
+            if (v < best) {
+                best = v;
+            }
+        }
+        if (best <= 1) {
+            break;      // cannot do better than "capturable right now"
+        }
+    }
+    return best;
+}
+
 // One feature's value at this node. Only ever called when a predicate is
 // active, so nothing here is on a hot path in a normal run.
 inline int predicate_feature(const Board& b, Color attacker, int depth, int f) {
@@ -80,6 +206,7 @@ inline int predicate_feature(const Board& b, Color attacker, int depth, int f) {
         // blocking. Reused from the x-escape rule rather than reimplemented.
         case PF_DFLIGHTS: return escape_count(b, other(attacker));
         case PF_AINCHECK: return in_check(b, attacker) ? 1 : 0;
+        case PF_CONTACT: return contact_distance(b, attacker);
         default: return 0;
     }
 }

@@ -214,6 +214,11 @@ enum PredFeature {
     PF_APAWNS,
     PF_DFLIGHTS,    // E for the defender king: squares it could legally step to
     PF_AINCHECK,    // is the ATTACKER, who is to move here, in check
+    // CONTACT: the fewest moves any attacker man needs to reach any square a
+    // defender man stands on, on an EMPTY board -- obstruction ignored, and the
+    // defender assumed not to move. A relaxation in one direction and not the
+    // other, which is exactly why it is a feature here and not a prune: see 128.
+    PF_CONTACT,
     PF_COUNT,
 };
 
@@ -251,6 +256,7 @@ inline const char* pred_feature_name(int f) {
         case PF_APAWNS: return "apawns";
         case PF_DFLIGHTS: return "dflights";
         case PF_AINCHECK: return "aincheck";
+        case PF_CONTACT: return "contact";
         default: return "?";
     }
 }
