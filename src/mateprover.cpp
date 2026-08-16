@@ -365,6 +365,15 @@ void print_usage() {
 "                                default: --proof-hints\n"
 "  --refutation-hints | --no-refutation-hints\n"
 "                                default: --no-refutation-hints (measured harmful)\n"
+"  --defender-history | --no-defender-history\n"
+"                                order defender replies by from/to refutation\n"
+"                                history. The refutation hints above are keyed by\n"
+"                                POSITION; this generalises across positions.\n"
+"                                Ordering only, never which reply refutes.\n"
+"                                default: --no-defender-history. The first reply\n"
+"                                already refutes at 97%% of refuted defender\n"
+"                                nodes, so perfect ordering is worth 1.05x per\n"
+"                                ply and this is not perfect. See 126.\n"
 "  --answer-order | --no-answer-order\n"
 "                                default: --answer-order. Orders the selfmate\n"
 "                                defender's replies by how little room they\n"
@@ -596,6 +605,8 @@ const BoolOption kBoolOptions[] = {
     {"--exact-check-score", &SearchConfig::fast_check_score, false},
     {"--refutation-hints", &SearchConfig::refutation_hints, true},
     {"--no-refutation-hints", &SearchConfig::refutation_hints, false},
+    {"--defender-history", &SearchConfig::defender_history_order, true},
+    {"--no-defender-history", &SearchConfig::defender_history_order, false},
     {"--proof-hints", &SearchConfig::proof_hints, true},
     {"--no-proof-hints", &SearchConfig::proof_hints, false},
     {"--attacker-reject", &SearchConfig::attacker_reject, true},

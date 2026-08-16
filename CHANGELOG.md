@@ -1084,3 +1084,42 @@ Found by testing the instrument on a workload that finishes in seconds, after an
 evening spent watching a three-hour run through it. `--progress-moves` was
 checked at the same time and was always sound, being published from
 `prove_attacker` rather than from the split.
+
+### Defender move ordering: measured, built, and rejected
+
+Architecture 125 named defender ordering the top lever for depth 10 and put
+5–30× on it, reasoning that `B ≈ 6.4` against a floor of 1.0 compounds over nine
+defender plies. The engine had been counting the answer since the
+fatal-anti-check work, and it says otherwise.
+
+| depth | refuted defender nodes | FIRST reply refutes |
+|---:|---:|---:|
+| 6 | 599,915 | **99.15%** |
+| 7 | 6,452,586 | **97.75%** |
+| 8 | 102,697,792 | **97.16%** |
+
+`B` is above 1 mostly because of defender nodes where the defender *loses* and
+every reply must be searched by construction — 3.6% of nodes at depth 8 but
+**33% of all replies**, at 14 each. No ordering touches those. Perfect,
+unattainable ordering is worth 1.050× per ply, **1.55× over nine plies**. That is
+the ceiling, not the estimate.
+
+`--defender-history` implements the one genuinely missing mechanism: a from/to
+refutation history, generalising across positions where the existing hint table
+is keyed to one position. Measured:
+
+| | depth 6 | depth 7 |
+|---|---:|---:|
+| off | 1,642,739 | 19,620,832 |
+| on | 2,043,369 | **31,168,364** |
+
+24% and 59% worse — while *improving* its own metric, first-reply-refutes rising
+97.75% → 98.23%. It displaced an answer ordering that was never trying to refute
+sooner: that ordering picks *which* refutation is taken, because one reaching a
+hopeless position several levels shallower returns a larger proven failure depth,
+and the surplus is what level skipping consumes. Cheaper refutations, found
+sooner, cost 59%.
+
+Kept as a switch, defaulted off. Every proven depth is identical across the
+corpus with it on and off — only PVs differ, where duals exist — so it is exactly
+as soundness-neutral as claimed, and useless.

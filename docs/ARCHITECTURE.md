@@ -203,6 +203,7 @@ did. If you are reading it for the first time:
 - [123. A Budget Divided By The Wrong Entry Size](#123-a-budget-divided-by-the-wrong-entry-size)
 - [124. A Heartbeat That Existed Only Where It Was Least Needed](#124-a-heartbeat-that-existed-only-where-it-was-least-needed)
 - [125. Depth 9 Cost 206x, And Not One Node Of It Was Slower](#125-depth-9-cost-206x-and-not-one-node-of-it-was-slower)
+- [126. The Defender Ordering Was Already Almost Perfect](#126-the-defender-ordering-was-already-almost-perfect)
 
 ## Impact-Ordered Architecture
 
@@ -9748,3 +9749,102 @@ Precisely quantified, and second.
 One caution on the metric: `B` FALLS as the table shrinks, 1.30 down to 1.07
 across the sweep, because re-searched nodes find their refutation sooner. Any
 comparison of `B` has to hold `-M` fixed or it will flatter itself.
+
+### 126. The Defender Ordering Was Already Almost Perfect
+
+125 ended by naming defender move ordering the first thing to fix for depth 10,
+on the reasoning that `B` reaches about 6.4 there against a floor of 1.0, and
+that anything reducing it compounds over nine defender plies. The estimate
+attached was 5x to 30x, and it was the largest number on the list.
+
+**It is worth at most 1.55x, and the mechanism proposed for it makes the search
+59% slower.**
+
+#### The measurement that should have come first
+
+The engine has counted this since the fatal-anti-check work: `fac_replies_before`
+and `fac_first_reply_refutes`, against `fac_refuted_nodes`, are exactly "how many
+replies does the search try before it finds its refutation".
+
+| depth | refuted defender nodes | FIRST reply refutes | replies wasted per node |
+|---:|---:|---:|---:|
+| 6 | 599,915 | **99.15%** | 0.022 |
+| 7 | 6,452,586 | **97.75%** | 0.062 |
+| 8 | 102,697,792 | **97.16%** | 0.076 |
+
+The ordering is already right 97 times in 100, and the trend is nearly flat.
+Section 88 wrote this down in advance -- "if it is almost always the first, the
+mechanism has nothing left to harvest" -- about a different mechanism, and the
+sentence applied here unread.
+
+#### Why B is above 1, which is not what 125 assumed
+
+125 treated the gap between `B` and 1.0 as ordering failure. It is not. It is
+defender nodes where the defender LOSES, and every reply must be searched because
+every one has to be refuted for the attacker's move to stand:
+
+| depth | losing defender nodes | share of all replies | replies each |
+|---:|---:|---:|---:|
+| 7 | 1.8% of nodes | **20%** | 13.8 |
+| 8 | 3.6% of nodes | **33%** | 14.0 |
+
+A third of all defender work at depth 8 is at nodes where no ordering can help
+by construction. Removing the other two thirds entirely -- one reply at every
+refuted node, which is perfect and unattainable -- gives:
+
+| depth | B now | B perfect | per ply | over 9 plies |
+|---:|---:|---:|---:|---:|
+| 7 | 1.297 | 1.236 | 1.049x | **1.54x** |
+| 8 | 1.539 | 1.465 | 1.050x | **1.55x** |
+
+That is the ceiling. Not the estimate, the ceiling.
+
+It also explains the rise in `B` with depth without invoking ordering at all: the
+losing share doubles from 1.8% to 3.6% between depths 7 and 8, because the
+attacker is genuinely winning more subtrees. `B(9) ~ 6.4` is that trend
+continuing, and it is the d(2) mechanism extending -- which is a statement about
+the position, not about the move list.
+
+#### The history heuristic, built and rejected
+
+The one genuinely missing mechanism was a from/to history table. The refutation
+hints are keyed by POSITION and so help only on an exact recurrence; history is
+the other half of the classic pair, carrying "this move refuted elsewhere" into
+positions never seen before. Implemented as `--defender-history`, per-Search so
+workers neither share nor race it, sorted before the position-keyed hint so an
+exact match still wins the front slot.
+
+| | depth 6 | depth 7 |
+|---|---:|---:|
+| `--no-defender-history` | 1,642,739 | 19,620,832 |
+| `--defender-history` | 2,043,369 | **31,168,364** |
+
+**24% and 59% WORSE.** And the reason is the interesting part: it did what it was
+built to do. First-reply-refutes went UP, 97.75% to 98.23% at depth 7. It found
+refutations sooner and the search got slower.
+
+The answer ordering it displaced was never trying to refute sooner. Its own
+comment says so: it is about WHICH refutation is taken, because a reply that
+walks into a position hopeless for the attacker several levels shallower returns
+a much larger proven failure depth, and that surplus is what level skipping and
+the levels above consume. Sorting by history took cheaper refutations sooner and
+threw the surplus away.
+
+So this is a heuristic that improved its own metric by half a percent and cost
+59% of the search, which is worth stating as a rule: **a proxy metric that is not
+the thing you are optimising will happily be improved at the expense of the thing
+you are optimising.** The differential test held throughout -- every proven depth
+identical across the corpus with the flag on and off, only the PV differing where
+duals exist -- so it is exactly as sound as it claims to be, and useless.
+
+Kept as a switch, defaulted off, alongside the other measured rejections.
+
+#### What this leaves for depth 10
+
+Defender ordering is closed: 1.55x ceiling, negative in practice, and the
+remaining 2.84% is guarded by an ordering that is already better than the obvious
+replacement. What survives from 125's list is the reply SPLIT rather than the
+reply ORDER -- a third of defender replies at depth 8 are at nodes that must be
+fully expanded, and those are true conjunctions, which is the one shape 111 says
+is worth parallelising. That mechanism exists and is disabled, having been
+measured 4.4x slower when the losing share was small enough not to matter.

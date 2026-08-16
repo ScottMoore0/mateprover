@@ -121,6 +121,12 @@ struct SearchConfig {
     bool fast_check_score = false;
     bool refutation_hints = false;
     bool proof_hints = true;
+    // Order defender replies by from/to refutation history. Soundness-neutral:
+    // it permutes a list that is searched until one member refutes, and which
+    // member refutes does not depend on the order they are tried in. Default off
+    // until the measurement says otherwise; see 126 for what the measurement
+    // said.
+    bool defender_history_order = false;
     // Hint-table entries per worker, rounded up to a power of two. A hint only
     // reorders moves, so this trades ordering quality for a fixed footprint --
     // 2^18 slots is about 17 MB a worker.
@@ -633,6 +639,40 @@ struct Search : SearchConfig {
     // the whole search with no eviction. See HintTable for what that cost.
     HintTable defender_refutations;
     HintTable attacker_proofs;
+
+    // DEFENDER HISTORY, from-square x to-square.
+    //
+    // The refutation hint table above is keyed by POSITION, so it helps only
+    // when the identical position recurs. This is the other half of the classic
+    // pair: a move that refutes in one position is tried earlier in every OTHER
+    // position where it is legal. Nothing but ordering depends on it -- verdicts
+    // are identical with it on and off, which is what the differential test
+    // checks -- and it is per-Search, so workers neither share nor race it.
+    //
+    // Measured before it was written: at depth 8 the FIRST reply already refutes
+    // at 97.16% of refuted defender nodes, so the whole of what any reordering
+    // can win here is the remaining 2.84%. See 126.
+    std::array<std::uint32_t, 64 * 64> defender_history{};
+
+    void bump_defender_history(const Move& m, int depth) {
+        if (m.from < 0 || m.to < 0) {
+            return;
+        }
+        std::uint32_t& cell = defender_history[static_cast<std::size_t>(m.from) * 64
+                                               + static_cast<std::size_t>(m.to)];
+        // depth^2 is the usual weight: a refutation found deep in the tree says
+        // more about the move than one found at a leaf.
+        const std::uint32_t add = static_cast<std::uint32_t>(depth * depth);
+        // Saturating, then halve the whole table. Wrapping would invert the
+        // ordering silently, which is the failure mode that would be hardest to
+        // see in a node count.
+        if (cell > 0xFFFF0000u - add) {
+            for (std::uint32_t& c : defender_history) {
+                c >>= 1;
+            }
+        }
+        cell += add;
+    }
 
     // Cooperative cancellation. `cancel` is null for an ordinary
     // single-threaded search, so the per-node check costs one null test and

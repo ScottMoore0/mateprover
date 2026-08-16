@@ -1589,6 +1589,18 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
 
+    // History first, so that a position-keyed hint still wins the front slot:
+    // an exact match on THIS position outranks a move that refuted elsewhere.
+    if (s.defender_history_order && replies.size() > 1) {
+        std::stable_sort(replies.begin(), replies.end(),
+                         [&s](const Move& a, const Move& c) {
+                             const std::size_t ia = static_cast<std::size_t>(a.from) * 64
+                                                  + static_cast<std::size_t>(a.to);
+                             const std::size_t ic = static_cast<std::size_t>(c.from) * 64
+                                                  + static_cast<std::size_t>(c.to);
+                             return s.defender_history[ia] > s.defender_history[ic];
+                         });
+    }
     if (s.refutation_hints) {
         const TTKey& refutation_key = get_hint_key();
         ++s.stats.refutation_hint_probes;
@@ -1639,6 +1651,9 @@ if (s.defender_refutations.probe(refutation_key, hint_move)) {
         }
         if (!child.ok) {
             ++s.stats.defender_refutations;
+            if (s.defender_history_order) {
+                s.bump_defender_history(dmove, depth);
+            }
             if (s.fac_observer) {
                 ++s.stats.fac_refuted_nodes;
                 s.stats.fac_replies_before += tried_before_refutation;
