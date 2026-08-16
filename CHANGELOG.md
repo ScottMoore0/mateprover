@@ -1026,21 +1026,46 @@ explanation: the node **rate was flat**, 7.92 M/s early against 5.35 M/s late an
 depth 8. No memory wall, no table thrash — 206× more nodes at an unchanged cost
 each.
 
-What changed is the defender. A depth increment adds one attacker ply and one
-defender ply, so growth factors as `R ~ W × B`. Disproving needs *every*
-attacker move to fail but only *one* defender move to hold, so `B` is 1 whenever
-the first move tried works. Depths 4–7 sit at `R ≈ 11.7`, which with `W ≈ 12`
-means `B ≈ 1.0` — Black refutes immediately, every time. Depth 9 at `R = 205.9`
-means **`B ≈ 17`**: Black now tries seventeen moves before finding one that holds.
+What changed is the tree, and it decomposes into three terms — attacker width
+`W`, defender width `B`, and the transposition discount, the factor by which the
+table collapses `W × B` children into fewer real expansions. All three are
+measured, not inferred: `--profile` has always reported the counters
+(`defender_replies_tried / defender_move_lists` is `B`), which makes each depth a
+thirty-second measurement rather than a three-hour one.
 
-That is the d(2) sacrifice-and-check mechanism starting to extend, and it is the
-signature of approaching the true `d(3)`, where no Black move refutes at all.
-Depth 8's 16.4× was the leading edge, small enough at the time to read as noise.
+| d | nodes | R | B | W | discount |
+|---:|---:|---:|---:|---:|---:|
+| 6 | 1,642,739 | 11.75× | 1.08 | 25.31 | 2.33× |
+| 7 | 19,620,832 | 11.94× | 1.30 | 27.76 | **3.02×** |
+| 8 | 306,627,206 | 15.63× | 1.52 | 29.60 | 2.88× |
 
-Table capacity is a competing explanation that produces the same shape and is
-**recorded as unresolved**; separating them needs a depth-9 re-run at two table
-sizes, at three hours each. Depth 10 now projects to 26–38 days, with the caveat
-that projections in this project have a poor record.
+Depth 9's memory regime — 0.197% of its nodes held in the table — was reproduced
+by shrinking the table until *depth 7* matched it, which costs 95 seconds instead
+of three hours. At `-M 8` (0.218% coverage) depth 7 pays **3.06×**. The curve is
+very flat, `penalty ~ coverage^-0.237`: a 23,586× range of table sizes costs only
+5.69×, because nearly all of the table's value is local transpositions a tiny
+table still catches.
+
+The break then closes exactly:
+
+```
+R(9)/R(8) = 13.2× observed
+  attacker widening  W    1.06×
+  defender widening  B    4.21×
+  table losing power      2.94×
+  product                13.18×
+```
+
+**`B(9) ≈ 6.4`** — the defender is the largest single factor, so the direction was
+right. Capacity and defender widening were never rival explanations: the discount
+*is* the table's power, so capacity multiplies into the same equation rather than
+competing with it. Both are real, and `discount(9) ≈ 0.98` says the table's
+ability to collapse the tree is already gone by depth 9.
+
+This supersedes an earlier reading in the same release that inferred `W ≈ 12` and
+`B ≈ 17` from a two-term model, and priced the discriminator at two three-hour
+runs. Depth 10 projects to **139–277 days**, not the 26–38 that a flat
+continuation of `R` suggested.
 
 ### Fixed: `--heartbeat` was inert on every single-threaded search
 

@@ -7853,8 +7853,10 @@ is from that build. The current engine proves the same depth in 46.8 s and
 other direction: before 99, depth 6 alone ran twelve hours and timed out at 13.98
 billion nodes. It now answers in 2.2 seconds.
 
-Depth 10 is projected at 26 to 38 days on this machine, and that projection
-carries exactly the caveat above.
+Depth 10 is projected at **139 to 277 days** on this machine, and that projection
+carries exactly the caveat above. It read "26 to 38 days" until the growth factor
+was decomposed into the three terms that make it up; 125 has the decomposition
+and the reason the shorter figure was wrong.
 
 #### The alternative rule: Black cannot win by captures
 
@@ -9508,10 +9510,16 @@ The exponential is untouched. Branching is 12-15x per ply, so all of it together
 is a fifth of one ply, and depth 10 remains a week and a half away.
 
 **Both of those numbers were wrong, in opposite directions.** Depth 9 took 3.07
-hours rather than 20-40 minutes, and depth 10 is 26-38 days rather than a week
-and a half, because the 12-15x branching assumption this paragraph rests on broke
-at exactly the depth it was being used to predict. 125 has the measurement and
-the reason. The 4.75x above is unaffected -- it was measured, not projected.
+hours rather than 20-40 minutes, and depth 10 is **139 to 277 days** rather than
+a week and a half, because the 12-15x branching assumption this paragraph rests
+on broke at exactly the depth it was being used to predict.
+
+That assumption was not merely too low. Branching is not one number here: it is
+attacker width times defender width divided by the transposition discount, and at
+depth 9 the first was 31, the second had gone from 1.0 to 6.4, and the third had
+collapsed from 3.0 to 1.0. A single "12-15x per ply" cannot track three terms
+moving independently, and any figure quoted from it inherits that. 125 has the
+decomposition. The 4.75x above is unaffected -- it was measured, not projected.
 
 ### 123. A Budget Divided By The Wrong Entry Size
 
@@ -9585,7 +9593,6 @@ printed nothing.
 
 `--progress-moves` was checked at the same time and was always sound, because it
 is published from `prove_attacker` rather than from the split.
-
 ### 125. Depth 9 Cost 206x, And Not One Node Of It Was Slower
 
 The nine-depth series in 104 grows 14.9x, 11.4x, 11.7x, 11.7x, 16.4x -- and then
@@ -9608,51 +9615,136 @@ depth 8 did. There is no memory wall here, no table thrash, no lookup collapse:
 slightly. Every hypothesis about the machine is dead on this table alone, which
 is why it is the first thing measured.
 
-#### What actually changed is the defender
+Everything after this point is the tree, and the tree decomposes into exactly
+three terms.
 
-Each depth increment adds TWO plies, one attacker and one defender, so the growth
-factor decomposes as `R ~ W x B`.
+#### The first version of this section inferred two of them, and got both wrong
 
-Disproof is asymmetric, and 111 is the whole of why. At an attacker node every
-move must fail, so `W` is full width -- roughly 12 here after transpositions,
-with no cutoff available. At a defender node ONE refutation suffices, so `B` is 1
-whenever the first move tried happens to hold.
+It modelled the growth as `R ~ W x B` -- attacker width times defender width --
+and, from `R ~ 11.7` and the assumption that the defender refutes on its first
+try, concluded `W ~ 12` and therefore `B ~ 17` at depth 9. It then named table
+capacity as a rival explanation and left the two unresolved, pricing the
+discriminator at two three-hour re-runs.
 
-- Depths 4 to 7 sit at `R ~ 11.7`. With `W ~ 12` that is **`B ~ 1.0`**: Black's
-  first move refutes essentially every time. "Do not concede three captures in
-  seven moves" is so easy that nearly any move does it.
-- Depth 9 is `R = 205.9`. With `W ~ 12` that is **`B ~ 17`**: Black now tries
-  about seventeen moves before finding one that holds.
+All of that was avoidable. **The engine already counts both quantities.**
+`defender_replies_tried / defender_move_lists` is `B` and
+`attacker_moves / attacker_move_lists` is `W`, both reported by `--profile`,
+and a measurement that was being inferred from a three-hour run was available
+from a thirty-second one. This is the same fault as 114 and 121 in a new place:
+reasoning about a number the program was already printing.
 
-The conclusion survives the uncertainty in the split. Even if `W` rose to 20 as
-the position opened, `B` is still about 10. It went from order-1 to order-10, and
-that is the entire result.
+#### Measured: each depth standalone, single threaded, -M 8192
+
+| d | nodes | R | B | W | W x B | discount |
+|---:|---:|---:|---:|---:|---:|---:|
+| 5 | 139,856 | 11.38x | 1.01 | 23.26 | 23.5x | 2.06x |
+| 6 | 1,642,739 | 11.75x | 1.08 | 25.31 | 27.3x | 2.33x |
+| 7 | 19,620,832 | 11.94x | 1.30 | 27.76 | 36.1x | **3.02x** |
+| 8 | 306,627,206 | 15.63x | 1.52 | 29.60 | 45.0x | 2.88x |
+
+`W` is 29.60 at depth 8, not 12. `B` rises 1.01 -> 1.08 -> 1.30 -> 1.52, so the
+defender-widening claim was right in direction and the arithmetic attached to it
+was not.
+
+The third term is the one the old model had no slot for. `W x B` overshoots the
+real growth by two to three times, and the gap is the TRANSPOSITION DISCOUNT --
+the table collapsing repeated positions so that most of those `W x B` children
+never expand. It **peaked at depth 7 and turned over at depth 8**, which is the
+first depth whose node count exceeds the table's entry count.
+
+#### Depth 9's memory regime, reached in ninety-five seconds
+
+Depth 9 held 0.197% of its nodes in the table. Rather than re-run it, shrink the
+table until depth 7 sits at the same coverage:
+
+| -M | entries | nodes | coverage | penalty |
+|---:|---:|---:|---:|---:|
+| 8192 | 134,217,728 | 19,620,832 | 684% | 1.00x |
+| 2048 | 33,554,432 | 19,740,958 | 170% | 1.01x |
+| 512 | 8,388,608 | 20,472,381 | 41.0% | 1.04x |
+| 128 | 2,097,152 | 25,220,443 | 8.3% | 1.29x |
+| 32 | 524,288 | 34,681,229 | 1.5% | 1.77x |
+| **8** | **131,072** | **60,012,247** | **0.218%** | **3.06x** |
+| 2 | 32,768 | 111,622,402 | 0.029% | 5.69x |
+
+`-M 8` puts depth 7 in depth 9's regime almost exactly, and costs 3.06x. Note
+how FLAT this is: a 23,586x range of table sizes costs 5.69x, or
+`penalty ~ coverage^-0.237`. Nearly all of the table's value is in local
+transpositions that even a tiny table catches.
+
+**The hit rate is the wrong instrument for this and would have misled.** It moved
+from 31.8% to 17.9% across that same 4096x range -- almost flat -- while node
+count moved 5.7x. Node count against table size is the measurement; hit rate is
+not.
+
+#### The break, decomposed
+
+```
+R(9)/R(8) = 13.2x observed
+
+  attacker widening  W    1.06x
+  defender widening  B    4.21x
+  table losing power      2.94x
+  -----------------------------
+  product                13.18x
+```
+
+Three independently measured terms, multiplying to the observed break within
+0.2%. **`B(9) ~ 6.4`** -- the defender is the largest single factor, so the old
+section's conclusion stands and its figure of 17 was 2.7x too high.
+
+The two explanations it called rivals were never rivals. The discount IS the
+table's power, so capacity does not merely resemble defender widening from
+outside -- it multiplies into the same equation. Both are real and both were
+needed.
+
+**`discount(9) ~ 0.98`, and that is the finding with consequences.** The table's
+ability to collapse the tree, worth 3.02x at depth 7, is gone by depth 9. It is
+not degrading; it has finished degrading. From here the table is a cache that
+pays for itself and nothing more.
 
 Structurally this is the d(2) mechanism failing to extend. At depth 9 White
 finally has room to build the sacrifice-then-check sequences that won quota 2 --
 `3.Qxf7+ Kxf7 4.Bc4+ d5 5.Bxd5+` -- and most Black replies now lose to them. Not
 all, so the search must enumerate the survivors. At the true d(3), by definition,
-zero Black moves refute and `B` reaches full width.
+zero Black moves refute and `B` reaches full width, which is `W`.
 
-**Depth 8's 16.4x was the warning.** 11.7, 11.7, 16.4, 205.9: the uptick was the
-leading edge of the same effect, small enough at the time to read as noise.
-
-#### The competing explanation, and how to settle it
-
-Table capacity. Depths 1 to 8 total 352M nodes against roughly 134M entries in
-the 8 GB flat table; depth 9 pushes 68 billion through it. A hit-rate collapse
-produces re-search that looks exactly like defender widening from the outside.
-
-The memory scaling in 123 showed depth-8 node count only weakly sensitive to `-M`
-past a floor, which favours the defender reading -- but that was measured below
-the break, and 123's own rule says a memory finding is valid only for what it was
-measured on. The discriminator is a depth-9 re-run at two table sizes, and at
-three hours each that is a real cost rather than a free check. **Unresolved, and
-recorded as unresolved.**
+**Depth 8's 16.4x was the warning**, and both terms were already in it: `B` up
+20% and the discount turning over.
 
 #### What it predicts
 
-`B` is still climbing toward full width, so `R(10) >= 206` and probably more:
-13.3 to 20.5 trillion nodes, **26 to 38 days** at the measured rate. The flat
-15x-per-ply model that produced the "2 days" figure is dead, and it is the second
-projection in this document to be killed by the run it was projecting.
+Depth 10 at `-M 8192` holds 0.00096% of its nodes, a 206x drop from depth 9,
+which the fitted curve prices at 3.53x. `B` is the unpredictable term:
+
+| B growth 9 -> 10 | R(10) | nodes | days at 6.19 M/s |
+|---|---:|---:|---:|
+| 1.5x | 1,092x | 74 T | **139** |
+| 2.0x | 1,456x | 99 T | 185 |
+| 3.0x | 2,183x | 148 T | 277 |
+
+The previous version of this section said **26 to 38 days**, from `R(10) ~ 206`.
+That was a flat continuation of a ratio which the decomposition shows is itself
+the product of three growing terms, so it was wrong by about 5x. **Third
+projection in this document killed by the measurement it was projecting** (104,
+122, here), and the rule those two state -- a projection is only valid for the
+engine it was measured on -- needs one more clause: it is only valid for the
+MODEL it was measured under, and a ratio extrapolated without its factorisation
+is not a model.
+
+#### What this makes worth doing
+
+The priority order that follows is the reverse of the intuitive one. `B` is the
+dominant term AND the compounding one, so defender move ordering -- killer moves,
+history, ordering by units left en prise, none of which exist in `order_moves`,
+which does not even take an attacker/defender flag -- is the first target. It now
+has an exact success metric: delta `B` at depth 7 against a baseline of 1.30,
+measurable in thirty seconds.
+
+Memory is worth exactly 3.53x at depth 10 and takes terabytes to collect, since
+matching depth 9's coverage at 14 trillion nodes needs about 2 TB of table.
+Precisely quantified, and second.
+
+One caution on the metric: `B` FALLS as the table shrinks, 1.30 down to 1.07
+across the sweep, because re-searched nodes find their refutation sooner. Any
+comparison of `B` has to hold `-M` fixed or it will flatter itself.
