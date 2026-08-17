@@ -1193,3 +1193,36 @@ time, which is a search rather than a bound.
 
 Kept as a feature, inert unless `--predicate` names it, so the result is
 reproducible and stronger formulations can be tested the same way.
+
+### Relational predicate features, and the measured price of soundness
+
+The predicate language counted each side in isolation and could not express what
+the two sides were doing to each other. Added `dattacked`, `aattacked`,
+`dkingring`, `acaptures` and `mate1imp` (exposing the coverage test from 107).
+
+The ceiling first: `depth<=1` measures what a *perfect* depth-1 lemma could
+return — **26.8% of the run, a 1.37× ceiling** — and **47% of its fires land on
+nodes that were proved**. Half the nodes at any depth are winnable, which is why
+every previous generator run found only accidents.
+
+Relational features change that by three orders of magnitude:
+
+| predicate | fires | counterexamples |
+|---|---:|---:|
+| `depth<=1` | 2,720,038 | 1,289,312 (47%) |
+| `acaptures<=0&depth<=1` | 198,253 | 62 (0.031%) |
+| `acaptures<=0&depth<=1&mate1imp>=1` | 485 | **0** |
+
+The first zero-counterexample candidate in the project. Two defects found by the
+observer: `dattacked` misses **en passant**, where the captured pawn is not on
+the destination square (91 → 62 once `acaptures` handled it), and the residue is
+the other winning route, mate.
+
+**Soundness costs 400× the fire rate** — the clause removing the last 62
+counterexamples takes the saving from 3.7% of the run to 0.009%. At depth 1,
+deciding "no win here" *is* the depth-1 search, so a lemma must be cheaper than
+one move generation, and the cheap tests are the conservative ones: `mate1imp`
+fires at 6.7% of eligible nodes.
+
+Generator re-run with the new features: **0 unrefuted of 28**, instrument check
+passing. It remains a falsifier rather than a discoverer.

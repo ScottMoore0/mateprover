@@ -207,6 +207,70 @@ inline int predicate_feature(const Board& b, Color attacker, int depth, int f) {
         case PF_DFLIGHTS: return escape_count(b, other(attacker));
         case PF_AINCHECK: return in_check(b, attacker) ? 1 : 0;
         case PF_CONTACT: return contact_distance(b, attacker);
+        // Relational: how much contact exists RIGHT NOW, in each direction.
+        // These are the cheapest statements that involve both sides at once.
+        case PF_DATTACKED: {
+            int n = 0;
+            std::uint64_t men = b.by_color[other(attacker)];
+            while (men) {
+                const int sq = lsb_index(men);
+                men &= men - 1;
+                if (is_attacked(b, sq, attacker)) ++n;
+            }
+            return n;
+        }
+        case PF_AATTACKED: {
+            int n = 0;
+            std::uint64_t men = b.by_color[attacker];
+            while (men) {
+                const int sq = lsb_index(men);
+                men &= men - 1;
+                if (is_attacked(b, sq, other(attacker))) ++n;
+            }
+            return n;
+        }
+        case PF_MATE1IMP: return mate1_impossible_by_coverage(b) ? 1 : 0;
+        case PF_ACAPTURES: {
+            int n = 0;
+            std::uint64_t men = b.by_color[other(attacker)];
+            while (men) {
+                const int sq = lsb_index(men);
+                men &= men - 1;
+                if (is_attacked(b, sq, attacker)) ++n;
+            }
+            // En passant: the captured pawn is NOT on the destination square,
+            // so no square-attack test can see it. A capturing pawn sits one
+            // rank behind the ep square, on either adjacent file.
+            if (b.ep >= 0) {
+                const int back = (attacker == WHITE) ? -8 : 8;
+                const int f = b.ep % 8;
+                for (int df = -1; df <= 1; df += 2) {
+                    const int from = b.ep + back + df;
+                    if (f + df < 0 || f + df > 7 || from < 0 || from > 63) continue;
+                    const std::uint64_t bit = 1ull << from;
+                    if ((b.by_color[attacker] & b.by_type[PT_PAWN] & bit) != 0) {
+                        ++n;
+                        break;
+                    }
+                }
+            }
+            return n;
+        }
+        case PF_DKINGRING: {
+            const int k = king_square(b, other(attacker));
+            if (k < 0) return 0;
+            int n = 0;
+            const int kf = k % 8, kr = k / 8;
+            for (int df = -1; df <= 1; ++df) {
+                for (int dr = -1; dr <= 1; ++dr) {
+                    if (!df && !dr) continue;
+                    const int f = kf + df, r = kr + dr;
+                    if (f < 0 || f > 7 || r < 0 || r > 7) continue;
+                    if (is_attacked(b, r * 8 + f, attacker)) ++n;
+                }
+            }
+            return n;
+        }
         default: return 0;
     }
 }

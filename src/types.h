@@ -219,6 +219,23 @@ enum PredFeature {
     // defender assumed not to move. A relaxation in one direction and not the
     // other, which is exactly why it is a feature here and not a prune: see 128.
     PF_CONTACT,
+    // RELATIONAL features. Everything above is a count of one side's own men or
+    // a property of one king; none of them can express a relation BETWEEN the
+    // sides, which is why a generator over them can only find statistical
+    // accidents. A lemma has to SEPARATE failing nodes from winning ones -- 47%
+    // of nodes at any depth are winnable -- and separation is relational.
+    PF_DATTACKED,   // defender men the attacker currently attacks
+    PF_AATTACKED,   // attacker men the defender currently attacks
+    PF_DKINGRING,   // squares around the defender king that the attacker attacks
+    // Captures actually AVAILABLE, which is not the same as defender men on
+    // attacked squares: an en-passant capture takes a pawn that is not on the
+    // square the capturer moves to. `dattacked<=0` missed exactly those, and
+    // the observer found it -- 91 counterexamples in 198,282 fires.
+    PF_ACAPTURES,
+    // The coverage test 107 already ships, exposed so a candidate can say "and
+    // no mate in one either". The capture route and the mate route are the two
+    // ways to win here, and a lemma must exclude BOTH.
+    PF_MATE1IMP,
     PF_COUNT,
 };
 
@@ -257,6 +274,11 @@ inline const char* pred_feature_name(int f) {
         case PF_DFLIGHTS: return "dflights";
         case PF_AINCHECK: return "aincheck";
         case PF_CONTACT: return "contact";
+        case PF_DATTACKED: return "dattacked";
+        case PF_AATTACKED: return "aattacked";
+        case PF_DKINGRING: return "dkingring";
+        case PF_ACAPTURES: return "acaptures";
+        case PF_MATE1IMP: return "mate1imp";
         default: return "?";
     }
 }

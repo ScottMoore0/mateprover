@@ -206,6 +206,7 @@ did. If you are reading it for the first time:
 - [126. The Defender Ordering Was Already Almost Perfect](#126-the-defender-ordering-was-already-almost-perfect)
 - [127. Seven Proposals, One Survivor](#127-seven-proposals-one-survivor)
 - [128. The Reachability Bound Fires Zero Times](#128-the-reachability-bound-fires-zero-times)
+- [129. Relational Features, And What Soundness Costs](#129-relational-features-and-what-soundness-costs)
 
 ## Impact-Ordered Architecture
 
@@ -10046,3 +10047,90 @@ per-node engine is within ~2.8x of everything anyone has been able to measure,
 and the two largest wins of the work that produced this list -- iterative
 deepening at 12x and restricted-root testing at ~20x -- were both defaults and
 framings, not code.
+
+### 129. Relational Features, And What Soundness Costs
+
+The predicate language had twelve features and every one counted ONE side in
+isolation -- men, material, queens, flights. Nothing could say what the two
+sides were doing to each other. That is why tier 3 found only overfitted
+candidates and why 128's contact bound was vacuous: **separating failing nodes
+from winning ones is inherently relational**, and the language could not express
+a relation.
+
+Five were added: `dattacked`, `aattacked`, `dkingring`, `acaptures`, and
+`mate1imp`, which exposes the coverage test 107 already ships.
+
+#### The ceiling, first
+
+`depth<=N` fires at every node with at most N left, and the observer counts a
+saving only where the node FAILED, so it bounds what a PERFECT lemma gated at
+that depth could ever return:
+
+| gate | fires | counterexamples | nodes saved | share |
+|---|---:|---:|---:|---:|
+| `depth<=1` | 2,720,038 | **1,289,312** | 1,430,726 | **26.8%** |
+| `depth<=2` | 3,032,881 | 1,502,477 | 4,979,298 | 93.3% * |
+| `depth<=5` | 3,053,853 | 1,516,905 | 16,347,271 | 306.3% * |
+
+\* double-counted: a saved depth-3 subtree contains depth-2 nodes counted again.
+Only the depth-1 row is clean, and it says a perfect depth-1 lemma is worth
+**1.37x** -- the whole prize for the most provable class there is.
+
+**47% of fires land on nodes that were PROVED.** Half the nodes at any depth are
+winnable, so a candidate that merely DESCRIBES a class of positions is wrong
+half the time. That number explains every failed generator run in this document.
+
+#### Relational features work, by three orders of magnitude
+
+| predicate | fires | counterexamples | rate |
+|---|---:|---:|---:|
+| `depth<=1` alone | 2,720,038 | 1,289,312 | 47% |
+| `dattacked<=0&depth<=1` | 198,282 | 91 | **0.046%** |
+| `acaptures<=0&depth<=1` | 198,253 | 62 | 0.031% |
+| `acaptures<=0&depth<=1&mate1imp>=1` | **485** | **0** | **0%** |
+
+The first zero-counterexample candidate the project has produced.
+
+Two defects surfaced on the way, each found by the observer in one command.
+`dattacked` counts defender men standing on attacked squares, and an EN PASSANT
+capture takes a pawn that is not on the square the capturer moves to -- so
+`dattacked<=0` does not mean "no capture available". `acaptures` handles it and
+the counterexamples fell from 91 to 62. The remaining 62 are the other way to
+win: the goal is three captures OR mate, and a lemma must exclude both.
+
+#### And what it costs
+
+The clause that removes the last 62 counterexamples costs **400x the fire
+rate**: 198,253 fires down to 485, and the saving falls from 3.7% of the run to
+0.009%. Sound and worthless against nearly-sound and worth something.
+
+The reason is structural. At depth 1, deciding "no win here" IS the depth-1
+search -- one move generation and a terminal test. A lemma that avoids it must
+be CHEAPER than it, and the cheap tests are exactly the conservative ones:
+`mate1imp` returns true at only 6.7% of eligible nodes. **A depth-1 lemma cannot
+be both cheap and accurate, because accuracy at depth 1 is the thing being
+replaced.**
+
+That is the real content of the 1.37x ceiling. It is not merely small; it is
+unreachable by anything cheaper than the work it saves.
+
+#### The generator, re-run
+
+With relational features available, 28 candidates over three generations:
+**0 unrefuted**. The instrument check passed first -- `amen<=1` fired 59 times
+with no counterexample, `depth>=1` fired 18,456 times and was refuted 2,205
+times -- so the measurement was sound and the answer is simply no.
+
+The candidate that reached zero came from reasoning about the two winning
+routes, and random conjunctions of features do not encode that. The generator
+remains a falsifier rather than a discoverer, exactly as predicate.h says, and
+it is very good at the first job: 28 candidates killed in minutes.
+
+#### What this settles
+
+Lemmas are consumable and generable -- 107's coverage exit fires at 6.7% of
+eligible nodes and skips 22.8 moves each time. What is now also settled is the
+SIZE of the opportunity at shallow depth: 1.37x at best, of which the sound
+fraction measured 0.009%. The prize is at depth 2 and beyond, where subtrees are
+thirty times larger, and a depth-2 lemma is a statement about two plies against
+every defence -- mathematics, not search.

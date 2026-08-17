@@ -56,6 +56,16 @@ FEATURES = {
     "apawns":   (0, 4),
     "dflights": (0, 8),
     "aincheck": (0, 1),
+    # RELATIONAL features. Everything above is one side counted in isolation, and
+    # a generator over those can only find statistical accidents -- 47% of nodes
+    # at any depth are winnable, so separating the failures from the wins is
+    # inherently a statement about both sides at once.
+    "dattacked": (0, 8),
+    "aattacked": (0, 8),
+    "dkingring": (0, 8),
+    "acaptures": (0, 8),
+    "mate1imp":  (0, 1),
+    "contact":   (1, 4),
 }
 OPS = ["<=", ">=", "<", ">", "==", "!="]
 
