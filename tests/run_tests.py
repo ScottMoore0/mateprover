@@ -2734,10 +2734,20 @@ def test_documented_defaults_are_real(engine: Path, res: Results) -> None:
                   config.get(key) == int(match.group(1)),
                   f"{key}={config.get(key)}, help says {match.group(1)}")
 
-    # 4. --threads defaults to the auto value rather than to 1.
+    # 4. --threads defaults to the auto value rather than to 1, and that
+    #    auto value LEAVES HEADROOM. It was min(cores, 16) - every core on
+    #    a 16-core box - and root splitting collapses there: measured at
+    #    d12, 20 seeded positions, 10s, 1/2/4/8 threads all solve 19-20/20
+    #    at a ~0.08s median while 16 solves 14/20 at 0.29s. With the
+    #    portfolio off the same cliff is far worse (18/20 -> 4/20).
+    #
+    #    The old cap came from a sweep of 16, 24 and 32 threads that found
+    #    them flat; all three sit past the cliff. Reproduced on an idle
+    #    machine after an unrelated runaway process was found eating 15 of
+    #    16 cores, so it is a property of root splitting, not of load.
     res.check("help documents --threads default as auto", "(default: auto)" in help_text)
     res.check("effective thread count is the auto value",
-              config.get("threads") == min(os.cpu_count() or 1, 16),
+              config.get("threads") == min(max(1, (os.cpu_count() or 1) - 2), 8),
               f"threads={config.get('threads')}, cores={os.cpu_count()}")
 
     # 5. The portfolio default the help claims must hold.

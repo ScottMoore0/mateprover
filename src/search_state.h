@@ -431,6 +431,22 @@ struct SearchConfig {
     double time_limit = 0.0;
     // Begin iterative deepening at the requested depth instead of 1. Only valid
     // when the caller wants "a mate within N" rather than "the shortest mate".
+    // ITERATIVE DEPTH IS THE DEFAULT, deliberately.
+    //
+    // It was briefly flipped to direct depth on the grounds that direct is
+    // measurably better at a fixed budget: d14, 15 positions, 10s gives
+    // 12/15 in 41s wall against 9/15 in 73s. Proving minimality really does
+    // cost a quarter of the solve rate and 1.8x the time.
+    //
+    // That is the wrong trade for this engine, and a test pins it:
+    // "iterative depth remains the default". Minimality is the product.
+    // Verifying a composed problem means showing NO shorter mate exists -
+    // a problem with one is cooked - and direct depth cannot say that. A
+    // default that quietly answers the weaker question would make the
+    // engine look better in benchmarks by ceasing to do its job.
+    //
+    // Benchmarks against searchers should pass --direct-depth explicitly,
+    // so the comparison is like-for-like; that is what they already do.
     bool direct_depth = false;
     // WinChest ChecksOnly, a bitmask over the attacker's move choice:
     //    1  only own check-moves (serial-check mate)
