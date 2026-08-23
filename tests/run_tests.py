@@ -2567,7 +2567,12 @@ def test_docs_reference_shipped_files(engine: Path, res: Results) -> None:
                 ref = (match.group(1) or match.group(2) or "").strip()
                 if not ref or ref.startswith("http") or ref in external:
                     continue
-                norm = ref.replace(chr(92), "/")
+                # Strip sentence-ending punctuation: the pattern excludes
+                # whitespace, backticks, commas, semicolons and parens but
+                # NOT a full stop, so prose ending a sentence with a path
+                # ("... see docs/GAP1_DERIVATION.md.") captured the dot and
+                # reported an existing file as dangling.
+                norm = ref.replace(chr(92), "/").rstrip(".")
                 tail = norm.split("/")[-1]
                 if any((root / norm).exists() or (base / norm).exists() or (base / tail).exists()
                        for base in (path.parent, root, root / "src", root / "tools", root / "tests")):
@@ -3829,7 +3834,17 @@ def main() -> int:
     #
     # A test that fails when it merely lacks the data to judge is worse than no
     # test: it trains the reader to discount the failure.
-    complete = (HERE.parent / "benchmarks" / "selfmate_deep.jsonl").exists()
+    # Every corpus the suite loops over, not just one. The check count is
+    # DATA-DRIVEN - checks run inside `for ... in zip(cases, lines)` over
+    # corpus entries - so a missing corpus silently lowers the total. With
+    # only selfmate_deep.jsonl gated, an incomplete checkout was declared
+    # complete and a documented 587 was compared against a partial 524,
+    # which reads as "63 checks were deleted" when nothing was.
+    _required = ("selfmate_deep.jsonl", "matetrack_d8.jsonl",
+                 "matetrack_d10.jsonl", "harness_ledger_selftest.jsonl",
+                 "stalemate_pdb.jsonl", "helpmate_yacpdb.jsonl")
+    complete = all((HERE.parent / "benchmarks" / _f).exists()
+                   for _f in _required)
     for doc in docs:
         if not complete:
             res.skip(f"{doc.name} states the current check count",
