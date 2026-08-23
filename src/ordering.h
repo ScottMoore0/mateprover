@@ -20,9 +20,9 @@ int static_move_terms(const Board& b, const Move& m,
     int score = 0;
     if (b.sq[m.to] != '.' || m.ep) score += w.capture;
     if (m.promo) score += w.promo;
-    // tolower returns int; the cast makes the narrowing explicit rather than
-    // implicit. Safe for the ASCII piece letters this board stores.
-    const char p = static_cast<char>(std::tolower(static_cast<unsigned char>(b.sq[m.from])));
+    // piece_lower, not std::tolower: this runs per move and the libc call
+    // was 5.40% of all instructions in a search profile. See types.h.
+    const char p = piece_lower(b.sq[m.from]);
     if (p == 'q') score += w.queen;
     if (p == 'r') score += w.rook;
     if (p == 'b' || p == 'n') score += w.minor;

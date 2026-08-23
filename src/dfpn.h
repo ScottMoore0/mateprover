@@ -480,6 +480,53 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         child_keys.push_back(tt_key(child_boards.back(), depth - 1, 'D', s.attacker, s.goal));
     }
 
+    // Per-child proof-number initialisation.
+    //
+    // dfpn_lookup returns {1,1} for every child not yet in the table, so in the
+    // loop below each unvisited child ties at pn == 1 and `c.pn < best_pn`
+    // keeps the first. Selection among unvisited children was therefore raw
+    // generator order -- and dfpn_sort is off by default, so nothing else was
+    // imposing an order either.
+    //
+    // Each child here is a defender node, and a defender node is easier to
+    // prove the fewer squares its king can reach. The child boards are already
+    // built, so the flight count costs one king_escape each and no make_move.
+    // A king with no flights estimates at 1, which is what it used to get
+    // unconditionally; looser positions estimate higher and sort behind it.
+    //
+    // Only pn is estimated. dn stays 1, exactly what {1,1} supplied, so the
+    // sum_dn arithmetic below is unchanged. Proof numbers steer the search and
+    // cannot change a verdict; see the contract at the top of this file.
+    // Stack array, not a vector: this is per-node in the hot path, and a
+    // heap allocation here was one I added in item 4 rather than one that was
+    // already being paid. 218 is the maximum number of legal moves in any
+    // chess position, so 256 cannot overflow; the guard is belt and braces.
+    std::uint32_t child_pn_init_buf[256];
+    std::size_t child_pn_init_n = 0;
+    const bool use_child_init =
+        (s.dfpn_child_init || s.dfpn_child_init_cheap) &&
+        child_boards.size() <= 256;
+    if (use_child_init) {
+        // Branch hoisted: the choice is fixed for the whole node, and this is
+        // the hot path the estimate is trying to shorten.
+        if (s.dfpn_child_init_cheap) {
+            for (const Board& cb : child_boards) {
+                // A defender in check has its replies forced, which is what
+                // makes a node cheap to prove. Coarser than counting flights
+                // and far cheaper: one attack test against eight probes.
+                child_pn_init_buf[child_pn_init_n++] =
+                    in_check(cb, cb.stm) ? 1u : 2u;
+            }
+        } else {
+            for (const Board& cb : child_boards) {
+                // cb.stm is the defender: this board is the position after an
+                // attacker move, so the side to move is the one being mated.
+                child_pn_init_buf[child_pn_init_n++] =
+                    1u + king_escape(cb, cb.stm).flights;
+            }
+        }
+    }
+
     for (;;) {
         // OR node: proving needs one move proved, disproving needs all.
         std::uint32_t min_pn = DFPN_INF;
@@ -488,7 +535,16 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
         std::uint32_t best_pn = DFPN_INF;
         std::uint32_t second_pn = DFPN_INF;
         for (std::size_t i = 0; i < moves.size(); ++i) {
-            const PnDn c = dfpn_lookup(s, child_keys[i]);
+            // One probe, not the lookup-then-seen pair: this is the hot loop,
+            // and distinguishing "absent" from "stored as {1,1}" is exactly
+            // what the estimate needs, so both come off the same find().
+            const auto it = s.dfpn_tt.find(child_keys[i]);
+            const PnDn c =
+                it != s.dfpn_tt.end()
+                    ? it->second
+                    : (child_pn_init_n == 0
+                           ? PnDn{}
+                           : PnDn{child_pn_init_buf[i], 1});
             sum_dn = sat_add(sum_dn, c.dn);
             if (c.pn < best_pn) {
                 second_pn = best_pn;

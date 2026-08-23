@@ -74,9 +74,35 @@
 using namespace mateprover;
 
 
-// Ceiling applied to `--threads auto`. See the comment at its use site: root
-// split saturates, so detected-core-count parallelism wastes cores above this.
-constexpr int AUTO_THREAD_CAP = 16;
+// Ceiling applied to `--threads auto`, and the cores held back from it.
+//
+// Measured on a 16-core machine, d12, 20 seeded positions, 10s, portfolio on:
+// 1, 2, 4 and 8 threads all solve 20/20 at a ~0.16s median; 16 solves 14/20 at
+// 0.38s. Flat, then a cliff at exactly the core count. With the portfolio
+// disabled the same cliff is far steeper (18/20 -> 5/20), so what breaks is
+// root splitting itself rather than contention with the lanes - capping lanes
+// made it worse, not better (1/2/4/all lanes -> 5/10/12/14 solved).
+//
+// The previous cap of 16 came from a sweep of 16, 24 and 32 threads that found
+// them flat and concluded 16 was the knee. All three sit past the cliff; the
+// sweep never included 1, 2, 4 or 8.
+//
+// RESERVE keeps the coordinator and the portfolio lanes off the root-split
+// threads' cores, which is the mechanism of the cliff. CAP is the largest
+// thread count measured safe.
+constexpr int AUTO_THREAD_CAP = 8;
+constexpr int AUTO_THREAD_RESERVE = 2;
+
+
+// Resolve `--threads auto` (and the unspecified-threads sentinel) identically.
+// These were two copies of the same expression; a fix applied to one and not
+// the other would silently give `auto` and the default different meanings.
+int resolve_auto_threads() {
+    const unsigned hw = std::thread::hardware_concurrency();
+    const int detected = hw > 0 ? static_cast<int>(hw) : 1;
+    const int usable = std::max(1, detected - AUTO_THREAD_RESERVE);
+    return std::min(usable, AUTO_THREAD_CAP);
+}
 
 
 void print_version() {
@@ -205,7 +231,7 @@ void print_usage() {
 "                                4 GB. Past depth 6 under a quota this is the\n"
 "                                largest single knob the engine offers\n"
 "  --threads N | auto            root-split worker threads (default: auto).\n"
-"                                auto = min(cores,16):\n"
+"                                auto = min(cores-2,8):\n"
 "                                the split saturates above that, so extra\n"
 "                                cores add no capability. Explicit N is not\n"
 "                                capped.\n"
@@ -533,6 +559,14 @@ void print_usage() {
 "                                unchanged. On plain directmates it pays, and\n"
 "                                there it still runs\n"
 "  --dfpn-sort | --dfpn-no-sort  sort moves at DFPN nodes (default: no)\n"
+"  --dfpn-child-init | --dfpn-no-child-init\n"
+"                                estimate an unvisited child's proof number\n"
+"                                from the defender king's flight count, rather\n"
+"                                than letting every unvisited child tie at 1\n"
+"                                and selection fall back to generator order\n"
+"                                (default: off). Distinct from --dfpn-check-bias,\n"
+"                                which weights an AND node's own guess and so\n"
+"                                cannot discriminate between siblings\n"
 "  --dfpn-epsilon-64 N           1+epsilon threshold widening, in 1/64ths\n"
 "  --dfpn-node-limit N           cap preconditioner nodes (0 = unlimited)\n"
 "  --dfpn-share-disproofs        default; publish exact disproofs\n"
@@ -663,6 +697,10 @@ const BoolOption kBoolOptions[] = {
     {"--no-dfpn-under-variant", &SearchConfig::dfpn_under_variant, false},
     {"--dfpn-sort", &SearchConfig::dfpn_sort, true},
     {"--dfpn-no-sort", &SearchConfig::dfpn_sort, false},
+    {"--dfpn-child-init", &SearchConfig::dfpn_child_init, true},
+    {"--dfpn-no-child-init", &SearchConfig::dfpn_child_init, false},
+    {"--dfpn-child-init-cheap", &SearchConfig::dfpn_child_init_cheap, true},
+    {"--dfpn-no-child-init-cheap", &SearchConfig::dfpn_child_init_cheap, false},
     {"--dfpn-hints-only", &SearchConfig::dfpn_share_disproofs, false},
     {"--dfpn-share-disproofs", &SearchConfig::dfpn_share_disproofs, true},
     {"--lazy-defender", &SearchConfig::lazy_defender, true},
@@ -838,17 +876,12 @@ int main(int argc, char** argv) {
             if (!tv) return usage_error("option '--threads' requires a count or 'auto'");
             std::string value = tv;
             if (value == "auto") {
-                // Root-split parallelism saturates. Measured solve rate at a
-                // 5 s budget was flat from 16 threads upward -- mate-in-8 sat
-                // at 14/24 for 16, 24 and 32 threads, and mate-in-10 at 3/20
-                // across all of them -- because additional workers contribute
-                // duplicated nodes rather than new search. Uncapped `auto` on a
-                // large machine therefore burns cores for no capability.
+                // Root-split parallelism does not merely saturate, it
+                // reverses: at the full core count it solves FEWER positions
+                // than a single root-split thread. See AUTO_THREAD_CAP.
                 //
                 // An explicit --threads N is never capped; only `auto` is.
-                const unsigned hw = std::thread::hardware_concurrency();
-                const int detected = hw > 0 ? static_cast<int>(hw) : 1;
-                config.threads = std::min(detected, AUTO_THREAD_CAP);
+                config.threads = resolve_auto_threads();
             } else {
                 std::size_t parsed = 0;
                 if (!parse_size(value.c_str(), parsed) || parsed == 0) {
@@ -1242,12 +1275,16 @@ int main(int argc, char** argv) {
     }
 
     // Resolve the unspecified-threads sentinel to the same value `--threads
-    // auto` computes. The default was 1, which meant the shipped configuration
-    // used a single core on any machine unless the user knew to ask otherwise.
+    // auto` computes.
+    //
+    // The note this replaces said the previous default of 1 "used a single
+    // core on any machine". That was wrong, and it is why the default moved to
+    // a value that measures worse: --threads is ROOT SPLIT only, and the
+    // portfolio parallelises independently of it, so threads=1 already uses
+    // the machine. Raising it to the core count did not add parallelism, it
+    // took cores away from the lanes that were providing it.
     if (config.threads < 0) {
-        const unsigned hw = std::thread::hardware_concurrency();
-        const int detected = hw > 0 ? static_cast<int>(hw) : 1;
-        config.threads = std::min(detected, AUTO_THREAD_CAP);
+        config.threads = resolve_auto_threads();
     }
 
     // Report the configuration that would actually be used and stop. Printed

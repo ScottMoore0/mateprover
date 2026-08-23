@@ -19,7 +19,7 @@ void gen_pseudo(const Board& b, MoveSink& moves) {
     for (int from = 0; from < 64; ++from) {
         char p = b.sq[from];
         if (!is_piece_color(p, us)) continue;
-        char lp = static_cast<char>(std::tolower(static_cast<unsigned char>(p)));
+        char lp = piece_lower(p);
         int f = file_of(from);
         int r = rank_of(from);
 
@@ -173,7 +173,7 @@ Board make_move(Board b, const Move& m) {
     if (m.from == square_of(7, 7) || m.to == square_of(7, 7)) b.castling &= ~4u;
 
     b.ep = -1;
-    if (std::tolower(static_cast<unsigned char>(p)) == 'p' && std::abs(m.to - m.from) == 16) {
+    if (piece_lower(p) == 'p' && std::abs(m.to - m.from) == 16) {
         b.ep = (m.from + m.to) / 2;
     }
     // Variant quotas: the event spends one, and spending the last ends the game

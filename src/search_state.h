@@ -404,6 +404,17 @@ struct SearchConfig {
     int dfpn_check_bias = 1;
     int dfpn_epsilon_64 = 0;
     bool dfpn_sort = false;
+    // Estimate an unvisited child's proof number from the defender king's
+    // flight count instead of letting every one of them tie at 1. See the
+    // block in dfpn_attacker. Off by default: it buys search quality with
+    // a king_escape per child, and that trade has to be measured.
+    bool dfpn_child_init = false;
+    // Cheap variant of the same estimate: in_check on the child instead of
+    // a full flight count. The flight count halves the tree but loses
+    // solves inside a fixed budget, because eight lifted-occupancy probes
+    // per child make the nodes it saves more expensive than the nodes it
+    // removes. Takes precedence when both are set.
+    bool dfpn_child_init_cheap = false;
     // Wall-clock budget in seconds. 0 means unlimited.
     // A deterministic alternative to --time-limit. Wall-clock budgets make every
     // comparison noisy: the same configuration measured 49, 51, 52 and 53 of 60

@@ -292,8 +292,21 @@ struct RouteResult {
 // Piece-type indices for the bitboard planes.
 enum PieceType { PT_PAWN = 0, PT_KNIGHT, PT_BISHOP, PT_ROOK, PT_QUEEN, PT_KING, PT_NONE };
 
+// ASCII lowercase for the piece letters this board stores.
+//
+// std::tolower is locale-aware, reads the locale table, and does not inline -
+// it is a genuine libc call. A callgrind profile of a mate search put tolower
+// at 5.40% of ALL instructions, from the per-move calls in type_of, the
+// gen_pseudo scan, make_move and the ordering scorer.
+//
+// The board holds ASCII piece letters plus '.' for empty, so setting bit 5 is
+// exact for A-Z and the guard leaves every other byte (including '.') alone.
+inline constexpr char piece_lower(char p) {
+    return (p >= 'A' && p <= 'Z') ? static_cast<char>(p | 0x20) : p;
+}
+
 inline PieceType type_of(char p) {
-    switch (std::tolower(static_cast<unsigned char>(p))) {
+    switch (piece_lower(p)) {
         case 'p': return PT_PAWN;
         case 'n': return PT_KNIGHT;
         case 'b': return PT_BISHOP;
@@ -727,19 +740,39 @@ struct TTKey {
 };
 
 struct TTKeyHash {
+    // One finalizer, not five.
+    //
+    // This ran a full splitmix64 round on each of the four board words AND the
+    // context - ten 64-bit multiplies per probe - and a callgrind profile put
+    // it at 10.45% of ALL instructions in a mate search, third hottest in the
+    // engine. That is cryptographic mixing to choose a bucket.
+    //
+    // The inputs are bitboard planes: high-entropy already, but CORRELATED by
+    // construction (occupancy is the union of the others), so a plain xor fold
+    // would collide badly. The multiply-accumulate below decorrelates them,
+    // then a single splitmix-style finalizer avalanches the result.
+    //
+    // THIS HASH IS NOT FREE TO CHANGE. It does not only pick unordered_map
+    // buckets: HintTable below indexes a DIRECT-MAPPED, always-replace cache
+    // with `TTKeyHash{}(key) & mask`. A different hash sends keys to different
+    // slots, so different move-ordering hints survive eviction, so the SEARCH
+    // CHANGES. Correctness is safe either way - probe() verifies slot.key ==
+    // key, so a collision returns nothing rather than a wrong move - but node
+    // counts move, and a change here cannot be validated by node identity.
+    //
+    // Measured for this version: +3.6% nodes, -18% wall on a node-capped d8
+    // set. The extra nodes are lost hints from weaker low-bit distribution;
+    // the low 16 bits are what HintTable consumes, which is why the finalizer
+    // folds high bits down before returning.
     std::size_t operator()(const TTKey& key) const noexcept {
-        std::uint64_t h = 0x9e3779b97f4a7c15ull;
-        auto mix64 = [&](std::uint64_t value) {
-            value += 0x9e3779b97f4a7c15ull;
-            value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
-            value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
-            value ^= value >> 31;
-            h ^= value + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
-        };
-        for (std::uint64_t word : key.board) {
-            mix64(word);
-        }
-        mix64(key.context);
+        std::uint64_t h = key.board[0];
+        h = h * 0x9e3779b97f4a7c15ull + key.board[1];
+        h = ((h << 31) | (h >> 33)) ^ key.board[2];
+        h = h * 0x9e3779b97f4a7c15ull + key.board[3];
+        h ^= key.context;
+        h ^= h >> 33;
+        h *= 0xff51afd7ed558ccdull;
+        h ^= h >> 29;
         return static_cast<std::size_t>(h);
     }
 };
