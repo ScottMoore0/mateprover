@@ -29,6 +29,10 @@ Usage:
     python verify_proof.py engine_output.txt
 
 Exit status is 0 only if every certificate and PV in the input verified.
+Under --require-proof an EMPTY input is a failure, not a vacuous pass: in a
+pipeline a producer that crashes emits nothing, and calling that success
+defeats the point of checking. Pass --expect N to also catch a producer
+that died part way through and left a valid prefix.
 """
 
 from __future__ import annotations
@@ -426,7 +430,14 @@ def main() -> int:
                     help="print only the summary and any failures")
     ap.add_argument("--require-proof", action="store_true",
                     help="fail if a solved position carries no certificate "
-                         "(the engine emits them only under --emit-proof)")
+                         "(the engine emits them only under --emit-proof). "
+                         "Also fails on empty input, which otherwise passes "
+                         "vacuously when the producer has crashed")
+    ap.add_argument("--expect", type=int, default=None, metavar="N",
+                    help="fail unless exactly N certificates verify. Use when "
+                         "the caller knows the count: it is the only check "
+                         "that catches a producer which died PART WAY through "
+                         "and left a valid prefix")
     args = ap.parse_args()
 
     # utf-8-sig, not utf-8: a certificate saved on Windows may carry a BOM, and
@@ -434,13 +445,14 @@ def main() -> int:
     # BOM is present.
     stream = sys.stdin if args.input == "-" else open(args.input, encoding="utf-8-sig")
 
-    checked = pv_only = skipped = 0
+    checked = pv_only = skipped = seen = 0
     failures: list[str] = []
 
     for raw in stream:
         line = raw.strip()
         if not line or line.startswith("%"):
             continue
+        seen += 1
         if "error input" in line:
             # The engine echoes an unparseable line back verbatim, so the echo
             # still carries whatever goal token the input had. That is not a
@@ -522,6 +534,19 @@ def main() -> int:
           f"{len(failures)} failed, {skipped} line(s) with no mate reported")
     for failure in failures:
         print(f"  FAILED: {failure}")
+    # Zero of everything is not a pass. The documented workflow is a pipe, so
+    # a producer that dies emits nothing, every counter above stays at 0, and
+    # this returned success. Requiring proof means asserting there is
+    # something here to prove.
+    if args.require_proof and seen == 0:
+        print("  FAILED: --require-proof, but the input held no engine output.")
+        print("          An empty stream is a failed producer, not a clean")
+        print("          verification.")
+        return 1
+    if args.expect is not None and checked != args.expect:
+        print(f"  FAILED: expected {args.expect} certificate(s), "
+              f"verified {checked}.")
+        return 1
     return 1 if failures else 0
 
 
