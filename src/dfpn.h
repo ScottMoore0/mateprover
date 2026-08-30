@@ -128,6 +128,7 @@ PnDn dfpn_selfmate_defender(Search& s, const Board& b, int depth,
     }
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
+    ++s.stats.and_nodes;
     const TTKey key = tt_key(b, depth, 'D', s.attacker, s.goal);
 
     bool scored = false;
@@ -197,6 +198,7 @@ PnDn dfpn_selfmate_attacker(Search& s, const Board& b, int depth,
     }
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
+    ++s.stats.or_nodes;
     const TTKey key = tt_key(b, depth, 'A', s.attacker, s.goal);
 
     // The terminal is here rather than after an attacker move: "the attacker is
@@ -289,6 +291,7 @@ PnDn dfpn_defender(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     // itself by hiding the preconditioner's cost entirely.
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
+    ++s.stats.and_nodes;
     const TTKey key = tt_key(b, depth, 'D', s.attacker, s.goal);
 
     bool scored = false;
@@ -397,6 +400,7 @@ PnDn dfpn_attacker(Search& s, const Board& b, int depth, std::uint32_t thpn, std
     }
     ++s.stats.dfpn_nodes;
     ++s.stats.nodes;
+    ++s.stats.or_nodes;
     // Depth belongs in the key. This module's own contract says so: a result
     // at one remaining depth must never satisfy a query at another. It was
     // passing 0, so every depth shared one entry -- a position stored as

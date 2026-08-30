@@ -324,6 +324,8 @@ void emit_profile_line(const Board& b, const Search& s, int requested_depth, int
               << ",\"defender_pseudo_moves\":" << st.defender_pseudo_moves
               << ",\"defender_lazy_skipped\":" << st.defender_lazy_skipped
               << ",\"dfpn_nodes\":" << st.dfpn_nodes
+              << ",\"or_nodes\":" << st.or_nodes
+              << ",\"and_nodes\":" << st.and_nodes
               << ",\"dfpn_proved\":" << st.dfpn_proved
               << ",\"dfpn_disproved\":" << st.dfpn_disproved
               << ",\"dfpn_table_size\":" << st.dfpn_table_size

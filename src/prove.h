@@ -362,6 +362,7 @@ Proof prove_selfmate_attacker(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
+    ++s.stats.or_nodes;
     Proof check_end;
     if (variant_terminal(s, b, check_end)) {
         return check_end;
@@ -868,6 +869,7 @@ Proof prove_selfmate_defender(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
+    ++s.stats.and_nodes;
     // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
@@ -1560,6 +1562,7 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
+    ++s.stats.and_nodes;
     // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.
@@ -1842,6 +1845,7 @@ Proof prove_attacker_observed(Search& s, const Board& b, int depth) {
         return {};
     }
     ++s.stats.nodes;
+    ++s.stats.or_nodes;
     // Variant: has the game already ended outright? Tested at every node
     // entry rather than only where a move is made, so it also catches a ROOT
     // position handed in already finished.

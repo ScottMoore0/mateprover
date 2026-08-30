@@ -559,6 +559,8 @@ struct Stats {
     std::uint64_t defender_pseudo_moves = 0;
     std::uint64_t defender_lazy_skipped = 0;
     std::uint64_t dfpn_nodes = 0;
+    std::uint64_t or_nodes = 0;
+    std::uint64_t and_nodes = 0;
     std::uint64_t dfpn_proved = 0;
     std::uint64_t dfpn_disproved = 0;
     std::uint64_t dfpn_table_size = 0;
@@ -678,6 +680,8 @@ struct Stats {
         defender_pseudo_moves += o.defender_pseudo_moves;
         defender_lazy_skipped += o.defender_lazy_skipped;
         dfpn_nodes += o.dfpn_nodes;
+        or_nodes += o.or_nodes;
+        and_nodes += o.and_nodes;
         dfpn_proved += o.dfpn_proved;
         dfpn_disproved += o.dfpn_disproved;
         dfpn_table_size += o.dfpn_table_size;
@@ -727,7 +731,7 @@ struct Stats {
 
 // Guard: every Stats member is a counter folded by operator+=. If a field is
 // added without extending the merge, this assertion fails at compile time.
-static_assert(sizeof(Stats) == 90 * sizeof(std::uint64_t),
+static_assert(sizeof(Stats) == 92 * sizeof(std::uint64_t),
               "Stats gained a field; extend Stats::operator+= to match.");
 
 struct TTKey {
