@@ -446,6 +446,90 @@ about the process — a fitness function that silently carried no signal because
 every position hit its budget and scored the cap, and a tuning result that won on
 its held-out set and reversed on a third. Architecture 118 and 119 record both.
 
+## Certifying what it cannot prove
+
+The engine proves the *shortest* mate, and it is a weak finder: over 180
+positions it solves 92 where two Stockfish forks solve 131 and 140. Those forks
+find quickly but routinely report a **longer** mate than the shortest, so what
+they produce is a claim, not a result.
+
+`tools/finder_lane.py` puts the two failures together. Where the engine cannot
+finish within its budget, an external finder proposes a mate and the engine
+verifies it with `--direct-depth`, which asks only whether a mate exists within
+N and so costs a fraction of proving the shortest. Measured over 60 positions at
+depths 12-18, 20M nodes to prove and 4M to verify:
+
+| | positions |
+|---|---|
+| engine alone | 7/60 |
+| with the finder lane | **31/60** |
+| claims made | 41 |
+| claims verified | 24 |
+| **claims rejected** | **17** |
+
+The seventeen rejections are the mechanism working, not a defect. The lane is
+**sound by construction**: an unreliable proposer cannot produce a wrong answer,
+only a wasted check. Nothing is taken on trust — every position reported carries
+a certificate, and `tools/verify_proof.py` re-derives all of them from scratch.
+
+**It replicates**, which five other positives in this project did not. On an
+independent sample of 40 positions the finder claimed on 77% of what the engine
+missed, against 77% before, and 53% of those verified, against 59% before.
+
+The verification ceiling is measured, not guessed. Cost is bimodal — median
+**90K nodes**, maximum 20.4M — so the ceiling is irrelevant to a typical claim
+and only ever buys the tail. A ceiling is spent only on *failures*, so raising
+it is paid for by every rejected claim:
+
+| ceiling | claims verified | nodes wasted on failures |
+|---|---|---|
+| **1M** | **13 of 30** | **17M** |
+| 4M | 13 of 30 | 68M |
+| 32M | 16 of 30 | 448M |
+
+1M is therefore the default: identical yield to the 4M used above, at a quarter
+of the waste.
+
+### Where it stops
+
+The lane is not confined to the band it was tuned on, but it decays sharply.
+Measured across six deeper bands:
+
+| band | n | engine alone | with lane | claims | verified |
+|---|---|---|---|---|---|
+| d20 | 10 | 2 | 2 | 3 | 0 |
+| d24 | 10 | 6 | 6 | 1 | 0 |
+| d28 | 8 | 0 | **2** | 3 | 2 |
+| d32 | 10 | 1 | 1 | 2 | 0 |
+| d36 | 5 | 0 | **1** | 3 | 1 |
+| d40 | 4 | 0 | 0 | 0 | 0 |
+| **total** | **47** | **9** | **12** | **12** | **3** |
+
+Three extra positions across 47, against twenty-four across sixty at d12-18.
+Those three are a hard count rather than an estimate — each carries a
+certificate — but the effect is roughly a tenth of the shallow one.
+
+**What fails is the proposer, not the prover.** The finder produces a candidate
+on 77% of missed positions at d12-18 and on only 32% here; of the claims it does
+make, 25% verify against 53-59% shallow. So the lane runs out because there is
+nothing to check, not because checking stops working — which is the opposite of
+what closes d41+, and it means a stronger proposer is the thing that would
+extend it.
+
+Read the deepest bands with care: the corpus thins with depth, so d36 is five
+positions and d40 is four. The d40 zero is close to no evidence at all.
+
+```
+python tools/finder_lane.py --finder ./hunt18 positions.epd > proofs.epd
+python tools/verify_proof.py --require-proof proofs.epd
+```
+
+**A verified find is not a minimality proof, and the two are never merged.**
+Stage one proves "the shortest mate is N". Stage three proves only "a mate
+exists within N". Both are certified and neither is a guess, but they are
+different claims, and the `lane` opcode on every output line says which one you
+have.
+
 ## Correctness
 
 The engine is exact. Beyond the test suite:
@@ -469,6 +553,15 @@ immediately. Perft is a permanent gate for that reason.
 
 ## Limitations
 
+- **The finder lane extends finding, not minimality, and only in a band.**
+  Proving the shortest mate means proving absence at every distance below it,
+  which is 99.3% of the work — so knowing the answer in advance saves none of
+  it, and `tools/finder_lane.py` leaves minimality coverage exactly where it
+  was. The gain is largest at depths 12-18 (+24 of 60) and decays to roughly a
+  tenth of that by d20-40 (+3 of 47), where the proposer stops producing
+  candidates rather than the prover failing to check them. Past 41 plies there
+  is nothing left: the engine scores 0/20 with `--direct-depth` as well as with
+  `--iterative-depth`, so verification has nothing to confirm.
 - **The goals differ in maturity, not in availability.** All six ship and all
   six are measured against the reference implementation in `docs/RESULTS.md`.
   Directmate is the most tuned by a wide margin; the cooperative goals
