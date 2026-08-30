@@ -10,14 +10,20 @@ without one.
 
 ## Unreleased
 
-**A finder lane.** `tools/finder_lane.py` certifies mates the engine cannot
-find alone: an external proposer suggests, the engine verifies with
-`--direct-depth`, and only what verifies is reported. 7/60 to 31/60 at d12-18.
-Sound by construction -- a false claim fails verification and costs only the
-check -- so an unreliable proposer cannot produce a wrong answer. Output is EPD
-carrying the usual `proof` opcode plus a `lane` opcode saying whether the line
-was proved shortest or verified within a claimed distance; the two are never
-merged. Minimality coverage is unchanged.
+**A finder lane, which does not improve coverage.**
+`tools/finder_lane.py` has an external proposer suggest a mate and verifies it
+with `--direct-depth`, reporting only what checks out. Sound by construction: a
+false claim fails verification and costs only the check. Output is EPD carrying
+the usual `proof` opcode plus a `lane` opcode saying whether the line was proved
+shortest or verified within a claimed distance; the two are never merged.
+
+It was first reported as 7/60 to 31/60 at d12-18. **That was wrong.** The
+baseline proved the SHORTEST mate while the lane arm only had to find one within
+N, so two variables moved at once. Measured against `--direct-depth` at the same
+budget the lane adds **+0**, and the published composite (31/60) was itself
+beaten by `--direct-depth` alone (36/60) at less than half the nodes. See
+docs/RESULTS.md. The tool is kept for its soundness property, not for
+coverage.
 
 **The verifier no longer passes on empty input.** `verify_proof.py
 --require-proof` exited 0 when its input held nothing, so a crashed producer in

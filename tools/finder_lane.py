@@ -4,56 +4,46 @@
 #
 # Released under the MIT License. See LICENSE for the full text.
 
-"""Certificates for positions mateprover cannot prove alone: propose, then verify.
+"""Verify an untrusted engine's mate claims. It does NOT improve coverage.
 
-mateprover proves the SHORTEST mate and can prove ABSENCE, but it is a weak
-finder -- 92 solved against 131 and 140 for two Stockfish forks over the same
-180 positions. Those forks find quickly but routinely report a LONGER mate than
-the shortest, so their output is a claim, not a result.
+An external finder proposes a mate; mateprover verifies it with --direct-depth
+and only what checks out is reported. A false claim fails verification and costs
+nothing but the check, so an unreliable proposer cannot produce a wrong answer.
+That soundness property is real and is what the tests exercise, driving the lane
+with proposers that lie, that report a negative mate score, and that find
+nothing.
 
-This lane turns those complementary failures into a combination. Where
-mateprover fails within its budget, an external finder proposes a mate and
-mateprover *verifies* it with --direct-depth, which asks only "is there a mate
-within N" and so costs a fraction of proving the shortest. Measured over 60
-positions at depths 12-18:
+WHAT THIS TOOL DOES NOT DO, and was once claimed to
+---------------------------------------------------
+This was first measured at 7/60 -> 31/60 (d12-18, 20M nodes) and reported as
+"+24 for the finder". That figure was an artefact. The baseline ran
+--iterative-depth, which proves the SHORTEST mate, while the lane arm was scored
+with --direct-depth, which only asks whether a mate exists within N. Two things
+changed and the whole difference was credited to the proposer.
 
-    mateprover alone                     7/60
-    with a verified finder lane         31/60      (+24, 4.4x)
-    claims made 41, verified 24, REJECTED 17
+Control, same positions, same seed, same budget, only the mode changed:
 
-Seventeen rejected claims is the point, not a defect. The lane is **sound by
-construction**: an unreliable proposer cannot produce a wrong answer, only a
-wasted check. Nothing is trusted -- every position reported here carries a
-certificate that tools/verify_proof.py will re-derive from scratch.
+    --iterative-depth   7/60      <- the published baseline
+    --direct-depth     36/60      <- the question this tool actually answers
+    published lane     31/60
 
-It replicates. On an independent sample of 40 positions the finder claimed on
-77% of what the prover missed, against 77% before, and 53% of those verified
-against 59% before.
+Dropping minimality is worth +29, and --direct-depth alone BEATS the lane
+composite while spending 20M nodes against the lane's 44M.
 
-The verification ceiling is measured rather than assumed. Cost is bimodal --
-median 90K nodes, maximum 20.4M -- so the ceiling is irrelevant to a typical
-claim and only ever buys the tail. Because a ceiling is spent only on
-FAILURES, 1M verifies exactly as many claims as 4M did while wasting a quarter
-as much work, which is why that is the default.
+Re-measured against the correct baseline - --direct-depth at full budget, a
+proposer consulted only on the 24 positions it cannot do:
 
-WHAT THIS DOES NOT DO
----------------------
-A verified find is **not** a minimality proof. Stage 1 proves "the shortest
-mate is N". Stage 3 proves only "a mate exists within N". Both are certified
-and neither is a guess, but they are different claims, and the `lane` opcode on
-every output line says which one you have. Do not aggregate them into a single
-"solved" number without saying so.
+    --direct-depth alone   36/60
+    proposer claimed        5 of 24
+    verified                0
+    lane total             36/60   (+0)
 
-Minimality coverage is unchanged by this tool and cannot be improved by it:
-proving the shortest mate requires proving ABSENCE at every distance below it,
-which is 99.3% of the work, and knowing the answer in advance saves none of it.
+The proposer was Matefish with a 4 GB proof-number table, the strongest of three
+measured. It adds NOTHING. If you want a mate found and certified, run
+--direct-depth; it is faster and reaches further than this.
 
-The gain is also band-limited, though not as sharply as first assumed. It is
-largest at depths 12-18 (+24 of 60) and still present but roughly ten times
-weaker across d20-40 (+3 of 47), where what fails is the PROPOSER -- it claims
-on 32% of missed positions against 77% shallow -- rather than verification. Past
-41 plies nothing is left: mateprover scores 0/20 with --direct-depth as well as
---iterative-depth, so there is nothing for verification to confirm.
+The tool remains because verifying an untrusted claim is a useful primitive and
+the implementation is correct. It is not a coverage improvement.
 
 USAGE
 -----

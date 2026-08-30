@@ -496,53 +496,57 @@ Both mate-in-10 figures above use it, which is why they are labelled. If you
 already know the mate distance -- from a problem's stipulation, or from an EPD
 token -- there is no reason to pay for rediscovering it.
 
-### Certifying what cannot be proved alone
+### The finder lane, and the confound that inflated it
 
-The engine is a weak finder -- 92 solved against 131 and 140 for two Stockfish
-forks over the same 180 positions -- and those forks routinely report a longer
-mate than the shortest, so their output is a claim rather than a result.
-`tools/finder_lane.py` combines the two failures: where the engine cannot
-finish, an external finder proposes and the engine verifies with
-`--direct-depth`.
+`tools/finder_lane.py` has an external engine propose a mate and verifies the
+proposal with `--direct-depth`, reporting only what checks out. It is sound by
+construction and its certificates are real. **It does not improve coverage, and
+an earlier version of this section claimed it did.**
 
-| | positions |
+The original measurement reported 7/60 -> 31/60 and called the difference
+"+24 for the finder". Its baseline was `--iterative-depth --no-portfolio`, which
+proves the SHORTEST mate, while the lane arm was scored with `--direct-depth`,
+which only asks whether a mate exists within N. Two variables moved and the
+whole difference was attributed to one of them.
+
+The control -- same 60 positions, same seed, same 20M nodes, same
+`--no-portfolio`, only the mode changed:
+
+| | solved |
 |---|---|
-| engine alone, d12-18 | 7/60 |
-| with the finder lane | **31/60** |
-| claims made / verified / **rejected** | 41 / 24 / **17** |
+| `--iterative-depth` (the published baseline) | 7/60 |
+| `--direct-depth` (the question the lane answers) | **36/60** |
+| the published lane composite | 31/60 |
 
-The seventeen rejections are the mechanism. Unlike every learned-guidance
-approach tried here, this one needs the proposer right only *sometimes*: a
-false claim fails verification and costs the check. It is the only idea in this
-project that is sound by construction rather than by accuracy, and the only
-positive that survived replication -- an independent 40-position sample gave the
-same 77% claim rate and 53% verification against 59%.
+**Dropping minimality alone is worth +29.** The published composite scored 31
+where the engine asking directly scores 36, and it spent 44M nodes (20M proving,
+20M finding, 4M verifying) against the control's 20M. The lane was beaten by the
+trivial alternative that was never run.
 
-Three follow-up measurements bound it.
+Re-measured with the correct baseline -- `--direct-depth` at full budget, a
+proposer consulted only on the 24 positions it genuinely cannot do, verification
+at the same budget:
 
-**The verification ceiling is measured, not guessed.** Cost is bimodal: median
-90,362 nodes, maximum 20,420,687. A ceiling is spent only on *failures*, so 1M
-verifies exactly as many claims as 4M while wasting a quarter as much work.
-The curve was derived from one run per claim rather than a sweep, and the
-derivation was controlled by re-running at exactly `acn` and `acn-1` -- 6/6 at
-the cheap end and 6/6 again at the expensive end, up to the 20.4M maximum.
+| | |
+|---|---|
+| `--direct-depth` alone | 36/60 |
+| proposer claimed on | 5 of the 24 missed |
+| **verified** | **0** |
+| **lane total** | **36/60 (+0)** |
 
-**The band was mapped, and it is wider than assumed.** Across d20-40 the lane
-adds +3 of 47 -- about a tenth of the shallow effect, but not zero, and it
-reaches d36. At d28 it supplied every certified position in the band. What
-fails deep is the *proposer*, not the prover: the claim rate falls from 77% to
-32% while verification keeps working. That is the opposite of what closes d41+.
+The proposer was Matefish with a 4 GB proof-number table -- the best of the
+three measured, and better resourced than the engine it was helping. Zero of its
+claims survived verification.
 
-**Proposer choice is not a lever.** Three engines compared paired at d12-18:
-hunt18 verified 16 of 31 claims, huntsman 12 of 23, matefish 17 of 23. Nothing
-is established -- the sign tests give p = 0.219 and p = 1.000, and matefish's
-better precision is |d|/se = 1.74, below visibility. A portfolio of proposers
-beats the best single arm by +1, which is noise.
+**The lane adds nothing.** It is retained because it is correct and tested, and
+because verifying an untrusted claim is a useful primitive, but it is not a
+coverage result. To find and certify a mate, `--direct-depth` alone is faster
+and reaches further.
 
-A verified find proves "a mate exists within N", not "the shortest is N". The
-`lane` opcode on every output line says which, and the two are never merged.
-Minimality coverage is unchanged and cannot be improved this way: the absence
-proofs below K are 99.3% of the work and knowing K saves none of it.
+This is recorded rather than quietly removed because the error is instructive:
+the comparison was between two configurations that differed in two ways, which
+is the single most repeated methodological failure in this project, and it
+survived into a headline figure precisely because the result was welcome.
 
 ## What was tried and rejected
 
