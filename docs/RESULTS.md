@@ -297,6 +297,69 @@ what this engine does.
 The selfstalemate `0.72x median` is noise, not a finding: those positions resolve
 in 0.00-0.01 s, where the numbers are timer granularity.
 
+### Against Matefish: parity on finding, and why that matters
+
+Every comparison above is against Chest 3.19 -- a program whose copyright is
+1994 and whose 3.16 release is dated 16 June 1999. Beating it is worth
+reporting, but a reader is entitled to ask what happens against something
+modern. Matefish is a proof-number-search mate solver, architecturally the
+closest thing to this engine that exists, and until 2026-08-30 it had never
+been measured against it.
+
+**Claims have to be matched first, and by default they are not.** Probed over
+nine cases, `go mate N` on a position whose shortest mate is 2, 3 or 4 returns
+`score mate N` for N = true, true+5 and true+12 every time. Matefish echoes the
+bound. It answers "is there a mate within N" and never "the shortest mate is
+N", so it is comparable to `--direct-depth` and has no counterpart at all for
+`--iterative-depth`.
+
+60 positions, d8-d16, 10 s per engine per position, single-threaded, idle
+machine. Matefish's claims are **verified** by re-proving them rather than
+counted, because this family of engines over-claims:
+
+| band | n | mateprover `--direct-depth` | matefish claimed | matefish **verified** |
+|---|---|---|---|---|
+| d8 | 12 | 10 | 10 | 10 |
+| d10 | 12 | 10 | 11 | 10 |
+| d12 | 12 | 10 | 10 | 9 |
+| d14 | 12 | 7 | 8 | 6 |
+| d16 | 12 | 8 | 7 | 7 |
+| **total** | **60** | **45** | 46 | **42** |
+
+Paired, matefish is **+1/-4** against mateprover: five discordant pairs, sign
+test **p = 0.375**. **This is parity. mateprover does not beat Matefish at
+finding, and this document does not claim it does.** Four of the 46 claims did
+not verify within the budget, which means unconfirmed rather than false.
+
+Speed is a different answer. On the 41 positions both solved, mateprover was
+faster on **32 of 41, p = 0.0004**, median **1.49x** and mean 2.13x. Process
+startup is about 5 ms for both engines and was checked explicitly, so this is
+search rather than launch overhead.
+
+Minimality has no contest, because there is no opponent:
+
+| band | n | mateprover `--iterative-depth` | matefish |
+|---|---|---|---|
+| **total** | **60** | **41** | **n/a** |
+
+Not zero -- **n/a**. Proving that no shorter mate exists is a question Matefish
+cannot be asked.
+
+**Matefish was given 4 GB** for its proof-number table against mateprover's
+256 MB per-table default, deliberately more than it needs, so that no result
+here can be attributed to under-resourcing it. That matters more than it
+sounds: `ProofNumberSearch` defaults to **false**, and the `PNS Hash` table is
+**separate from `Hash`** and defaults to 32 MB, at which Matefish abandons a
+d14 search in 0.20 s. Benchmarking it at its defaults measures a crippled
+engine and produces a flattering, wrong result.
+
+**So the honest summary is narrower than the Chest tables alone suggest.**
+Against a 1999-era specialist this engine wins broadly. Against a modern
+proof-number solver it is **level on finding**, **significantly faster**, needs
+**a fraction of the memory**, and does two things its rival cannot do at any
+budget: prove minimality, and emit a certificate a third party can re-derive.
+Those last two are the claim worth making.
+
 ### The composition features
 
 Everything above answers the prover's question. These answer the problemist's.
@@ -366,6 +429,31 @@ repeatedly was enough (14).
 The mate-in-10 figures did not move: a set consulted two or three times gave
 75%, and a fresh one gives 73.3%. The size of the effect tracks how often a set
 was used.
+
+### How Chest was configured, and what it is
+
+Two facts a reader is entitled to have without having to ask.
+
+**Chest 3.19 is an old program.** Its copyright is 1994 (Heiner Marxen, Holger
+Pause, Thomas Rakovsky) and its own documentation dates version 3.16 to 16 June
+1999. The ChestUCI wrapper it is driven through is recent; the solver
+underneath is not. It remains a serious and well-regarded special-mate solver,
+and the margins above are real -- but "faster than Chest" should be read as
+"faster than a mature 1999 specialist", not as a claim about the state of the
+art. For that, see the Matefish comparison above, which is a much narrower
+result.
+
+**Chest ran with its endgame databases disabled** -- `UseDatabase = false`, and
+the `EgtbPath` entries in its `.ini` point at directories that do not exist on
+the measurement machine. This is defensible and not an accident: mateprover has
+no tablebase support either, so the condition is matched, and this project
+measured that even the full 7-man set reaches only about 1% of proof nodes on
+this kind of position (composed problems mostly carry too many pieces for a
+tablebase to apply). It is disclosed because "did you enable Chest's
+databases?" is the first question anyone familiar with it will ask, and the
+answer should not have to be reconstructed from a configuration file.
+
+Chest was given 2048 MB throughout; mateprover ran at its own defaults.
 
 ### Checking these numbers yourself
 
