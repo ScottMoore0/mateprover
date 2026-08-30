@@ -54,6 +54,16 @@ REPO = HERE.parent
 LANE = REPO / "tools" / "finder_lane.py"
 VERIFIER = REPO / "tools" / "verify_proof.py"
 
+try:
+    import chess  # noqa: F401
+    HAVE_CHESS = True
+except ImportError:
+    # Without python-chess the independent re-derivation cannot run. It is
+    # SKIPPED rather than silently passed: the suite's count guard counts
+    # skips, so a missing dependency stays visible instead of shrinking the
+    # total. Run under ~/.venv-mateprover/bin/python to get the real check.
+    HAVE_CHESS = False
+
 # Positions with a known, and deliberately not-2, mate distance.
 DEEP = [
     ("8/2k5/8/4K1R1/8/8/6Q1/8 w - -", 3),
@@ -85,6 +95,12 @@ BEHAVIOUR = {
     "mated": 'emit("info depth 4 score mate -3 pv a1a2")',
     # Searches and finds nothing.
     "silent": 'emit("info depth 4 score cp 15 pv a1a2")',
+    # Echoes back the distance it was asked for. Since the lane asks for the
+    # depth on the EPD line and every position here really is mate in that
+    # many, this is a proposer that is always RIGHT -- which exercises the
+    # verified lane end to end without needing a real engine, and keeps the
+    # check count deterministic for the suite's own count guard.
+    "honest": 'emit("info depth 4 score mate %s pv a1a2" % line.split()[2])',
 }
 
 
@@ -136,7 +152,7 @@ def lanes(stderr: str) -> dict[str, int]:
     return tally
 
 
-def run(res: Results, engine: str, finder: str | None = None) -> None:
+def run(res: Results, engine: str) -> None:
     print("\n[finder lane] tools/finder_lane.py never trusts its proposer")
     if not LANE.exists():
         res.skip("finder lane", "tools/finder_lane.py not present")
@@ -210,33 +226,58 @@ def run(res: Results, engine: str, finder: str | None = None) -> None:
         res.check("a malformed --finder-option is refused", code == 2,
                   f"exit {code}")
 
-        # --- 6. the honest path, and both lanes verify independently -------
-        if finder and Path(finder).exists():
-            code, out, err = run_lane(engine, epd, [
-                "--prove-nodes", "100", "--finder", finder,
-                "--finder-option", "Threads=1",
-                "--find-nodes", "2000000", "--verify-nodes", "2000000"])
-            t = lanes(err)
-            res.check("a real proposer produces verified finds",
-                      t["verified"] > 0, f"tally {t}")
-            res.check("verified lines are tagged `lane verified`",
-                      out.count("lane verified;") == t["verified"],
-                      f"{out.count('lane verified;')} tags, {t['verified']} finds")
-            if VERIFIER.exists() and t["verified"]:
-                got = tmp / "out.epd"
-                got.write_text(out, encoding="utf-8")
-                total = t["minimal"] + t["verified"]
-                proc = subprocess.run(
-                    [sys.executable, str(VERIFIER), "--quiet", "--require-proof",
-                     "--expect", str(total), str(got)],
-                    capture_output=True, text=True, errors="replace", timeout=600)
-                res.check("every certificate re-derives independently",
-                          proc.returncode == 0,
-                          proc.stdout.strip().splitlines()[-1:] or "no output")
-            else:
-                res.skip("independent re-derivation", "verifier or finds absent")
+        # --- 6. an honest proposer: the verified lane, end to end ----------
+        honest = write_fake(tmp, "honest")
+        code, out, err = run_lane(engine, epd, [
+            "--prove-nodes", "100", "--finder", str(honest),
+            "--verify-nodes", "5000000"])
+        t = lanes(err)
+        res.check("an honest proposer produces verified finds",
+                  t["verified"] > 0, f"tally {t}")
+        res.check("verified lines are tagged `lane verified`",
+                  out.count("lane verified;") == t["verified"],
+                  f"{out.count('lane verified;')} tags, {t['verified']} finds")
+
+        # --- 7. both lanes re-derive under the independent checker ---------
+        # --expect pins the count, so a producer that died part way through
+        # and left a valid prefix cannot pass this.
+        if not VERIFIER.exists() or not HAVE_CHESS:
+            res.skip("every certificate re-derives independently",
+                     "verifier or python-chess absent")
         else:
-            res.skip("honest proposer path", "no --finder given")
+            got = tmp / "out.epd"
+            got.write_text(out, encoding="utf-8")
+            total = t["minimal"] + t["verified"]
+            proc = subprocess.run(
+                [sys.executable, str(VERIFIER), "--quiet", "--require-proof",
+                 "--expect", str(total), str(got)],
+                capture_output=True, text=True, errors="replace", timeout=600)
+            res.check("every certificate re-derives independently",
+                      proc.returncode == 0,
+                      (proc.stdout.strip().splitlines() or ["no output"])[-1])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def run_with_real_finder(res: Results, engine: str, finder: str) -> None:
+    """Standalone extra: the same path driven by an actual engine.
+
+    Deliberately NOT part of run(), because it needs a binary the suite cannot
+    assume and would make the check count depend on what is installed.
+    """
+    print("\n[finder lane] a real proposer, for standalone use")
+    tmp = Path(tempfile.mkdtemp(prefix="finder_lane_real_"))
+    try:
+        epd = tmp / "deep.epd"
+        epd.write_text("".join(f"{fen} ; dm {d}\n" for fen, d in DEEP),
+                       encoding="utf-8")
+        code, out, err = run_lane(engine, epd, [
+            "--prove-nodes", "100", "--finder", finder,
+            "--finder-option", "Threads=1",
+            "--find-nodes", "2000000", "--verify-nodes", "2000000"])
+        t = lanes(err)
+        res.check("a real proposer produces verified finds",
+                  t["verified"] > 0, f"tally {t}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -255,7 +296,9 @@ def main() -> int:
         return 2
 
     res = Results()
-    run(res, args.engine, args.finder)
+    run(res, args.engine)
+    if args.finder and Path(args.finder).exists():
+        run_with_real_finder(res, args.engine, args.finder)
     print(f"\n{res.passed} passed, {res.failed} failed, {res.skipped} skipped")
     return 1 if res.failed else 0
 

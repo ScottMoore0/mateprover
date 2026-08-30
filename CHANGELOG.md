@@ -8,6 +8,28 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
+## Unreleased
+
+**A finder lane.** `tools/finder_lane.py` certifies mates the engine cannot
+find alone: an external proposer suggests, the engine verifies with
+`--direct-depth`, and only what verifies is reported. 7/60 to 31/60 at d12-18.
+Sound by construction -- a false claim fails verification and costs only the
+check -- so an unreliable proposer cannot produce a wrong answer. Output is EPD
+carrying the usual `proof` opcode plus a `lane` opcode saying whether the line
+was proved shortest or verified within a claimed distance; the two are never
+merged. Minimality coverage is unchanged.
+
+**The verifier no longer passes on empty input.** `verify_proof.py
+--require-proof` exited 0 when its input held nothing, so a crashed producer in
+a pipeline reported success. `--expect N` covers the related case of a producer
+that died part way and left a valid prefix.
+
+**Restriction portfolio flags.** `--restrict-checks`, `--restrict-king`,
+`--restrict-maxdef`, `--restrict-threat` and `--lane0-weight` apply one
+restriction or one budget split from the command line, so candidates can be
+swept without a rebuild. Each removes attacker options only, so any mate found
+under one is real.
+
 ## 0.1.0 — 2026-08-11
 
 **The version number goes DOWN here, deliberately.** This is a new repository
@@ -505,7 +527,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 587 automated checks cover perft against
+sharing no code with the engine. 599 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

@@ -3709,6 +3709,25 @@ def test_comparisons_actually_differ(engine: Path, res: Results) -> None:
                   effective([flag]) == plain, f"{flag} still alters the configuration")
 
 
+def test_finder_lane(engine: str, res: Results) -> None:
+    """The finder lane, driven by proposers whose answers are known.
+
+    Kept in its own file because its fixtures are UCI ENGINES rather than
+    positions -- tiny scripts that lie, that report a negative mate score,
+    or that find nothing. Imported rather than copied so there is exactly
+    one definition of them.
+    """
+    module_path = HERE / "test_finder_lane.py"
+    if not module_path.exists():
+        res.skip("finder lane", "tests/test_finder_lane.py not present")
+        return
+    spec = importlib.util.spec_from_file_location(
+        "test_finder_lane", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run(res, str(engine))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -3791,6 +3810,7 @@ def main() -> int:
     test_king_escape_analysis(args.engine, res)
     test_measurement_harness(res)
     test_docs_reference_shipped_files(args.engine, res)
+    test_finder_lane(args.engine, res)
 
     # Last, because it needs the final tally. Two documents advertise how many
     # checks there are, and both had drifted to 224 while the suite stood at

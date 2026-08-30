@@ -408,6 +408,54 @@ Both mate-in-10 figures above use it, which is why they are labelled. If you
 already know the mate distance -- from a problem's stipulation, or from an EPD
 token -- there is no reason to pay for rediscovering it.
 
+### Certifying what cannot be proved alone
+
+The engine is a weak finder -- 92 solved against 131 and 140 for two Stockfish
+forks over the same 180 positions -- and those forks routinely report a longer
+mate than the shortest, so their output is a claim rather than a result.
+`tools/finder_lane.py` combines the two failures: where the engine cannot
+finish, an external finder proposes and the engine verifies with
+`--direct-depth`.
+
+| | positions |
+|---|---|
+| engine alone, d12-18 | 7/60 |
+| with the finder lane | **31/60** |
+| claims made / verified / **rejected** | 41 / 24 / **17** |
+
+The seventeen rejections are the mechanism. Unlike every learned-guidance
+approach tried here, this one needs the proposer right only *sometimes*: a
+false claim fails verification and costs the check. It is the only idea in this
+project that is sound by construction rather than by accuracy, and the only
+positive that survived replication -- an independent 40-position sample gave the
+same 77% claim rate and 53% verification against 59%.
+
+Three follow-up measurements bound it.
+
+**The verification ceiling is measured, not guessed.** Cost is bimodal: median
+90,362 nodes, maximum 20,420,687. A ceiling is spent only on *failures*, so 1M
+verifies exactly as many claims as 4M while wasting a quarter as much work.
+The curve was derived from one run per claim rather than a sweep, and the
+derivation was controlled by re-running at exactly `acn` and `acn-1` -- 6/6 at
+the cheap end and 6/6 again at the expensive end, up to the 20.4M maximum.
+
+**The band was mapped, and it is wider than assumed.** Across d20-40 the lane
+adds +3 of 47 -- about a tenth of the shallow effect, but not zero, and it
+reaches d36. At d28 it supplied every certified position in the band. What
+fails deep is the *proposer*, not the prover: the claim rate falls from 77% to
+32% while verification keeps working. That is the opposite of what closes d41+.
+
+**Proposer choice is not a lever.** Three engines compared paired at d12-18:
+hunt18 verified 16 of 31 claims, huntsman 12 of 23, matefish 17 of 23. Nothing
+is established -- the sign tests give p = 0.219 and p = 1.000, and matefish's
+better precision is |d|/se = 1.74, below visibility. A portfolio of proposers
+beats the best single arm by +1, which is noise.
+
+A verified find proves "a mate exists within N", not "the shortest is N". The
+`lane` opcode on every output line says which, and the two are never merged.
+Minimality coverage is unchanged and cannot be improved this way: the absence
+proofs below K are 99.3% of the work and knowing K saves none of it.
+
 ## What was tried and rejected
 
 Each of these was implemented or measured, not merely considered.
@@ -455,7 +503,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 587 automated checks, including perft, negative controls, restriction
+- 599 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than
