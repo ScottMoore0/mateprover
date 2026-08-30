@@ -431,7 +431,27 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
                 capped.push_back(all_entries[rank]);
             }
         }
-        const std::vector<PortfolioEntry>& entries = capped.empty() ? all_entries : capped;
+        // Optional override of lane 0's share. The shipped 0.30 floor was
+        // set because equal splitting starved this lane (15 solved -> 13);
+        // whether 0.30 is ENOUGH has never been measured.
+        const std::vector<PortfolioEntry>& base_entries =
+            capped.empty() ? all_entries : capped;
+        std::vector<PortfolioEntry> reweighted;
+        if (config.lane0_weight > 0 && base_entries.size() > 1) {
+            reweighted = base_entries;
+            const double w0 = static_cast<double>(config.lane0_weight) / 100.0;
+            double rest = 0.0;
+            for (std::size_t i = 1; i < reweighted.size(); ++i)
+                rest += reweighted[i].weight;
+            reweighted[0].weight = w0;
+            if (rest > 0.0) {
+                const double scale = (1.0 - w0) / rest;
+                for (std::size_t i = 1; i < reweighted.size(); ++i)
+                    reweighted[i].weight *= scale;
+            }
+        }
+        const std::vector<PortfolioEntry>& entries =
+            reweighted.empty() ? base_entries : reweighted;
         const int lanes = static_cast<int>(entries.size());
         const int total_threads = std::max(1, config.threads);
         // Threads follow the same weights as the time slices did. Splitting

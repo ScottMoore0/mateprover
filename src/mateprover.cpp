@@ -208,9 +208,26 @@ void print_usage() {
 "                                opening position the same question took 2.3 s\n"
 "                                with this flag and had not finished in 90\n"
 "                                minutes without it\n"
+"  --restrict-checks N | --restrict-king N | --restrict-maxdef N |\n"
+"  --restrict-threat N           apply ONE portfolio restriction directly, so\n"
+"                                candidates can be swept without a rebuild. The\n"
+"                                shipped portfolio was set-covered on mate-in-8\n"
+"                                and never revisited for depth. Combine with\n"
+"                                --no-portfolio to measure a restriction alone.\n"
+"                                A restriction only removes ATTACKER options, so\n"
+"                                any mate found under one is real.\n"
 "  --portfolio-lanes N           cap concurrent lanes (0 = all, the default).\n"
 "                                Lanes contend for cores, so fewer can be\n"
 "                                faster on a small machine\n"
+"  --lane0-weight PCT            override the share of the portfolio budget\n"
+"                                given to lane 0, the UNRESTRICTED search, as\n"
+"                                a percent 1-100. The remaining lanes are\n"
+"                                rescaled to divide what is left, keeping\n"
+"                                their relative proportions. 0, the default,\n"
+"                                leaves the shipped weights untouched. Lane 0\n"
+"                                is the only COMPLETE lane, so this is the\n"
+"                                knob for trading its coverage against the\n"
+"                                restricted ones\n"
 "  --route-lane-threads N        threads for each route-diversity lane on the\n"
 "                                non-directmate goals (default 1). The split\n"
 "                                reaches positions a single thread cannot, but\n"
@@ -1180,6 +1197,37 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--dfpn-min-depth' expects a number");
             config.dfpn_min_depth = static_cast<int>(value);
+        } else if (arg == "--lane0-weight") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--lane0-weight' requires a percent");
+            std::size_t value = 0;
+            if (!parse_size(v, value) || value > 100)
+                return usage_error("option '--lane0-weight' expects 0-100");
+            config.lane0_weight = static_cast<int>(value);
+        } else if (arg == "--restrict-checks") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--restrict-checks' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--restrict-checks' expects a number");
+            config.checks_mask = static_cast<int>(value);
+        } else if (arg == "--restrict-king") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--restrict-king' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--restrict-king' expects a number");
+            config.king_squares = static_cast<int>(value);
+        } else if (arg == "--restrict-maxdef") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--restrict-maxdef' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--restrict-maxdef' expects a number");
+            config.max_defender_moves = static_cast<int>(value);
+        } else if (arg == "--restrict-threat") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--restrict-threat' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value)) return usage_error("option '--restrict-threat' expects a number");
+            config.threat_depth = static_cast<int>(value);
         } else if (arg == "--dfpn-node-limit") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--dfpn-node-limit' requires a node count");

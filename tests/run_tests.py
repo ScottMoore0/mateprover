@@ -3834,17 +3834,16 @@ def main() -> int:
     #
     # A test that fails when it merely lacks the data to judge is worse than no
     # test: it trains the reader to discount the failure.
-    # Every corpus the suite loops over, not just one. The check count is
-    # DATA-DRIVEN - checks run inside `for ... in zip(cases, lines)` over
-    # corpus entries - so a missing corpus silently lowers the total. With
-    # only selfmate_deep.jsonl gated, an incomplete checkout was declared
-    # complete and a documented 587 was compared against a partial 524,
-    # which reads as "63 checks were deleted" when nothing was.
-    _required = ("selfmate_deep.jsonl", "matetrack_d8.jsonl",
-                 "matetrack_d10.jsonl", "harness_ledger_selftest.jsonl",
-                 "stalemate_pdb.jsonl", "helpmate_yacpdb.jsonl")
-    complete = all((HERE.parent / "benchmarks" / _f).exists()
-                   for _f in _required)
+    # Gated on selfmate_deep.jsonl, the heaviest corpus the suite consumes.
+    #
+    # A previous "fix" required matetrack_d8.jsonl, matetrack_d10.jsonl and
+    # harness_ledger_selftest.jsonl here. None of those is a prerequisite:
+    # the first two are STRING LITERALS in a fixture above (checking that two
+    # corpus names yield different measurement identities) and the third is
+    # written by this suite into build/ as it runs. Requiring them made these
+    # checks skip permanently, which is worse than failing: a test that never
+    # runs reports nothing at all.
+    complete = (HERE.parent / "benchmarks" / "selfmate_deep.jsonl").exists()
     for doc in docs:
         if not complete:
             res.skip(f"{doc.name} states the current check count",

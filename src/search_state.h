@@ -493,6 +493,10 @@ struct SearchConfig {
     // better: a lane that solves a position in 7.4 s alone can take 27 s
     // against eight others. See section 57.
     int portfolio_lanes = 0;
+    // Percent share for lane 0, the unrestricted search. 0 = keep the
+    // shipped weights. The others rescale proportionally so the total
+    // stays 1. The shipped floor is 0.30 and has never been swept.
+    int lane0_weight = 0;
     // Threads given to each route-diversity lane. 0 takes the built-in default.
     // The split scales that lane but steals cores from the lanes that resolve
     // most positions quickly, so this is a bounded share. See section 57.
