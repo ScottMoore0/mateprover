@@ -436,7 +436,9 @@ Two facts a reader is entitled to have without having to ask.
 
 **Chest 3.19 is an old program.** Its copyright is 1994 (Heiner Marxen, Holger
 Pause, Thomas Rakovsky) and its own documentation dates version 3.16 to 16 June
-1999. The ChestUCI wrapper it is driven through is recent; the solver
+1999. The tables in this document drive the solver itself, `WinChest.exe`, with
+a job on stdin (the `ChestUCI.exe` wrapper is a UCI front end for GUIs and is
+not what answered here); the wrapper is recent, the solver
 underneath is not. It remains a serious and well-regarded special-mate solver,
 and the margins above are real -- but "faster than Chest" should be read as
 "faster than a mature 1999 specialist", not as a claim about the state of the
