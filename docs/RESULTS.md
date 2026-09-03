@@ -199,7 +199,7 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | stalemate | **all 792** | 725 | **761** | 1 | 37 |
 | helpmate | **all 546** | 491 | **513** | 2 | 24 |
 | helpstalemate | **all 431** | 308 | **363** | **0** | 55 |
-| selfmate | **all 903** | 318 | **389** | 15 | 86 |
+| selfmate | **all 903** | 407 | **643** | 19 | 255 |
 | selfstalemate | **all 76** | 49 | **52** | 1 | 4 |
 
 Every row is now measured at **engine defaults on both sides**. An earlier
@@ -217,16 +217,19 @@ on 2048 MB, both proving the SHORTEST solution, scored on presence rather than o
 matching the stipulated depth. Six of the seven rows are whole corpora. Stalemate
 is now the externally-sourced union of `stalemate_pdb` and `stalemate_yacpdb`,
 792 distinct after removing 47 duplicates and the one position already tagged
-illegal -- it replaces a 40-position **development** set. The selfmate row is
-carried over from an earlier best-of-three run and is the only one not re-measured
-under this protocol.
+illegal -- it replaces a 40-position **development** set. The selfmate row was re-measured under this protocol on 2026-09-03 (single
+trial, 10 s, `WinChest.exe` at 2048 MB, mateprover at its defaults): both
+engines gained over the earlier best-of-three figures -- Chest 318 to 407,
+mateprover 389 to 643 -- and the margin widened from 71 to 236 positions. Chest
+refused 15 positions outright, which is evidence about the corpus rather than
+about either engine.
 
 Speed, on the positions **both** engines solved -- a ratio that includes a timeout
 is comparing a number against a cap:
 
 | goal | paired | total | median per position |
 |---|---|---|---|
-| selfmate | 303 | 1.90x | **5.4x** |
+| selfmate | 388 | 3.02x | **3.5x** |
 | mate-in-8 | 137 | 2.50x | **8.7x** |
 | mate-in-10 | 18 | 6.09x | **136.3x** |
 | stalemate | 724 | 2.44x | **7.2x** |
