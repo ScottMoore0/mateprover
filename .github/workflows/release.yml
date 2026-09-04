@@ -8,6 +8,7 @@ name: Release
 # binary reports. A tag that disagrees with the source fails the build rather
 # than publishing a binary whose --version contradicts its own filename.
 
+# Runs on a version tag; can also be started by hand from the Actions tab.
 on:
   push:
     tags: ["v*"]

@@ -11,6 +11,7 @@ name: CI
 # Untested CI configuration is not the same thing as passing CI, and the gap
 # between them was eight findings wide.
 
+# Runs on every push to master and on pull requests; can be started by hand.
 on:
   push:
     branches: [main, master]
