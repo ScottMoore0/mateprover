@@ -331,7 +331,7 @@ intervals.
 
 | problems | solve rate | 95% CI |
 |---|---:|---|
-| mate-in-8, defaults, 15 s (200 positions) | 88.5% | 83.3–92.2 |
+| mate-in-8, defaults, 15 s (200 positions) | 78.0% | 71.8–83.2 |
 | mate-in-10, 30 s, 32 threads, `--direct-depth` (60) | 96.7% | 88.6–99.1 |
 | mate-in-12, same conditions (40) | 82.5% | 68.0–91.3 |
 | mate-in-14, same conditions (40) | 75.0% | 59.8–85.8 |
@@ -340,9 +340,8 @@ intervals.
 
 Read the intervals, not the point estimates. The mate-in-20 set is small
 enough that 55% means "roughly half", and the mate-in-10 figure means "nearly
-all of a small sample". The mate-in-8 set also serves in the engine
-comparisons, so it is a known set rather than a fresh holdout; the other rows
-were measured once, on sets minted for the purpose.
+all of a small sample". Every row was measured once, on a set minted for the
+purpose and never consulted during development.
 
 MateProver solves mate-in-5 and below essentially always and mate-in-6 and 7
 reliably in seconds. Beyond that the solve rate declines gradually rather

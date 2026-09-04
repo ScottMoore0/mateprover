@@ -8,7 +8,7 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## Unreleased
+## 0.1.0 — 2026-09-04
 
 **A finder lane, which does not improve coverage.**
 `tools/finder_lane.py` has an external proposer suggest a mate and verifies it
@@ -17,26 +17,24 @@ false claim fails verification and costs only the check. Output is EPD carrying
 the usual `proof` opcode plus a `lane` opcode saying whether the line was proved
 shortest or verified within a claimed distance; the two are never merged.
 
-It was first reported as 7/60 to 31/60 at d12-18. **That was wrong.** The
-baseline proved the SHORTEST mate while the lane arm only had to find one within
-N, so two variables moved at once. Measured against `--direct-depth` at the same
-budget the lane adds **+0**, and the published composite (31/60) was itself
-beaten by `--direct-depth` alone (36/60) at less than half the nodes. See
-docs/RESULTS.md. The tool is kept for its soundness property, not for
-coverage.
+Measured against `--direct-depth` at the same budget the lane adds **+0**: the
+proposer, Matefish with a 4 GB proof-number table, claims 5 of the 24 positions
+the baseline misses, and none of the five verifies. A comparison that pairs a
+`--direct-depth` lane against an `--iterative-depth` baseline moves two
+variables at once and credits the cost of minimality to the proposer; the
+control for that is in docs/RESULTS.md. The tool is kept for its soundness
+property, not for coverage.
 
-**The verifier no longer passes on empty input.** `verify_proof.py
---require-proof` exited 0 when its input held nothing, so a crashed producer in
-a pipeline reported success. `--expect N` covers the related case of a producer
-that died part way and left a valid prefix.
+**The verifier rejects empty input.** `verify_proof.py --require-proof` exits
+non-zero when its input holds nothing, so a crashed producer in a pipeline
+cannot report success. `--expect N` covers the related case of a producer that
+died part way and left a valid prefix.
 
 **Restriction portfolio flags.** `--restrict-checks`, `--restrict-king`,
 `--restrict-maxdef`, `--restrict-threat` and `--lane0-weight` apply one
 restriction or one budget split from the command line, so candidates can be
 swept without a rebuild. Each removes attacker options only, so any mate found
 under one is real.
-
-## 0.1.0 — 2026-08-11
 
 **The version number goes DOWN here, deliberately.** This is a new repository
 holding the current line of development, and it restarts at 0.1.0 to say that

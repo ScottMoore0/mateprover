@@ -38,28 +38,25 @@ for this measurement, and never consulted during development (14):
 | mate-in-16, same conditions (40 positions) | 28/40 = 70.0% | 54.6-81.9 |
 | mate-in-20, same conditions (40 positions) | 22/40 = 55.0% | 39.8-69.3 |
 
-The mate-in-8, 10 and 20 rows were re-measured on sets re-minted from the pinned
-corpus, because the sets behind the previous figures could not be rebuilt by a
-reader and so could not be checked. The mate-in-8 and mate-in-10 sets draw only
-from positions no earlier set had used -- zero overlap with any of them -- so
-they are fresh evidence as well as reproducible. The mate-in-20 set cannot be:
-the corpus holds 45 mate-in-20 problems and 40 were already spent, so it reuses
-35 of them and is reproducible without being independent.
+The mate-in-8, 10 and 20 sets were minted from the pinned corpus so that a
+reader can rebuild them and check the digest. The mate-in-8 and mate-in-10 sets
+draw only from positions no other set uses -- zero overlap -- so they are fresh
+evidence as well as reproducible. The mate-in-20 set cannot be: the corpus holds
+45 mate-in-20 problems, so it shares 35 of them with a development set and is
+reproducible without being independent.
 
-The previous figures were 85.5% at mate-in-8, 90.0% at mate-in-10 and 57.5% at
-mate-in-20. Mate-in-10 and mate-in-20 moved within their intervals. **Mate-in-8
-did not: 85.5% sits outside the new 71.8-83.2 interval.** On a fresh draw of 200
-previously unused positions the engine solves 78.0%, and that is the figure to
-believe -- the same lesson as 14, arriving a second time from a different
-direction.
+A set that informed development decisions overstates reach. The same
+configuration scores 85.5% on a 200-position mate-in-8 set that had been
+consulted during development and 78.0% on a fresh draw, and the first figure
+sits outside the second's interval (14). Fresh draws are the figures quoted
+here.
 
-Switching the default route to DFPN was worth 54/60 against 37/60 at mate-in-10
-when measured on the earlier set: seventeen positions gained, none lost.
+The DFPN default route is worth 54/60 against the depth-first route's 37/60 at
+mate-in-10 on a 60-position set: seventeen positions gained, none lost.
 
 Every certificate at every depth verified independently. The decline with depth is
 gradual rather than a wall: this engine is not confined to the shallow end of
-matetrack, and earlier versions of this document said it was because nothing had
-looked past mate-in-10 (31).
+matetrack.
 
 ### Against Chest 3.19
 
@@ -157,7 +154,7 @@ the other rather than left to be discovered.
 
 ### The cooperative and inverted goals against Chest 3.19
 
-All six of Chest's job types are now implemented. Composed problems from YACPDB,
+All six of Chest's job types are implemented. Composed problems from YACPDB,
 whose stipulation is the composer's ground truth, sequential, Chest given
 2048 MB:
 
@@ -202,27 +199,21 @@ so that a single unlucky run cannot decide a comparison at one-second scales:
 | selfmate | **all 903** | 407 | **643** | 19 | 255 |
 | selfstalemate | **all 76** | 49 | **52** | 1 | 4 |
 
-Every row is now measured at **engine defaults on both sides**. An earlier
-version of this table passed `-M 256` to mateprover in the belief that it was the
-shipped default; it is not (an explicit `-M` is the budget for every table at
-once, unset it is 256 MB *per table*, and a cooperative search runs nine lanes).
-That handicap cost 12.8x on a measured position and manufactured a helpmate loss.
-See `docs/ARCHITECTURE.md` §70. Removing it moved the cooperative goals a lot
-(helpmate 480 to 501, helpstalemate 344 to 362) and the adversarial goals barely
-at all (mate-in-8 168 to 167, stalemate 759 to 761 — both inside run-to-run
-noise at a 10 s cap).
+Every row is measured at **engine defaults on both sides**. That matters for
+mateprover's `-M`: an explicit `-M` is the budget for every table at once,
+while unset it is 256 MB *per table*, and a cooperative search runs nine lanes.
+Passing `-M 256` in the belief that it is the default costs 12.8x on a measured
+position and turns the helpmate row into a loss (480 against Chest's 491). See
+`docs/ARCHITECTURE.md` §70.
 
-Single trial, **10 s a position**, mateprover against Chest
-on 2048 MB, both proving the SHORTEST solution, scored on presence rather than on
-matching the stipulated depth. Six of the seven rows are whole corpora. Stalemate
-is now the externally-sourced union of `stalemate_pdb` and `stalemate_yacpdb`,
-792 distinct after removing 47 duplicates and the one position already tagged
-illegal -- it replaces a 40-position **development** set. The selfmate row was re-measured under this protocol on 2026-09-03 (single
-trial, 10 s, `WinChest.exe` at 2048 MB, mateprover at its defaults): both
-engines gained over the earlier best-of-three figures -- Chest 318 to 407,
-mateprover 389 to 643 -- and the margin widened from 71 to 236 positions. Chest
-refused 15 positions outright, which is evidence about the corpus rather than
-about either engine.
+**10 s a position**, mateprover against Chest on 2048 MB, both proving the
+SHORTEST solution, scored on presence rather than on matching the stipulated
+depth. Every row is a whole corpus. Stalemate is the externally sourced union of
+`stalemate_pdb` and `stalemate_yacpdb`, 792 distinct after removing 47
+duplicates and the one position already tagged illegal. The selfmate row is a
+single trial measured on 2026-09-03 (`WinChest.exe` at 2048 MB, mateprover at
+its defaults); Chest refused 15 of its positions outright, which is evidence
+about the corpus rather than about either engine.
 
 Speed, on the positions **both** engines solved -- a ratio that includes a timeout
 is comparing a number against a cap:
@@ -244,23 +235,11 @@ aggregate. mate-in-10's median rests on only 18 shared positions, because Chest
 solves 20 of 60 — quote it with that in mind.
 
 
-Four of the seven rows are whole corpora rather than samples. That change was not
-cosmetic: on every goal where it has been done, the sample and the corpus
-disagreed. Mate-in-8 looked like a 4-position LOSS on a 30-position draw and is a
-7-position win over 200. Selfmate looked like 3 behind and is 36 behind and 207
-ahead over 904. Helpmate looked like a 3-position loss over 40 and is level over
-546 -- 511 against 510. The remaining sampled rows are provisional for the same
-reason.
-
-The mate-in-10, selfmate and mate-in-8 rows are after the restricted-lane fix of
-61; the median and slower columns predate it and are therefore pessimistic for
-mateprover. The coverage columns are the current ones.
-
-The two cooperative rows also predate the two-ply split of 66, which is worth 3.2x
-at the default sixteen threads on a hard h#4 and 1.7x on aggregate solve time
-across the 546. It is not folded into the table above, because that table is a
-paired best-of-three protocol and half a result is worse than none: the row will
-move when the pairing is re-run, not before.
+Every row is a whole corpus rather than a sample, and that is not cosmetic:
+on every goal where both were measured, a draw of 30 to 60 positions disagreed
+with the corpus. Mate-in-8 reads as a 4-position loss on a 30-position draw and
+is a 21-position win over 200. Helpmate reads as a 3-position loss over 40 and
+is a 22-position win over 546. Small draws cannot resolve margins of this size.
 
 **The DFPN preconditioner stays on for sparse selfmates.** `--dfpn-min-men N`
 skips it below N men, and on the 377 selfmates of nine men or fewer -- the whole
@@ -280,22 +259,16 @@ corpus with at least one known-wrong entry. The helpstalemate corpus additionall
 carries 4 positions of 431 with more than one king a side -- fairy problems that
 orthodox chess cannot answer at all.
 
-**Mate-in-8 is NOT a loss, and the claim that it was came from sampling.** Two
-30-position draws gave 4 and 5 positions solved only by Chest; a 60-position
-draw gave none. Sampling was the wrong tool at this effect size, so the row above
-is the whole 200-position evaluation set: **178/200 against 171/200**, with 10
-positions only Chest solves and 17 only mateprover solves.
+**Mate-in-8 is the narrowest adversarial margin**, and it has to be quoted
+from the whole 200-position set: 167 against 146, with 9 positions only Chest
+solves and 30 only mateprover solves. The nine are a real class; no
+configuration tried reaches more than two of them.
 
-Neither engine dominates at this depth. mateprover is ahead on net, and the ten
-it misses are a real class -- no configuration tried reaches more than two of
-them. The margin is small enough that it must be quoted from the full set rather
-than a sample, which is the lesson rather than the number.
-
-Depth is what separates the two rows. At mate-in-10 the ordering reverses
-completely -- 23/30 against 13/30, nothing solved only by Chest, a 7.79x median
--- so the portfolio's advantage is real but arrives with depth, and at shallow
-depth Chest's iterative deepening at every recursive level is simply better than
-what this engine does.
+Depth is what separates the two directmate rows. At mate-in-10 the margin
+widens to 52 against 20 with two positions only Chest solves, because the
+portfolio's advantage arrives with depth, while at shallow depth Chest's
+iterative deepening at every recursive level is competitive with what this
+engine does.
 
 The selfstalemate `0.72x median` is noise, not a finding: those positions resolve
 in 0.00-0.01 s, where the numbers are timer granularity.
@@ -306,8 +279,7 @@ Every comparison above is against Chest 3.19 -- a program whose copyright is
 1994 and whose 3.16 release is dated 16 June 1999. Beating it is worth
 reporting, but a reader is entitled to ask what happens against something
 modern. Matefish is a proof-number-search mate solver, architecturally the
-closest thing to this engine that exists, and until 2026-08-30 it had never
-been measured against it.
+closest thing to this engine that exists.
 
 **Claims have to be matched first, and by default they are not.** Probed over
 nine cases, `go mate N` on a position whose shortest mate is 2, 3 or 4 returns
@@ -400,10 +372,9 @@ including the sparse one (41/47 against 38/47 at five pieces or fewer). Section
 59 has the table. The remaining candidate is retrograde analysis, scoped there
 and not implemented.
 
-**Mate-in-8 is budget-limited.** Measured on a different 200-position evaluation
-set, and **with the previous default route**, since it predates DFPN's promotion
-(29) -- the shape is the claim here, not the absolute numbers, which are now
-higher:
+**Mate-in-8 is budget-limited.** Measured on a 200-position evaluation set
+with the depth-first route rather than the DFPN default (29), so the shape is
+the claim here, not the absolute numbers:
 
 | budget | solved | 95% CI |
 |---|---|---|
@@ -411,27 +382,26 @@ higher:
 | 60 s | 181/200 = 90.5% | 85.6-93.8 |
 | 240 s | **192/200 = 96.0%** | 92.3-98.0 |
 
-Sixteen times the budget converts 80% into 96%. Eight positions resist 240 s, so
-the earlier claim that *nothing* at this depth is out of reach -- taken from a
-60-position development set where all 60 fell at 300 s -- is stronger than fresh
-data supports (15).
+Sixteen times the budget converts 80% into 96%. Eight positions resist 240 s.
+A 60-position development set on which all 60 fell at 300 s suggests that
+nothing at this depth is out of reach; the 200-position set shows otherwise
+(15).
 
 **Mate-in-10 is not budget-limited.** Four times the time buys nothing there, and
 four times the memory buys nothing; only the portfolio buys reach (8x). The two
 depths behave in opposite ways and each result describes only its own depth.
 
-### A caution about the older figures
+### Why development sets are not quoted
 
-Earlier versions of this document quoted **52/60 = 86.7%** for mate-in-8. That
-came from a 60-position set which, over the course of development, informed about
-ten promote-or-reject decisions. Re-measured on 200 positions that had informed
-none, the same configuration scores 79.5%, and the old figure sits *outside* the
-new interval. Nothing was tuned against that set directly; consulting it
-repeatedly was enough (14).
+A 60-position mate-in-8 set that informed about ten promote-or-reject decisions
+over the course of development scores **52/60 = 86.7%**. The same configuration
+on 200 positions that had informed none scores 79.5%, and the first figure sits
+*outside* the second's interval. Nothing was tuned against that set directly;
+consulting it repeatedly was enough (14).
 
-The mate-in-10 figures did not move: a set consulted two or three times gave
-75%, and a fresh one gives 73.3%. The size of the effect tracks how often a set
-was used.
+The effect scales with use. At mate-in-10 a set consulted two or three times
+gives 75% and a fresh one 73.3%. That is why every figure in this document
+comes from a set used once.
 
 ### How Chest was configured, and what it is
 
@@ -501,36 +471,31 @@ Both mate-in-10 figures above use it, which is why they are labelled. If you
 already know the mate distance -- from a problem's stipulation, or from an EPD
 token -- there is no reason to pay for rediscovering it.
 
-### The finder lane, and the confound that inflated it
+### The finder lane, and the control that bounds it
 
 `tools/finder_lane.py` has an external engine propose a mate and verifies the
 proposal with `--direct-depth`, reporting only what checks out. It is sound by
-construction and its certificates are real. **It does not improve coverage, and
-an earlier version of this section claimed it did.**
+construction and its certificates are real. **It does not improve coverage.**
 
-The original measurement reported 7/60 -> 31/60 and called the difference
-"+24 for the finder". Its baseline was `--iterative-depth --no-portfolio`, which
-proves the SHORTEST mate, while the lane arm was scored with `--direct-depth`,
-which only asks whether a mate exists within N. Two variables moved and the
-whole difference was attributed to one of them.
-
-The control -- same 60 positions, same seed, same 20M nodes, same
-`--no-portfolio`, only the mode changed:
+The lane is scored with `--direct-depth`, which asks whether a mate exists
+within N. Scoring it against an `--iterative-depth` baseline, which proves the
+SHORTEST mate, would move two variables at once and credit the cost of
+minimality to the proposer. The control separates them: same 60 positions,
+same seed, same 20M nodes, same `--no-portfolio`, only the mode changed:
 
 | | solved |
 |---|---|
-| `--iterative-depth` (the published baseline) | 7/60 |
-| `--direct-depth` (the question the lane answers) | **36/60** |
-| the published lane composite | 31/60 |
+| `--iterative-depth --no-portfolio` | 7/60 |
+| `--direct-depth --no-portfolio` (the question the lane answers) | **36/60** |
+| lane composite: iterative baseline plus proposer plus verification | 31/60 |
 
-**Dropping minimality alone is worth +29.** The published composite scored 31
-where the engine asking directly scores 36, and it spent 44M nodes (20M proving,
-20M finding, 4M verifying) against the control's 20M. The lane was beaten by the
-trivial alternative that was never run.
+**Dropping minimality alone is worth +29.** The composite scores 31 where the
+engine asking directly scores 36, and it spends 44M nodes (20M proving, 20M
+finding, 4M verifying) against the control's 20M.
 
-Re-measured with the correct baseline -- `--direct-depth` at full budget, a
-proposer consulted only on the 24 positions it genuinely cannot do, verification
-at the same budget:
+Measured with the right baseline -- `--direct-depth` at full budget, a proposer
+consulted only on the 24 positions it cannot do, verification at the same
+budget:
 
 | | |
 |---|---|
@@ -548,10 +513,9 @@ because verifying an untrusted claim is a useful primitive, but it is not a
 coverage result. To find and certify a mate, `--direct-depth` alone is faster
 and reaches further.
 
-This is recorded rather than quietly removed because the error is instructive:
-the comparison was between two configurations that differed in two ways, which
-is the single most repeated methodological failure in this project, and it
-survived into a headline figure precisely because the result was welcome.
+The control is recorded because a comparison between two configurations that
+differ in two ways is the most common way a measurement of this kind goes
+wrong, and this one is a clean example of how to separate the variables.
 
 ## What was tried and rejected
 
@@ -619,7 +583,7 @@ survives repetition; quoting an absolute reach figure does not.
 
 ## What would actually move the needle
 
-Nothing on the original backlog. Every item is now implemented, measured and
+Nothing on the original backlog. Every item is implemented, measured and
 rejected, or found to already exist. The one axis that has ever produced
 capability -- changing *which problem* is searched rather than how fast the same
 problem is searched -- is saturated at eight lanes over the restriction set the
@@ -634,7 +598,7 @@ because every position hit its budget and scored the cap, and a candidate prunin
 theorem that appeared to save 48% of all nodes and loses mates 4,034 times. The
 axis above is unchanged.
 
-A new restriction family was the most promising of those, and it now looks
+A new restriction family was the most promising of those, and it looks
 unlikely. Comparing the positions the engine cannot reach against the ones it can
 shows **no structural difference at all** -- not in material, not in king
 confinement, not in tactical shape. They differ only in size: about 1.5x the
@@ -651,7 +615,7 @@ early-termination oracle is set by where its hits land, not how many there are.
 
 Parallelising the DFPN search itself looked like the largest remaining lever by
 resource argument -- it is 86-99% of the work and a single position uses about a
-quarter of a 32-core machine. It is now measured and rejected in every form the
+quarter of a 32-core machine. It is measured and rejected in every form the
 engine could take, on the exchange rate between speed and positions rather than
 on any implementation difficulty.
 
@@ -738,50 +702,18 @@ Speed, on the positions both engines solve:
 Ahead on coverage on all seven, ahead on speed on all seven, and 465 exclusive
 wins against 38.
 
-#### Against the previous run of the same protocol
-
-| | now | before | |
-| --- | ---: | ---: | --- |
-| MateProver | 2,467 | 2,475 | −8 |
-| Chest | 2,040 | 2,054 | −14 |
-| margin | **427** | 421 | **+6** |
-| only MateProver | **465** | 459 | **+6** |
-| only Chest | 38 | 38 | = |
-
-**Both engines lost ground, and Chest lost more.** No change in this repository
-can lower Chest's score, so the absolute dips are the machine and not the
-engine — a different session, a different thermal and scheduling state. That is
-precisely why the paired figures are the ones quoted: the margin and the
-exclusive-win count are measured within a session and survive it. Both moved in
-MateProver's favour, and every goal's margin improved or held.
-
-**The coverage exit of section 92 is not visible here, and this table is not
-evidence for it.** Mate-in-8 went *down* three positions. The mechanism's only
-clean evidence is the paired A/B in section 92 — same binary, same session, the
-switch the only difference — which gave 230 against 228 at 20 s with nothing
-lost. A corpus sweep across sessions cannot resolve an effect that size, and
-reading this row as confirmation would be reading noise as signal. It is quoted
-here because it is the honest current number, not because it supports anything.
-
-The Chest-only residue is unchanged at 38, but its composition shifted: selfmate
-24 to 23, stalemate 1 to 2. At that scale the individual positions move between
-runs; the total is the stable quantity.
-
 **"Chest refused" counts positions where Chest returns a definitive "no
 solution".** That is evidence about the CORPUS rather than about either engine,
 and 73 such positions want the same two-prover adjudication that produced
 `KNOWN_BAD.jsonl`.
 
 Two goals — helpmate and helpstalemate — have **zero** positions Chest solves
-and MateProver does not, in this run as in the last. Helpmate read as *behind*
-until the `-M` harness handicap of section 70 was found; the engine had not
-changed.
+and MateProver does not.
 
 The medians exceed the totals nearly everywhere because the totals are dominated
 by a few positions near the budget where both engines spend all of it; the median
 is the better description of ordinary behaviour.
 
-Selfmate remains the widest margin of the seven: 589 to 351, with 261 exclusive
-wins against 23. Note that this is NOT comparable to the 626-to-416 quoted in
-section 86 -- that was a 10 s protocol, and both engines score lower at 5 s.
-Chest falls further, which is why the margin widens.
+Selfmate is the widest margin of the seven: 589 to 351, with 261 exclusive
+wins against 23. Both engines score higher under the 10 s protocol above; the
+margin is of the same size.

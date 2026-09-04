@@ -1,3 +1,7 @@
+# Convenience build for a Windows developer with MinGW g++ on the path.
+# The supported build is CMake (see README.md); use this only for a quick local binary.
+# It never passes -march=native, which is the flag the CMake build guards against on MinGW.
+
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
