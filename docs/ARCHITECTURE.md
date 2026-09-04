@@ -2,9 +2,9 @@
 
 ## Purpose
 
-MateProver is a from-scratch exact directmate prover designed to exceed the current D line in core single-position speed, hard-position proof speed, and batch/service throughput while reducing the chance of proof errors.
+MateProver is a from-scratch exact directmate prover. It was designed to beat the existing solvers it is benchmarked against in core single-position speed, hard-position proof speed, and batch throughput, while reducing the chance of proof errors.
 
-The current D line wins mostly through orchestration: batching, route selection, memory sizing, load balancing, and worker fanout. E aims to improve the core prover itself and then regain or exceed D's orchestration advantages.
+Those solvers win mostly through orchestration: batching, route selection, memory sizing, load balancing, and worker fanout. The aim here is to improve the core prover itself first, and then match or exceed the orchestration on top of it.
 
 > **Start with [RESULTS.md](RESULTS.md)** if you want the argument rather than
 > the record. This document is the record: every finding in the order it was
@@ -487,7 +487,7 @@ Current E checkpoint:
 - the gap narrows with depth, measured with the implementation held fixed: **4.5x slower at mate-6/7, about 1.8x at mate-8**. Two points is a trend and not a curve, but it is the direction predicted when the rejection was recorded, and the crossover is plausibly near mate-9/10;
 - `--dfpn-epsilon-64 N` adds standard 1+epsilon threshold widening; it made no measurable difference and stays off;
 - **the original claim, retained for the record:** On the four hardest deep-corpus positions the exact route solves 4/4 in 26.8 s while DFPN solves 0/4 and times out at 280 s -- at least 10x slower. On easy suites it is ~2x slower;
-- it loses for identifiable reasons: E's static move ordering already approximates what DFPN would discover dynamically; DFPN's defining re-descent makes each internal node cost O(branching) per visit where the exact search visits once; depth-bounded directmate has cheap decisive terminal tests that a single pass exploits directly; and the exact table already captures transpositions, so the number table adds a second cache without new information;
+- it loses for identifiable reasons: the engine's static move ordering already approximates what DFPN would discover dynamically; DFPN's defining re-descent makes each internal node cost O(branching) per visit where the exact search visits once; depth-bounded directmate has cheap decisive terminal tests that a single pass exploits directly; and the exact table already captures transpositions, so the number table adds a second cache without new information;
 - a measurement trap was caught during this work and is worth recording: DFPN node visits did not initially increment `acn`, so the first run appeared to cut smoke from 260,157 nodes to 491. Any DFPN comparison that does not count preconditioner nodes flatters itself by hiding its entire cost;
 - unsupported route names are not treated as proof mechanisms; E falls back to the current exact route and reports the unsupported name on stderr.
 
