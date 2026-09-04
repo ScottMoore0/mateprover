@@ -249,6 +249,14 @@ check, cppcheck, and `-Wall -Wextra -pedantic -Werror`.
 
 ## Test
 
+**Run the suite with an interpreter that has `python-chess` installed.** Without
+it the suite still reports green -- 587 passed -- but **fourteen sections are
+silently skipped, and they are the certificate checks**: the ones that re-derive
+the engine's proofs from scratch. A green run under a bare system Python has
+verified nothing this engine exists to claim. The full count is 599, and a run
+that reports fewer passes with `0 skipped` absent from its last line did not
+check the proofs.
+
 ```
 ctest --test-dir build --output-on-failure
 ```
