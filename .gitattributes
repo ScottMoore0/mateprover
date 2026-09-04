@@ -1,0 +1,2 @@
+# Normalise every text file to LF in the repository; binaries are detected automatically.
+* text=auto eol=lf
