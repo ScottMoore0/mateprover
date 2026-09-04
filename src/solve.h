@@ -857,8 +857,13 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         }
         out << "; bm " << move_uci(proof.pv.front()) << token << proved_depth
                   << "; pv " << pv_uci(proof.pv);
-        if (s.emit_proof && !proof.cert.empty()) {
+        if (s.emit_proof && !proof.cert.empty() && !s.beam_pruned) {
             out << "; proof " << proof.cert;
+        }
+        if (s.beam_defender > 0) {
+            // A beam result is a CLAIM. Say so on the line, where a harness
+            // will read it, and never attach a certificate to it.
+            out << "; beam " << s.beam_defender << (s.beam_pruned ? " pruned" : " complete");
         }
     }
     if (config.print_tree && accepted && !proof.cert.empty()) {

@@ -1589,7 +1589,10 @@ Proof prove_defender(Search& s, const Board& b, int depth) {
 
     // Lazy defender generation is only sound when ordering does not depend on
     // building the child board, which rules out --score-mates.
-    const bool lazy = s.lazy_defender && !s.static_pseudo && !s.score_mates;
+    // A beam needs the replies ORDERED, so it also rules out lazy generation:
+    // keeping the first K of an unordered list would keep arbitrary replies.
+    const bool lazy = s.lazy_defender && !s.static_pseudo && !s.score_mates
+                      && s.beam_defender <= 0;
     bool replies_scored = false;
     auto replies = lazy ? pseudo_defender_moves(s, b)
                         : generate_ordered_moves(s, b, replies_scored);
@@ -1648,6 +1651,15 @@ if (s.defender_refutations.probe(refutation_key, hint_move)) {
     // whatever its fire rate -- which is section 88 stated in advance rather
     // than discovered afterwards.
     std::size_t tried_before_refutation = 0;
+    // --beam-defender: examine only the first K replies. Everything that
+    // orders replies has already run, so these K are the ones the engine
+    // itself rates most likely to refute. UNSOUND by construction; the
+    // result is marked and never certified. See SearchConfig::beam_defender.
+    if (s.beam_defender > 0 &&
+        replies.size() > static_cast<std::size_t>(s.beam_defender)) {
+        replies.resize(static_cast<std::size_t>(s.beam_defender));
+        s.beam_pruned = true;
+    }
     for (const Move& dmove : replies) {
         Board nb = make_move(b, dmove);
         if (lazy) {

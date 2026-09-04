@@ -466,6 +466,16 @@ struct SearchConfig {
     // WinChest MaxMoves: the defender may have at most this many legal moves in
     // total after the attacker's move. 0 means off.
     int max_defender_moves = 0;
+    // FINDING ONLY, and UNSOUND. At every defender node examine only the
+    // first K replies in the engine's own ordering (history, then refutation
+    // hints, then answer ordering) and accept the node as proved when those
+    // K are refuted. A reply outside the K is never examined, so a mate found
+    // this way may be FALSE and must be verified by a plain search. Refused
+    // with --iterative-depth, --emit-proof, and every goal but mate; a result
+    // carries `beam K` on its line and never a proof. 0 is off. The point:
+    // pruning defender replies shrinks the tree exponentially in depth, which
+    // no ordering or speedup can (architecture: the finder/prover split).
+    int beam_defender = 0;
     // WinChest ThreatDepth. A move is examined only if, after it and a null
     // move by the defender, the attacker can mate within |threat_depth|.
     // Positive means the threat search uses check-moves only ("check threats");
@@ -659,6 +669,9 @@ struct PnDnFwd {
 // `s.<option>` access valid while making the option set independently
 // copyable.
 struct Search : SearchConfig {
+    // Set the first time a defender node was truncated under --beam-defender.
+    // Any proof built afterwards is incomplete and is reported as such.
+    bool beam_pruned = false;
     // The depth of the iterative-deepening pass now running. The ROOT attacker
     // node is the only one whose remaining depth equals it, which is how the
     // root-move stream recognises the root without threading a flag down the

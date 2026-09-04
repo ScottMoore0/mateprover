@@ -216,6 +216,20 @@ void print_usage() {
 "                                --no-portfolio to measure a restriction alone.\n"
 "                                A restriction only removes ATTACKER options, so\n"
 "                                any mate found under one is real.\n"
+"  --beam-defender K             FINDING ONLY, and UNSOUND. At every defender\n"
+"                                node examine only the first K replies in the\n"
+"                                engine's own ordering and accept the node\n"
+"                                once those K are refuted. A reply outside\n"
+"                                the K is never examined, so a mate found\n"
+"                                this way may be FALSE: the line carries\n"
+"                                `beam K` and never a proof, and it must be\n"
+"                                verified by a plain --direct-depth run.\n"
+"                                Refused with --iterative-depth, --emit-proof\n"
+"                                and every goal but mate. It exists because\n"
+"                                pruning defender replies shrinks the tree\n"
+"                                exponentially in depth, which no ordering\n"
+"                                or speedup can. An experiment, not a mode\n"
+"                                for answers\n"
 "  --portfolio-lanes N           cap concurrent lanes (0 = all, the default).\n"
 "                                Lanes contend for cores, so fewer can be\n"
 "                                faster on a small machine\n"
@@ -1222,6 +1236,13 @@ int main(int argc, char** argv) {
             std::size_t value = 0;
             if (!parse_size(v, value)) return usage_error("option '--restrict-maxdef' expects a number");
             config.max_defender_moves = static_cast<int>(value);
+        } else if (arg == "--beam-defender") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option '--beam-defender' requires a number");
+            std::size_t value = 0;
+            if (!parse_size(v, value) || value == 0)
+                return usage_error("option '--beam-defender' expects a number of replies, at least 1");
+            config.beam_defender = static_cast<int>(value);
         } else if (arg == "--restrict-threat") {
             const char* v = need_value(i);
             if (!v) return usage_error("option '--restrict-threat' requires a number");
@@ -1341,6 +1362,21 @@ int main(int argc, char** argv) {
     if (print_config) {
         emit_config_json(config);
         return 0;
+    }
+    if (config.beam_defender > 0) {
+        // The beam is unsound. Every road from it to something that looks
+        // like a proof is closed here, not documented and hoped for.
+        if (!config.direct_depth)
+            return usage_error("--beam-defender is a finder and cannot prove a shortest mate: "
+                               "use it with --direct-depth");
+        if (config.emit_proof)
+            return usage_error("--beam-defender results are claims, not proofs: "
+                               "no certificate exists for them, so --emit-proof is refused");
+        if (config.goal != Goal::Mate)
+            return usage_error("--beam-defender is implemented for the mate goal only");
+        if (uci_mode)
+            return usage_error("--beam-defender is not available in --uci mode: a bestmove "
+                               "cannot carry the `beam` marker that says it is unverified");
     }
     if (uci_mode) {
         // --emit-proof is REFUSED here rather than silently ignored. A caller
