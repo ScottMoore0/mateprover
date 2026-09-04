@@ -1477,7 +1477,7 @@ NodeClaim claim_any_child(SplitRegistry& reg, std::uint64_t min_seq) {
                          ? reg.best_index->load(std::memory_order_acquire)
                          : std::numeric_limits<int>::max();
     NodeSplit* chosen = nullptr;
-    std::shared_ptr<NodeSplit>* chosen_ptr = nullptr;
+    const std::shared_ptr<NodeSplit>* chosen_ptr = nullptr;
     for (std::shared_ptr<NodeSplit>& sp : reg.open_splits) {
         if (!sp || !sp->open) {
             continue;

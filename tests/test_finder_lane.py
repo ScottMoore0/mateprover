@@ -130,10 +130,9 @@ def write_fake(tmp: Path, kind: str) -> Path:
     """A UCI engine whose answer is known in advance."""
     src = tmp / f"fake_{kind}.py"
     src.write_text(FAKE % BEHAVIOUR[kind], encoding="utf-8")
-    sh = tmp / f"fake_{kind}"
-    sh.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{src}"\n', encoding="utf-8")
-    sh.chmod(0o755)
-    return sh
+    # The lane runs a .py proposer under its own interpreter, so no shell
+    # wrapper is needed and the same file works on Windows.
+    return src
 
 
 def run_lane(engine: str, epd: Path, extra: list[str]) -> tuple[int, str, str]:
@@ -294,6 +293,10 @@ def main() -> int:
     if not shutil.which(args.engine) and not Path(args.engine).exists():
         print(f"engine not found: {args.engine}")
         return 2
+    if Path(args.engine).exists():
+        # Windows does not resolve a relative executable path for a child
+        # process, so hand the lane an absolute one.
+        args.engine = str(Path(args.engine).resolve())
 
     res = Results()
     run(res, args.engine)

@@ -112,9 +112,9 @@ inline const EmptyBoardDist& empty_board_distance() {
                             }
                         };
                         if (type == PT_KNIGHT) {
-                            for (auto& m : kN) reach(f + m[0], r + m[1]);
+                            for (const int* m : kN) reach(f + m[0], r + m[1]);
                         } else if (type == PT_KING) {
-                            for (auto& m : kK) reach(f + m[0], r + m[1]);
+                            for (const int* m : kK) reach(f + m[0], r + m[1]);
                         } else if (type == PT_PAWN) {
                             // A pawn CAPTURES diagonally, so contact for a pawn
                             // means a diagonal step. Colour-agnostic on purpose:
@@ -243,10 +243,10 @@ inline int predicate_feature(const Board& b, Color attacker, int depth, int f) {
             // rank behind the ep square, on either adjacent file.
             if (b.ep >= 0) {
                 const int back = (attacker == WHITE) ? -8 : 8;
-                const int f = b.ep % 8;
+                const int epf = b.ep % 8;
                 for (int df = -1; df <= 1; df += 2) {
                     const int from = b.ep + back + df;
-                    if (f + df < 0 || f + df > 7 || from < 0 || from > 63) continue;
+                    if (epf + df < 0 || epf + df > 7 || from < 0 || from > 63) continue;
                     const std::uint64_t bit = 1ull << from;
                     if ((b.by_color[attacker] & b.by_type[PT_PAWN] & bit) != 0) {
                         ++n;
@@ -264,9 +264,9 @@ inline int predicate_feature(const Board& b, Color attacker, int depth, int f) {
             for (int df = -1; df <= 1; ++df) {
                 for (int dr = -1; dr <= 1; ++dr) {
                     if (!df && !dr) continue;
-                    const int f = kf + df, r = kr + dr;
-                    if (f < 0 || f > 7 || r < 0 || r > 7) continue;
-                    if (is_attacked(b, r * 8 + f, attacker)) ++n;
+                    const int nf = kf + df, nr = kr + dr;
+                    if (nf < 0 || nf > 7 || nr < 0 || nr > 7) continue;
+                    if (is_attacked(b, nr * 8 + nf, attacker)) ++n;
                 }
             }
             return n;

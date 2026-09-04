@@ -91,8 +91,13 @@ class Finder:
 
     def claim(self, fen: str, depth: int, nodes: int) -> int | None:
         """Best mate distance the finder reports, or None. Bounded by `depth`."""
+        # A proposer written in Python runs under this interpreter: Windows
+        # cannot execute a script file directly, and a shell wrapper does not
+        # exist there either.
+        cmd = ([sys.executable, self.path] if self.path.endswith(".py")
+               else [self.path])
         proc = subprocess.Popen(
-            [self.path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1, errors="replace")
         lines: list[str] = []
         done = threading.Event()

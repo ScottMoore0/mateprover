@@ -298,11 +298,16 @@ struct BoundedTable {
         const std::size_t excess = map.size() - low_water;
         std::size_t counted = 0;
         int cut = 0;
-        for (; cut <= kMaxRank; ++cut) {
+        for (; cut < static_cast<int>(histogram.size()); ++cut) {
             counted += histogram[static_cast<std::size_t>(cut)];
             if (counted >= excess) {
                 break;
             }
+        }
+        // The loop always breaks, because the histogram sums to map.size() and
+        // excess is at most that; the clamp keeps the index in range regardless.
+        if (cut > kMaxRank) {
+            cut = kMaxRank;
         }
         // Entries strictly below the cut always go; entries AT the cut go until
         // the quota is met, so the pass sheds what was asked for and no more.

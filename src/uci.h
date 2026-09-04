@@ -290,7 +290,7 @@ private:
         return true;
     }
 
-    void search(SearchConfig cfg, const std::string& fen, int depth) {
+    void search(const SearchConfig& cfg, const std::string& fen, int depth) {
         std::ostringstream sink;
         solve_line(fen, depth, cfg, sink);
         const UciResult r = parse_result_line(sink.str());

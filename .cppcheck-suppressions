@@ -45,3 +45,9 @@ knownConditionTrueFalse:src/dfpn.h
 # than one long line. A const reference would not compile against the callee,
 # and a mutable reference would give each branch the previous branch's leftovers.
 passedByValue:src/report.h
+
+# prove.h: two conditions the analyser calls constant. `depth > 0` beside
+# `depth == s.iteration_depth` is a documented guard against a route that never
+# set the iteration depth (zero), and `sp->active == 0` is a counter another
+# thread decrements; a single-threaded reading of it is not the program.
+knownConditionTrueFalse:src/prove.h
