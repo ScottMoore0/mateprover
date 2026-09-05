@@ -10,6 +10,13 @@ without one.
 
 ## 0.1.0 — 2026-09-04
 
+**Released under the MIT License.** The engine is an independent
+implementation and carries no third-party code, so the licence was free to be
+chosen rather than inherited. MIT is the permissive end of that choice: the
+prover can be embedded anywhere, including in closed software, and the only
+obligation is to keep the copyright notice. `tools/verify_proof.py` calls
+python-chess, which is separately licensed and not distributed here.
+
 **A finder lane, which does not improve coverage.**
 `tools/finder_lane.py` has an external proposer suggest a mate and verifies it
 with `--direct-depth`, reporting only what checks out. Sound by construction: a

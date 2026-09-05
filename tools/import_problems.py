@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # MateProver -- an exact directmate prover with machine-checkable proofs.
-# Copyright (C) 2026 Scott Moore
+# Copyright (c) 2026 Scott Moore
 #
 # Released under the MIT License. See LICENSE for the full text.
 

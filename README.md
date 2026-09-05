@@ -578,6 +578,6 @@ measured.
 MateProver is released under the MIT License. See `LICENSE` for the full
 text.
 
-`tools/verify_proof.py` requires python-chess, which is not distributed with
-MateProver. Benchmark position sets are not distributed either;
-`benchmarks/README.md` explains how to regenerate them.
+`tools/verify_proof.py` requires python-chess, which is separately licensed
+and is not distributed with MateProver. Benchmark position sets are not
+distributed either; `benchmarks/README.md` explains how to regenerate them.
