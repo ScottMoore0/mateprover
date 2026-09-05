@@ -47,7 +47,7 @@ the implementation is correct. It is not a coverage improvement.
 
 USAGE
 -----
-    python tools/finder_lane.py --finder ./hunt18 positions.epd > proofs.epd
+    python tools/finder_lane.py --finder ./finder-engine positions.epd > proofs.epd
     python tools/verify_proof.py --require-proof proofs.epd
 
 The second line is not optional if you intend to publish the results. This tool

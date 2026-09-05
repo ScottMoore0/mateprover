@@ -475,7 +475,7 @@ struct SearchConfig {
     // carries `beam K` on its line and never a proof. 0 is off. The point:
     // pruning defender replies shrinks the tree exponentially in depth, which
     // no ordering or speedup can (architecture: the finder/prover split).
-    // MEASURED 2026-09-04 (infra/mh/beam_experiment.py): at equal node budget
+    // MEASURED 2026-09-04 (MateBench, bench/beam_experiment.py): at equal node budget
     // on 100 ChestUCI positions, ZERO verified finds the exhaustive search
     // missed at K=2, 3 or 5, and 14-28% false shorter claims. The omitted
     // reply is the refutation of a shorter line, so the beam proves a false
