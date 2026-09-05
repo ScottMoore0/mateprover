@@ -1883,8 +1883,14 @@ def test_memory_budget_is_a_total(engine: Path, res: Results) -> None:
     # anything, for the same reason the budget checks stand down there.
     if not QUICK and not SLOW_BUILD:
         starved = "8/8/R5r1/3k4/8/8/8/K7 w - - sm 16\n"
+        # The solve needs about 12.7M nodes: five seconds on a 16-core machine
+        # and around forty on a 2-core CI runner, which a 30 s budget failed
+        # once by reaching 9.6M nodes. The starved configuration this guards
+        # against does not solve it in 120 s either, so the budget is generous
+        # without being blind. A node budget would be better but --node-limit
+        # is not a tight cap under the parallel search.
         out = run(engine, ["--stalemate", "--direct-depth", "-M", "256",
-                           "--time-limit", "30", "-"], starved)
+                           "--time-limit", "120", "-"], starved)
         res.check("an explicit total does not starve lanes below the floor",
                   bool(SM_RE.search(out)), out.strip()[:90])
     else:
