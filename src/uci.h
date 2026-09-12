@@ -53,6 +53,7 @@ struct UciResult {
     std::string pv;
     std::uint64_t nodes = 0;
     double seconds = 0.0;
+    bool repeats3 = false;
 };
 
 // Pull one field out of an EPD result line. The line format is specified in
@@ -81,6 +82,8 @@ inline UciResult parse_result_line(const std::string& line) {
     // verdict is the strong statement -- searched exhaustively, none exists --
     // and the two must not be conflated.
     r.timed_out = line.find("; timeout;") != std::string::npos;
+    // Carried through so the UCI layer can surface it; see solve.h.
+    r.repeats3 = line.find("; rep3") != std::string::npos;
     for (const char* token : {"dm", "sm", "sfm", "ssm", "hm", "hsm"}) {
         if (uci_field(line, token, value)) {
             r.verdict_token = token;
@@ -311,6 +314,13 @@ private:
         out << "\n";
 
         // THE PART UCI CANNOT SAY, said on the only channel that can carry it.
+        if (r.repeats3) {
+            // Directmate convention ignores threefold repetition, so the mate
+            // reported above still stands. Said out loud because a harness
+            // applying GAME rules will score this same line as a draw, and a
+            // silent disagreement between the two is worse than a noisy one.
+            out << "info string repetition: PV repeats a position 3x (directmate convention: mate stands; game rules: claimable draw)\n";
+        }
         if (r.solved && r.verdict_token != "dm") {
             out << "info string " << r.verdict_token << " " << r.depth
                 << " (this goal has no UCI score; see the EPD interface)\n";
@@ -348,8 +358,14 @@ private:
 // The command loop. Reads on this thread while the search runs on another, so
 // `stop` is answerable while a search is in flight -- which the protocol
 // requires and a read-search-print loop cannot provide.
-inline int run_uci_loop(const SearchConfig& config) {
+// `first` is a line already consumed from stdin by the caller's protocol sniff.
+// Passing it back in rather than re-reading keeps the sniff invisible to the
+// session: it sees the same command stream a GUI actually sent.
+inline int run_uci_loop(const SearchConfig& config, const std::string& first = std::string()) {
     UciSession session(config);
+    if (!first.empty() && !session.command(trim(first))) {
+        return 0;
+    }
     std::string line;
     while (std::getline(std::cin, line)) {
         if (!session.command(trim(line))) {

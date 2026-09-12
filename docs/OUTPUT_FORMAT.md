@@ -22,7 +22,7 @@ A consumer must distinguish exactly four cases. They are mutually exclusive.
 **1. Proved.** A forced mate was found and accepted:
 
 ```
-<fen4>; acn N; acs S; bm <move>; dm <depth>; pv <move ...>[; proof <json>][; via <name>];
+<fen4>; acn N; acs S; bm <move>; dm <depth>; pv <move ...>[; rep3][; proof <json>][; via <name>];
 ```
 
 `bm` is the key move, `dm` the mate depth, `pv` the principal variation as
@@ -30,6 +30,15 @@ space-separated UCI moves. `proof` appears only under `--emit-proof` and is
 specified in [PROOF_FORMAT.md](PROOF_FORMAT.md). `via` appears only when a
 restricted portfolio lane proved it, naming the restriction; its absence means
 the unrestricted search proved it.
+
+`rep3` appears when the principal variation repeats a position three times.
+**The mate still stands**: directmate convention ignores threefold repetition,
+a forced mate is forced, and the proof is unaffected. The marker is for a
+consumer applying GAME rules, which reads the same line as a draw the defender
+could claim -- the two conventions disagree, and this says which one is in
+front of you. Suppress it with `--no-flag-repetition`. It cannot appear on a
+shortest mate, where a recurrence would contradict minimality, so in practice
+it accompanies `--direct-depth` results only.
 
 **2. Disproved.** The search completed and there is no mate within the requested
 depth. The line **ends after `acs`**, with no further fields:

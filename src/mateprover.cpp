@@ -409,6 +409,13 @@ void print_usage() {
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
 "  --emit-proof                  append a recursive JSON proof certificate\n"
+"  --flag-repetition | --no-flag-repetition\n"
+"                                default: on. Append `rep3` to a solution whose\n"
+"                                PV repeats a position three times. Directmate\n"
+"                                convention IGNORES threefold repetition, so the\n"
+"                                mate STILL STANDS; the marker exists because a\n"
+"                                harness applying GAME rules reads that line as\n"
+"                                a draw the defender could claim\n"
 "  --print-config                print the effective configuration as JSON\n"
 "                                and exit; every default already resolved\n"
 "  --profile                     emit per-position counters to stderr\n"
@@ -717,6 +724,8 @@ const BoolOption kBoolOptions[] = {
     {"--vector-pseudo", &SearchConfig::static_pseudo, false},
     {"--portfolio", &SearchConfig::portfolio, true},
     {"--no-portfolio", &SearchConfig::portfolio, false},
+    {"--flag-repetition", &SearchConfig::flag_repetition, true},
+    {"--no-flag-repetition", &SearchConfig::flag_repetition, false},
     {"--direct-depth", &SearchConfig::direct_depth, true},
     {"--iterative-depth", &SearchConfig::direct_depth, false},
     {"--dfpn-final-depth-only", &SearchConfig::dfpn_final_depth_only, true},
@@ -1382,6 +1391,19 @@ int main(int argc, char** argv) {
             return usage_error("--beam-defender is not available in --uci mode: a bestmove "
                                "cannot carry the `beam` marker that says it is unverified");
     }
+    // PROTOCOL SNIFF. A UCI session ALWAYS opens with the bare command `uci`,
+    // and no EPD line can begin with it: the first FEN field is piece placement,
+    // which always contains '/'. So a first line of exactly "uci" identifies the
+    // protocol with no ambiguity, and a harness that simply launches the binary
+    // -- with no flag it does not know to pass -- gets a working UCI engine.
+    //
+    // --uci remains, and still forces the mode without reading anything.
+    std::string sniffed;
+    if (!uci_mode) {
+        if (std::getline(std::cin, sniffed) && trim(sniffed) == "uci") {
+            uci_mode = true;
+        }
+    }
     if (uci_mode) {
         // --emit-proof is REFUSED here rather than silently ignored. A caller
         // who asked for a certificate and got a bare `bestmove` would have no
@@ -1391,7 +1413,7 @@ int main(int argc, char** argv) {
             return usage_error("--emit-proof is not available in --uci mode: a proof tree "
                                "cannot travel over the protocol. Use the EPD interface");
         }
-        return run_uci_loop(config);
+        return run_uci_loop(config, trim(sniffed) == "uci" ? sniffed : std::string());
     }
 
     // Solve several positions at once, each into its own buffer, emitting the
@@ -1475,7 +1497,11 @@ int main(int argc, char** argv) {
     if (read_stdin) {
         std::string line;
         bool first_line = true;
-        while (std::getline(std::cin, line)) {
+        // The protocol sniff above consumed one line. It was not "uci" or we
+        // would not be here, so it is an EPD line and must be handled, not lost.
+        bool have_sniffed = !sniffed.empty();
+        while (have_sniffed ? (line = sniffed, have_sniffed = false, true)
+                            : static_cast<bool>(std::getline(std::cin, line))) {
             // Strip a leading UTF-8 byte order mark. Windows is the primary
             // platform here, and both Notepad and PowerShell's `Set-Content
             // -Encoding utf8` prepend EF BB BF; without this the first position
@@ -1522,6 +1548,11 @@ int main(int argc, char** argv) {
         flush_pending();
     } else {
         std::ostringstream buffer;
+        // Replay the line the protocol sniff consumed; it was not "uci", so it
+        // is input and must not be lost.
+        if (!sniffed.empty()) {
+            buffer << sniffed << "\n";
+        }
         buffer << std::cin.rdbuf();
         if (perft_depth > 0) {
             if (perft_divide) perft_divide_line(buffer.str(), perft_depth); else perft_line(buffer.str(), perft_depth);

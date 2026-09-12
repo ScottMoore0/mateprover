@@ -3739,6 +3739,132 @@ def test_finder_lane(engine: str, res: Results) -> None:
     module.run(res, str(engine))
 
 
+def test_help_advertises_only_real_options(engine: Path, res: Results) -> None:
+    """Every option --help advertises must actually be accepted.
+
+    The companion check runs the other way, parser -> help, and catches a flag
+    nobody can discover. It is structurally blind to the reverse, and the
+    reverse is worse: a documented option that does not exist is a promise the
+    tool breaks the first time anyone types it.
+
+    Written after --flag-repetition and --no-flag-repetition were found in the
+    usage block with no parser entry at all. The config field existed and was
+    read on every solved position, so the marker was permanently on and there
+    was no way to turn it off.
+
+    Options come from two places and both have to be read. Most are
+    `arg == "..."` in the parse loop; the boolean pairs live in a table of
+    {"--name", &SearchConfig::field, value}. Reading only the first is how the
+    companion check came to report "all N accepted options" while never seeing
+    the hundred in the table.
+    """
+    print("\n[docs] --help advertises nothing the parser will reject")
+
+    source = HERE.parent / "src" / "mateprover.cpp"
+    if not source.exists():
+        res.skip("help honesty", "source not alongside tests")
+        return
+    text = source.read_text(encoding="utf-8", errors="replace")
+    accepted = set(re.findall(r'arg == "(-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*)"', text))
+    accepted |= set(re.findall(r'\{"(-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*)",\s*&SearchConfig::',
+                              text))
+    if not accepted:
+        res.skip("help honesty", "could not locate the option definitions")
+        return
+
+    proc = subprocess.run([str(engine), "--help"], capture_output=True, timeout=60)
+    help_text = proc.stdout.decode()
+    advertised = set(re.findall(r"(?<![\w-])(--[a-zA-Z0-9][a-zA-Z0-9-]*)", help_text))
+    ghosts = sorted(advertised - accepted)
+    res.check(f"--help advertises only options the parser accepts "
+              f"({len(advertised)} advertised, {len(accepted)} accepted)",
+              not ghosts, f"advertised but rejected: {ghosts}")
+
+
+def test_protocol_sniff_never_eats_a_position(engine: Path, res: Results) -> None:
+    """A bare `uci` first line selects the protocol, and an EPD line survives.
+
+    The sniff exists so a harness that just launches the binary gets a working
+    UCI engine without knowing to pass --uci. It reads one line to decide, and
+    the risk it introduces is the opposite of the feature: an EPD first line
+    swallowed by the probe and never solved. A position silently dropped from a
+    corpus run is worse than a missing feature, because the run still completes
+    and the count still looks plausible.
+
+    No EPD line can be mistaken for the command: the first FEN field is piece
+    placement and always contains '/'.
+    """
+    print("\n[uci] the protocol sniff selects UCI and never consumes a position")
+
+    one = "8/2Q5/R7/8/1k4K1/8/8/8 w - - dm 2\n"
+    out = run(engine, ["-"], one)
+    res.check("one EPD line on stdin is still solved",
+              len([l for l in out.splitlines() if "; dm 2" in l]) == 1, repr(out[:160]))
+
+    out3 = run(engine, ["-"], one * 3)
+    res.check("three EPD lines give three results",
+              len([l for l in out3.splitlines() if l.strip()]) == 3, repr(out3[:160]))
+
+    sniffed = run(engine, [], "uci\nquit\n")
+    res.check("a bare `uci` first line brings up the engine without --uci",
+              "uciok" in sniffed and "id name" in sniffed, repr(sniffed[:160]))
+
+    explicit = run(engine, ["--uci"], "uci\nquit\n")
+    res.check("--uci still selects the protocol explicitly",
+              "uciok" in explicit, repr(explicit[:160]))
+
+
+def test_repetition_marker_is_reported_and_switchable(engine: Path, res: Results) -> None:
+    """`rep3` marks a solution whose PV repeats a position three times.
+
+    Directmate convention IGNORES threefold repetition -- a forced mate is
+    forced -- so the mate stands and the proof is unchanged. The marker exists
+    because a harness applying GAME rules reads the same line as a draw the
+    defender could claim, and the two readings disagree. Saying which one the
+    caller is holding is the whole point.
+
+    It cannot fire on a SHORTEST mate. If a position recurred, the second
+    occurrence would be nearer the mate than the first, contradicting the first
+    being shortest. So the marker lives entirely under --direct-depth, where
+    what is proved is "a mate within N" and the line need not be minimal.
+    Measured while writing this: 0 markers over 304 solved positions in the
+    default mode, 13 over 197 with the requested depth inflated under
+    --direct-depth.
+
+    The case is pinned to --no-portfolio --threads 1 so it is deterministic:
+    181 nodes on every run. Under the portfolio the winning lane varies between
+    runs, and so does the line it returns.
+    """
+    print("\n[output] the rep3 marker fires, and can be switched off")
+
+    fen = "8/3N4/3K1p1p/3B1pbr/5k1p/2P2p1P/2P2P2/8 w - -"
+    line = f"{fen} dm 8\n"
+    fixed = ["--direct-depth", "--no-portfolio", "--threads", "1"]
+
+    on = run(engine, [*fixed, "-"], line)
+    res.check("a repeating PV is marked rep3", "rep3" in on, repr(on[:220]))
+    res.check("the mate is still reported alongside the marker",
+              "; dm 8" in on, repr(on[:220]))
+
+    off = run(engine, [*fixed, "--no-flag-repetition", "-"], line)
+    res.check("--no-flag-repetition suppresses the marker",
+              "rep3" not in off, repr(off[:220]))
+    res.check("suppressing the marker leaves the mate untouched",
+              "; dm 8" in off, repr(off[:220]))
+
+    plain = run(engine, ["--no-portfolio", "--threads", "1", "-"],
+                "8/2Q5/R7/8/1k4K1/8/8/8 w - - dm 2\n")
+    res.check("a non-repeating solution is not marked",
+              "rep3" not in plain, repr(plain[:220]))
+
+    cfg_on = run(engine, ["--print-config", "-"], line)
+    res.check("--print-config resolves flag_repetition",
+              '"flag_repetition":true' in cfg_on, repr(cfg_on[:220]))
+    cfg_off = run(engine, ["--no-flag-repetition", "--print-config", "-"], line)
+    res.check("--print-config reflects the switch",
+              '"flag_repetition":false' in cfg_off, repr(cfg_off[:220]))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -3806,6 +3932,9 @@ def main() -> int:
     test_cross_lane_proofs_do_not_move_the_depth(args.engine, res)
     test_candidate_predicates_observe_and_never_prune(args.engine, res)
     test_uci_mode_is_a_faithful_rendering(args.engine, res)
+    test_protocol_sniff_never_eats_a_position(args.engine, res)
+    test_repetition_marker_is_reported_and_switchable(args.engine, res)
+    test_help_advertises_only_real_options(args.engine, res)
     test_flat_table_changes_nothing_but_the_speed(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)

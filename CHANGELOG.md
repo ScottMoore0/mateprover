@@ -10,6 +10,28 @@ without one.
 
 ## Unreleased
 
+**A UCI session no longer needs `--uci`.** A first line of exactly `uci`
+selects the protocol, because no EPD line can be mistaken for it: the first FEN
+field is piece placement and always contains a `/`. A harness that simply
+launches the binary now gets a working UCI engine without knowing to pass a
+flag it has no reason to know about. `--uci` still forces the mode without
+reading anything. The sniff consumes one line to decide, and that line is
+replayed rather than dropped when it turns out to be a position -- a position
+silently missing from a corpus run is worse than a missing feature, because the
+run still completes and the count still looks plausible.
+
+**`rep3` marks a solution whose principal variation repeats a position three
+times.** Directmate convention IGNORES threefold repetition -- a forced mate is
+forced -- so the mate stands and the proof is unchanged; the marker is there
+because a harness applying GAME rules reads the same line as a draw the
+defender could claim. Both readings are defensible and they disagree, so the
+engine says which one the caller is holding. On by default, off with
+`--no-flag-repetition`. It cannot fire on a shortest mate, where a recurrence
+would contradict minimality, so in practice it appears only under
+`--direct-depth`: zero markers over 304 solved positions in the default mode,
+thirteen over 197 with the requested depth inflated.
+
+
 **A run without python-chess is no longer reported as a pass.** The certificate
 checks -- the ones that re-derive the engine's proofs independently, which is
 the single claim this engine exists to make -- stand down when python-chess is
@@ -550,7 +572,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 599 automated checks cover perft against
+sharing no code with the engine. 611 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

@@ -401,6 +401,7 @@ void emit_config_json(const SearchConfig& c) {
     out << ",\"order_min_size\":" << c.order_min_size;
     out << ",\"direct_depth\":" << (c.direct_depth ? "true" : "false");
     out << ",\"portfolio\":" << (c.portfolio ? "true" : "false");
+    out << ",\"flag_repetition\":" << (c.flag_repetition ? "true" : "false");
     out << ",\"portfolio_parallel\":" << (c.portfolio_parallel ? "true" : "false");
     out << ",\"shared_tt\":" << (c.shared_tt ? "true" : "false");
     out << ",\"move_reserve\":" << (c.move_reserve ? "true" : "false");

@@ -75,6 +75,12 @@ struct SearchConfig {
     // The exact proof table. On always, except for the equivalence test that
     // is the only way to check the depthless key's preconditions.
     bool exact_tt = true;
+    // Flag a solution whose principal variation repeats a position three times.
+    // Directmate convention IGNORES threefold repetition -- a forced mate is
+    // forced -- but a harness applying GAME rules will read such a line as a
+    // draw the defender can claim. The proof is unchanged; this only annotates
+    // the output so a consumer knows which convention it is looking at.
+    bool flag_repetition = true;
     bool answer_order = true;
     // Use the additive scorer at remaining depth 2 rather than the width
     // estimator. Off until measured.

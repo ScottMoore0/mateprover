@@ -13,6 +13,31 @@
 
 namespace mateprover {
 
+// How many times does the most-repeated position occur along this line?
+//
+// Directmate convention IGNORES threefold repetition: a forced mate is forced,
+// and the defender's ability to claim a draw is not part of the stipulation.
+// A harness applying GAME rules reads the same line as a draw. Both readings are
+// defensible and they disagree, so the honest thing is to say which one the
+// caller is holding rather than silently pick a side.
+//
+// Runs once per SOLVED position, never inside the search, so string keying costs
+// nothing that matters. fen4 is exactly the right key: placement, side to move,
+// castling rights and en passant -- the four things that make two positions the
+// same for repetition purposes.
+inline int max_position_repeats(const Board& root, const std::vector<Move>& pv) {
+    std::unordered_map<std::string, int> seen;
+    Board cur = root;
+    int most = ++seen[fen4(cur)];
+    for (const Move& m : pv) {
+        cur = make_move(cur, m);
+        const int n = ++seen[fen4(cur)];
+        if (n > most) most = n;
+    }
+    return most;
+}
+
+
 // One entry in the restriction portfolio.
 struct PortfolioEntry {
     const char* name;
@@ -857,6 +882,11 @@ void solve_line(const std::string& raw, int requested_depth, const SearchConfig&
         }
         out << "; bm " << move_uci(proof.pv.front()) << token << proved_depth
                   << "; pv " << pv_uci(proof.pv);
+        if (config.flag_repetition && max_position_repeats(b, proof.pv) >= 3) {
+            // The mate still stands under directmate convention; this records
+            // only that a game-rules consumer would call the line a draw.
+            out << "; rep3";
+        }
         if (s.emit_proof && !proof.cert.empty() && !s.beam_pruned) {
             out << "; proof " << proof.cert;
         }
