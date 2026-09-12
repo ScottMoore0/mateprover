@@ -37,8 +37,12 @@ a forced mate is forced, and the proof is unaffected. The marker is for a
 consumer applying GAME rules, which reads the same line as a draw the defender
 could claim -- the two conventions disagree, and this says which one is in
 front of you. Suppress it with `--no-flag-repetition`. It cannot appear on a
-shortest mate, where a recurrence would contradict minimality, so in practice
-it accompanies `--direct-depth` results only.
+shortest mate, where a recurrence would contradict minimality. It therefore
+appears exactly when the reported line was NOT proved minimal, which happens two
+ways: the caller asked for `--direct-depth`, or a restricted portfolio lane
+answered -- that lane searches the requested depth directly whatever the caller
+asked for, and its line carries `via`. So `rep3` does occur on
+`--iterative-depth` invocations, always alongside `via`.
 
 **2. Disproved.** The search completed and there is no mate within the requested
 depth. The line **ends after `acs`**, with no further fields:

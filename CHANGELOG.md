@@ -27,9 +27,13 @@ because a harness applying GAME rules reads the same line as a draw the
 defender could claim. Both readings are defensible and they disagree, so the
 engine says which one the caller is holding. On by default, off with
 `--no-flag-repetition`. It cannot fire on a shortest mate, where a recurrence
-would contradict minimality, so in practice it appears only under
-`--direct-depth`: zero markers over 304 solved positions in the default mode,
-thirteen over 197 with the requested depth inflated.
+would contradict minimality; it fires when the reported line was not proved
+minimal. That is not the same as "when --direct-depth was asked for", because a
+restricted portfolio lane searches the requested depth directly whatever the
+caller asked, and marks its line `via`. Measured at a 2,000,000-node cap: zero
+markers over 304 solved positions with no budget and no portfolio, thirteen
+over 197 under `--direct-depth`, and eleven over 199 under `--iterative-depth`
+-- every one of those eleven carrying `via`.
 
 
 **A run without python-chess is no longer reported as a pass.** The certificate
@@ -572,7 +576,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 611 automated checks cover perft against
+sharing no code with the engine. 612 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

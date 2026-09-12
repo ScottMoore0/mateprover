@@ -3825,11 +3825,22 @@ def test_repetition_marker_is_reported_and_switchable(engine: Path, res: Results
 
     It cannot fire on a SHORTEST mate. If a position recurred, the second
     occurrence would be nearer the mate than the first, contradicting the first
-    being shortest. So the marker lives entirely under --direct-depth, where
-    what is proved is "a mate within N" and the line need not be minimal.
-    Measured while writing this: 0 markers over 304 solved positions in the
-    default mode, 13 over 197 with the requested depth inflated under
-    --direct-depth.
+    being shortest. So it marks a line that was not proved minimal -- which is
+    NOT the same as "the caller passed --direct-depth". A restricted portfolio
+    lane searches the requested depth directly whatever was asked, so the marker
+    also appears on --iterative-depth runs, always alongside `via`.
+
+    That distinction is load-bearing. Skipping the repetition walk whenever the
+    request is iterative looks like a free optimisation and would suppress the
+    marker on exactly the non-minimal results a game-rules consumer needs it
+    for. Measured at a 2,000,000-node cap: 0 markers over 304 solved positions
+    with no budget and no portfolio, 13 over 197 under --direct-depth, 11 over
+    199 under --iterative-depth, all eleven carrying `via`.
+
+    That last case is deliberately NOT asserted below. Which lane wins the
+    race varies between runs by design, so a check on it would pass or skip
+    on the machine's core count rather than on the engine's behaviour, and
+    the reference configuration is meant to report zero skips.
 
     The case is pinned to --no-portfolio --threads 1 so it is deterministic:
     181 nodes on every run. Under the portfolio the winning lane varies between
@@ -3863,6 +3874,15 @@ def test_repetition_marker_is_reported_and_switchable(engine: Path, res: Results
     cfg_off = run(engine, ["--no-flag-repetition", "--print-config", "-"], line)
     res.check("--print-config reflects the switch",
               '"flag_repetition":false' in cfg_off, repr(cfg_off[:220]))
+
+    # The same position, proved minimally, is a mate in 4 and carries no marker.
+    # The dm 8 line above is a restricted lane's "a mate within 8", and the
+    # repetition is in that line and not in the shortest one.
+    shortest = run(engine, ["--iterative-depth", "--no-portfolio", "--threads", "1", "-"],
+                   line)
+    res.check("the minimal proof of the same position is shorter and unmarked",
+              "; dm 4" in shortest and "rep3" not in shortest, repr(shortest[:220]))
+
 
 
 def main() -> int:
