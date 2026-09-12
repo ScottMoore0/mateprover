@@ -10,6 +10,35 @@ without one.
 
 ## Unreleased
 
+**UCI now says whether a mate is the shortest.** `score mate N` is how every
+engine reports a mate it found; the protocol cannot add that no shorter one
+exists. Under a time or node budget the restriction portfolio runs beside the
+unrestricted search, and a restricted search that wins reports a real mate
+that may not be the shortest -- measured, `score mate 8` on a position whose
+shortest mate is 4, with nothing on the UCI output to say so. Every UCI mate
+is now followed by `info string shortest: proved` or `info string shortest:
+not proved`, naming the restriction, and a new `Portfolio` option turns the
+portfolio off so every reported mate is a proved shortest one. Not
+`score mate N lowerbound`: matecheck and similar harnesses discard bound lines,
+and a genuine mate would vanish from their counts.
+
+**`--refute-pv` hunts for a refutation of a claimed mating line.** Given a
+position, a claimed distance and a `pv` (UCI or SAN), it replays the line
+through the engine's own move generator and reports the first defect it finds:
+an illegal move, a line that does not end in mate, a length that contradicts
+the claim, a defender reply the line ignored that is proved to escape, or a
+shorter mate. The search checks run from the end of the line back to the root,
+because near the end each is cheap and that is where broken lines usually
+break. It is one-sided and says so: `unrefuted` never means verified, because
+confirming a forced mate means refuting every sibling at every defender node,
+which is the whole proof. With `--emit-proof` a `shorter` refutation carries
+the certificate for the mate it found.
+
+**The Matefish minimality figure was wrong.** README and RESULTS said MateProver
+proves the shortest mate on 41 of 60 positions. Every one of those 41 came from
+a restricted search under the run's time limit: real mates, not proved
+shortest. With the portfolio off the figure is 14.
+
 **A UCI session no longer needs `--uci`.** A first line of exactly `uci`
 selects the protocol, because no EPD line can be mistaken for it: the first FEN
 field is piece placement and always contains a `/`. A harness that simply
@@ -576,7 +605,7 @@ during development:
 and rejected; `tools/reproduce_results.py` re-runs the figures.
 
 **Correctness.** Every proof is a certificate verifiable by a separate program
-sharing no code with the engine. 612 automated checks cover perft against
+sharing no code with the engine. 626 automated checks cover perft against
 reference counts, negative controls, restriction soundness, the abort invariant
 under stress, order and batching independence, the CLI contract, and six ways of
 forging a certificate.

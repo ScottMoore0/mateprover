@@ -136,6 +136,32 @@ pairs followed by `total <count>`:
 <original line>; legal_count 0; error input;
 ```
 
+`--refute-pv` emits one line per input line: the claim it checked, then the
+verdict. It is one-sided. `unrefuted` means nothing was found within the
+budget, never that the line is correct.
+
+```
+<fen4>; refute-pv; claim <N>[; claim from-pv]; plies <P>[; rep3]; unrefuted; checks <C>; inconclusive <I>; acn <n>; acs <s>;
+<fen4>; refute-pv; claim <N>; plies <P>; refuted <kind>; <evidence>; checks <C>; inconclusive <I>; acn <n>; acs <s>;
+<original line>; refute-pv; error input;
+<fen4>; refute-pv; error no pv;
+```
+
+| kind | evidence | meaning |
+|---|---|---|
+| `illegal` | `ply K; token T` | move K of the line is not legal where it is played |
+| `not-mate` | `ply P; ends <why>` | the line does not end with the defender checkmated |
+| `length` | `expected E; mates-in M` | the line is not the length its claim implies |
+| `escape` | `ply K; after A; reply R; survives S` | after attacker move A, defender reply R -- not the one the line plays -- is proved to escape mate within S moves |
+| `shorter` | `ply K; claimed C; found F` | from ply K a mate in F moves exists where the line claims C |
+
+The claim is `-z`, else the line's `dm N` or `bm #N`, else the length of the
+line (`claim from-pv`). `inconclusive` counts search checks that hit their
+budget. Under `--emit-proof` a `shorter` refutation is followed by the
+sub-search's own result line, certificate included, so `tools/verify_proof.py`
+checks the evidence like any other proof. An `escape` is an absence proof and
+has no certificate.
+
 ## Goal tokens
 
 The depth token names the goal, and the goals are disjoint — a result for one is

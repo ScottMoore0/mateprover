@@ -313,12 +313,24 @@ search rather than launch overhead.
 
 Minimality has no contest, because there is no opponent:
 
-| band | n | mateprover `--iterative-depth` | matefish |
+| band | n | mateprover `--iterative-depth --no-portfolio` | matefish |
 |---|---|---|---|
-| **total** | **60** | **41** | **n/a** |
+| d8 | 12 | 7 | n/a |
+| d10 | 12 | 3 | n/a |
+| d12 | 12 | 3 | n/a |
+| d14 | 12 | 1 | n/a |
+| d16 | 12 | 0 | n/a |
+| **total** | **60** | **14** | **n/a** |
 
 Not zero -- **n/a**. Proving that no shorter mate exists is a question Matefish
 cannot be asked.
+
+**Corrected 2026-09-12.** This table previously said 41. That run had a time
+limit, so the restriction portfolio was on, and every one of the 41 came from a
+restricted search: a real mate, not proved shortest, and marked `via` on its
+result line. The harness counted any reported depth. Re-run with the portfolio
+off -- the only configuration in which a reported depth under a budget is a
+proved minimum -- the figure is 14.
 
 **Matefish was given 4 GB** for its proof-number table against mateprover's
 256 MB per-table default, deliberately more than it needs, so that no result
@@ -564,7 +576,7 @@ only behaviour.
   sharing no code with the engine (`tools/verify_proof.py`), specified in
   `PROOF_FORMAT.md`. The test suite forges certificates six ways and requires
   each to be rejected.
-- 612 automated checks, including perft, negative controls, restriction
+- 626 automated checks, including perft, negative controls, restriction
   soundness, the abort invariant under stress, order and batching independence,
   and the CLI contract.
 - Where a gate could not be shown to discriminate, that is stated rather than

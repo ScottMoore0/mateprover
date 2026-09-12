@@ -178,7 +178,7 @@ has the full specification.
 
 The defaults are the tuned configuration. Everything that measured as a win is
 on: multi-threaded root splitting, the search tunings, and, whenever a
-`--time-limit` is given, the restriction portfolio. Supplying a time limit is
+`--time-limit` or `--node-limit` is given, the restriction portfolio. Supplying a time limit is
 the single most valuable thing a caller can do, because the portfolio roughly
 doubles reach at mate-in-8. Each default has an opt-out (`--single-thread`,
 `--no-portfolio`, and the pairs listed under `--help`) for reproducing a
@@ -190,6 +190,15 @@ proves a solution *within* it. That gives up minimality and buys reach: on a
 development set the default solves 52 of 60 mate-in-8 problems where
 `--direct-depth` solves 59. If you already know the mate distance, from a
 stipulation or an EPD token, there is no reason to pay for rediscovering it.
+
+**A budget changes what a reported depth means.** Under a time or node budget
+the portfolio runs restricted searches beside the unrestricted one, and
+whichever proves a mate first answers. A restricted search's mate is real but
+is not proved to be the shortest: measured, `dm 8` on a position whose
+shortest mate is 4. The EPD line marks such a result `via <restriction>`, and
+UCI says `info string shortest: not proved`. `--no-portfolio` (UCI:
+`setoption name Portfolio value false`) keeps every reported mate a proved
+shortest one under any budget.
 
 ### Options worth knowing
 
@@ -205,6 +214,7 @@ stipulation or an EPD token, there is no reason to pay for rediscovering it.
 | `--portfolio-parallel` | run those searches concurrently, each with the full budget |
 | `--escape-count` | report E for both kings and stop |
 | `--emit-proof` | append the JSON proof certificate |
+| `--refute-pv` | hunt for a refutation of a claimed mating line (`pv` opcode). One-sided: reports a defect, or that none was found within the budget, and never that the line is correct |
 | `--perft N`, `--perft-divide N` | move-generation self-check |
 | `--profile` | per-position counters on stderr |
 
@@ -240,6 +250,20 @@ bestmove 0000
 
 `bestmove 0000` is the null move. There is no move to recommend, and naming
 one would assert something the engine never proved.
+
+Nor can UCI say that a mate is the shortest: `score mate N` is how every
+engine reports a mate it found. This one says it on `info string`:
+
+```
+info string shortest: proved
+info string shortest: not proved; restriction K2 found this mate, and a shorter one may exist (setoption name Portfolio value false proves the shortest)
+```
+
+The second appears only under a time or node budget, when a restricted search
+answered. `setoption name Portfolio value false` makes every reported mate a
+proved shortest one. This is deliberately not `score mate N lowerbound`, the
+strictly correct wording: harnesses such as matecheck discard bound lines as
+provisional, and a genuine mate would vanish from their counts.
 
 Certificates cannot travel over UCI (a mate-in-8 proof runs to megabytes), so
 `--emit-proof` is refused in this mode rather than silently ignored. The other
@@ -321,7 +345,11 @@ MateProver does not beat Matefish at finding mates, and this page does not
 claim it does. On the 41 positions both solved, MateProver was faster on 32
 (p = 0.0004), median 1.49x, using 256 MB against 4 GB. And on minimality there
 is no contest, because Matefish cannot be asked whether a shorter mate exists.
-MateProver proves the shortest mate on 41 of the 60.
+MateProver proves the shortest mate on 14 of the 60 at this budget (7, 3, 3,
+1 and 0 across the five bands). An earlier version of this page said 41: that
+count included mates found by restricted searches, which prove a mate but not
+that it is the shortest -- the one distinction this paragraph exists to draw.
+It was re-measured with the portfolio off.
 
 ### Reach
 
@@ -399,7 +427,7 @@ re-derive the engine's proofs from scratch -- the one claim this engine exists
 to make. Such a run is not a pass, and the suite now says so and **exits
 non-zero** rather than printing a green line that verified nothing; pass
 `--allow-unverified` to accept one deliberately. The full run is
-612 automated checks, reported as 612 passed, 0 skipped.
+626 automated checks, reported as 626 passed, 0 skipped.
 
 They cover:
 

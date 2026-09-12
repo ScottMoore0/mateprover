@@ -1404,6 +1404,29 @@ def test_uci_mode_is_a_faithful_rendering(engine: Path, res: Results) -> None:
     res.check("the UCI key move is the EPD key move",
               bool(epd_bm) and f"bestmove {epd_bm.group(1)}" in text,
               f"epd={epd_bm.group(1) if epd_bm else '?'} uci={text[-120:]}")
+    res.check("a proved mate says it is the shortest",
+              "info string shortest: proved" in text, text[-300:])
+
+    # WHICH MATE. `score mate N` cannot say whether a shorter mate exists, and
+    # under a budget the portfolio can answer with one that is not the shortest:
+    # this position is a mate in 4, and a restricted lane reports 8. Portfolio
+    # off must prove the 4; Portfolio on may report either, but must say which.
+    res.check("UCI exposes the portfolio switch",
+              any(l.startswith("option name Portfolio type check") for l in handshake),
+              str(handshake[:12]))
+    rep_fen = "8/3N4/3K1p1p/3B1pbr/5k1p/2P2p1P/2P2P2/8 w - -"
+    out = session(["uci", "setoption name Portfolio value false", f"position fen {rep_fen}",
+                   "go mate 8 movetime 2000"], ["uciok", None, None, "bestmove"])
+    text = "\n".join(out)
+    res.check("Portfolio off proves the shortest mate under a time budget",
+              "score mate 4" in text and "info string shortest: proved" in text, text[-300:])
+    out = session(["uci", f"position fen {rep_fen}", "go mate 8 movetime 2000"],
+                  ["uciok", None, "bestmove"])
+    text = "\n".join(out)
+    found = re.search(r"score mate (\d+)", text)
+    labelled = bool(found) and (("info string shortest: proved" in text) if found.group(1) == "4"
+                                else ("info string shortest: not proved" in text))
+    res.check("a mate that may not be the shortest is labelled as such", labelled, text[-300:])
 
     # A proved ABSENCE: no score, an explicit PROVED, and never a mate claim.
     out = session(["uci", "position fen 8/8/8/4k3/8/8/8/4K2R w - -", "go mate 2"],
@@ -3885,6 +3908,64 @@ def test_repetition_marker_is_reported_and_switchable(engine: Path, res: Results
 
 
 
+def test_refute_pv_is_one_sided(engine: Path, res: Results) -> None:
+    """--refute-pv reports a defect with its evidence, or that none was found.
+
+    It never says a line is correct, because it cannot know: confirming a forced
+    mate means refuting every defender reply at every defender node, and the line
+    under test is the cheap part of that. Every refutation kind is exercised on a
+    position where the defect is known, and the `shorter` evidence -- the one kind
+    that carries a certificate -- goes through the independent verifier.
+    """
+    print("\n[refute] --refute-pv finds each kind of defect and never claims a line is correct")
+
+    def refute(line, *extra):
+        return run(engine, ["--refute-pv", *extra, "-"], line + "\n")
+
+    q = "8/2Q5/R7/8/1k4K1/8/8/8 w - -"
+    good = refute(f"{q} dm 2; pv a6b6 b4a3 c7a7;")
+    res.check("a correct line is unrefuted, which is not 'verified'",
+              "; unrefuted;" in good and "verif" not in good, good.strip())
+    san = refute(f"{q} bm #2; pv 1.Rb6+ Ka3 2.Qa7#;")
+    res.check("SAN with move numbers reads the same as UCI coordinates", "; unrefuted;" in san, san.strip())
+    bad = refute(f"{q} dm 2; pv a6b6 b4b5 c7a7;")
+    res.check("an illegal move is refuted at the ply it is played", "; refuted illegal; ply 2;" in bad, bad.strip())
+    nm = refute(f"{q} dm 2; pv a6b6 b4a3 c7c1;")
+    res.check("a line that does not end in mate is refuted", "; refuted not-mate;" in nm, nm.strip())
+    ln = refute(f"{q} dm 3; pv a6b6 b4a3 c7a7;")
+    res.check("a line shorter than its claim is refuted on length", "; refuted length;" in ln, ln.strip())
+    # After Qh6+ the line plays Kg3, which loses to Rg8#; Kg4 escapes.
+    esc = refute("1R6/8/8/8/7k/4Q3/4K3/8 w - - dm 2; pv e3h6 h4g3 b8g8;")
+    res.check("a defender reply the line ignored, surviving the claim, is an escape",
+              "; refuted escape; ply 2;" in esc, esc.strip())
+    rep = ("8/3N4/3K1p1p/3B1pbr/5k1p/2P2p1P/2P2P2/8 w - - dm 8; pv d5e6 f4e4 e6d5 e4f4 d5e6 "
+           "f4e4 e6d5 e4f4 d5e6 f4e4 d7c5 e4f4 c5d3 f4e4 e6d5;")
+    sh = refute(rep, "--emit-proof")
+    res.check("a claimed distance beaten by a shorter mate is refuted as shorter",
+              "; refuted shorter;" in sh, sh.strip()[:220])
+    res.check("a repetition in the line is reported, and is not a refutation",
+              "; rep3;" in sh and "refuted rep" not in sh, sh.strip()[:220])
+    if HAVE_CHESS:
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".epd", delete=False, encoding="utf-8") as fh:
+            fh.write(sh)
+            evidence = fh.name
+        proc = subprocess.run([sys.executable, str(HERE.parent / "tools" / "verify_proof.py"), evidence],
+                              capture_output=True, text=True, timeout=120)
+        Path(evidence).unlink(missing_ok=True)
+        res.check("the shorter-mate evidence passes the independent verifier",
+                  proc.returncode == 0 and "1 certificate(s) verified" in proc.stdout,
+                  (proc.stdout + proc.stderr)[-300:])
+    else:
+        res.skip("the shorter-mate evidence passes the independent verifier", "python-chess not installed")
+    try:
+        refused = run(engine, ["--refute-pv", "--uci", "-"], "quit\n")
+    except RuntimeError as exc:
+        refused = str(exc)
+    res.check("--refute-pv is refused in UCI mode rather than ignored",
+              "not available in --uci mode" in refused, refused[:160])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -3955,6 +4036,7 @@ def main() -> int:
     test_protocol_sniff_never_eats_a_position(args.engine, res)
     test_repetition_marker_is_reported_and_switchable(args.engine, res)
     test_help_advertises_only_real_options(args.engine, res)
+    test_refute_pv_is_one_sided(args.engine, res)
     test_flat_table_changes_nothing_but_the_speed(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)

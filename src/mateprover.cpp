@@ -70,6 +70,7 @@
 #include "report.h"
 #include "solve.h"
 #include "uci.h"
+#include "refute.h"
 
 using namespace mateprover;
 
@@ -405,6 +406,15 @@ void print_usage() {
 "                                Retrograde generation, for bidirectional\n"
 "                                search. Incomplete where castling rights were\n"
 "                                forfeited by the retracted move\n"
+"  --refute-pv                   hunt for a refutation of each line's claimed\n"
+"                                mating line: a `pv` opcode (UCI or SAN) with\n"
+"                                `dm N` or `bm #N`. ONE-SIDED: reports a defect\n"
+"                                -- illegal, not-mate, length, escape, shorter --\n"
+"                                or that none was found within the budget, and\n"
+"                                never that the line is correct. Each search\n"
+"                                check gets --node-limit or --time-limit\n"
+"                                (default 10000000 nodes); with --emit-proof a\n"
+"                                `shorter` refutation carries its certificate\n"
 "\n"
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
@@ -784,6 +794,7 @@ int main(int argc, char** argv) {
     bool list_legal = false;
     bool list_san = false;
     bool list_unmoves = false;
+    bool refute_pv = false;
     bool self_check = false;
 
     // Pre-scan: this flag must work regardless of where it appears, otherwise
@@ -883,6 +894,8 @@ int main(int argc, char** argv) {
             list_san = true;
         } else if (arg == "--list-unmoves") {
             list_unmoves = true;
+        } else if (arg == "--refute-pv") {
+            refute_pv = true;
         } else if (arg == "--perft" || arg == "--perft-divide") {
             const char* v = need_value(i);
             if (!v) return usage_error("option " + arg + " requires a depth");
@@ -1391,6 +1404,20 @@ int main(int argc, char** argv) {
             return usage_error("--beam-defender is not available in --uci mode: a bestmove "
                                "cannot carry the `beam` marker that says it is unverified");
     }
+    if (refute_pv) {
+        // A refutation is a defect report about one claimed line, so it has no
+        // UCI rendering, and it needs sound searches underneath it.
+        if (uci_mode)
+            return usage_error("--refute-pv is not available in --uci mode: its answer is a "
+                               "defect report, which no UCI message can carry");
+        if (config.goal != Goal::Mate)
+            return usage_error("--refute-pv is implemented for the mate goal only");
+        if (config.beam_defender > 0)
+            return usage_error("--refute-pv needs sound searches, and --beam-defender is not one");
+        if (config.all_solutions || config.successors)
+            return usage_error("--refute-pv checks one claimed line per position and does not "
+                               "combine with --all-solutions or --successors");
+    }
     // PROTOCOL SNIFF. A UCI session ALWAYS opens with the bare command `uci`,
     // and no EPD line can begin with it: the first FEN field is piece placement,
     // which always contains '/'. So a first line of exactly "uci" identifies the
@@ -1533,6 +1560,8 @@ int main(int argc, char** argv) {
                 list_san_line(line);
             } else if (list_unmoves) {
                 list_unmoves_line(line);
+            } else if (refute_pv) {
+                refute_pv_line(line, requested_depth, config, std::cout);
             } else if (config.parallel_positions > 1) {
                 pending.push_back(line);
                 // Four positions per worker before flushing: the queue can only
@@ -1564,6 +1593,13 @@ int main(int argc, char** argv) {
             list_san_line(buffer.str());
         } else if (list_unmoves) {
             list_unmoves_line(buffer.str());
+        } else if (refute_pv) {
+            std::istringstream lines(buffer.str());
+            for (std::string one; std::getline(lines, one);) {
+                const std::size_t first = one.find_first_not_of(" \t\r");
+                if (first == std::string::npos || one[first] == '#') continue;
+                refute_pv_line(one, requested_depth, config, std::cout);
+            }
         } else {
             solve_line(buffer.str(), requested_depth, config);
         }

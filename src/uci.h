@@ -54,6 +54,7 @@ struct UciResult {
     std::uint64_t nodes = 0;
     double seconds = 0.0;
     bool repeats3 = false;
+    std::string via;           // the restriction that proved it; empty = unrestricted
 };
 
 // Pull one field out of an EPD result line. The line format is specified in
@@ -84,6 +85,9 @@ inline UciResult parse_result_line(const std::string& line) {
     r.timed_out = line.find("; timeout;") != std::string::npos;
     // Carried through so the UCI layer can surface it; see solve.h.
     r.repeats3 = line.find("; rep3") != std::string::npos;
+    // A restricted lane's mate is real but may not be the shortest. Carried
+    // through so search() can say which kind of mate it is reporting.
+    if (uci_field(line, "via", value)) r.via = value;
     for (const char* token : {"dm", "sm", "sfm", "ssm", "hm", "hsm"}) {
         if (uci_field(line, token, value)) {
             r.verdict_token = token;
@@ -152,6 +156,10 @@ private:
                   << "option name Checks type spin default 0 min 0 max 126\n"
                   << "option name Captures type spin default 0 min 0 max 126\n"
                   << "option name Escape type spin default 0 min 0 max 8\n"
+                  // Whether a time or node budget may also be spent on
+                  // restricted searches. On finds more mates within the budget;
+                  // off makes every reported mate a proved shortest one.
+                  << "option name Portfolio type check default true\n"
                   << "uciok\n" << std::flush;
         return true;
     }
@@ -181,6 +189,8 @@ private:
             else if (value == "selfstalemate") base_.goal = Goal::Selfstalemate;
             else if (value == "helpmate") base_.goal = Goal::Helpmate;
             else if (value == "helpstalemate") base_.goal = Goal::Helpstalemate;
+        } else if (name == "Portfolio") {
+            base_.portfolio = (value == "true");
         } else if (name == "Checks" && n > 0) {
             base_.quota_limit[VR_CHECK] = static_cast<int>(n);
             base_.quota_limit[VR_COUNT + VR_CHECK] = static_cast<int>(n);
@@ -312,6 +322,33 @@ private:
             out << " pv " << r.pv;
         }
         out << "\n";
+
+        // WHICH MATE THIS IS -- said, because `score mate N` cannot say it.
+        //
+        // Every engine reports a mate it FOUND as `score mate N`; the protocol
+        // has no way to add "and no shorter one exists". This engine can prove
+        // that, but only when the unrestricted search iterated up to N. Under a
+        // time or node budget the restriction portfolio runs as well, and a
+        // restricted lane that wins reports a real mate that may not be the
+        // shortest -- measured: `score mate 8` on a position whose shortest
+        // mate is 4. The EPD line marks that `via <lane>`; this is the same fact
+        // on the only channel UCI has for it.
+        //
+        // Not `score mate N lowerbound`, which is the strictly correct UCI
+        // wording: harnesses such as matecheck discard bound lines as
+        // provisional, so a genuine mate would vanish from their counts.
+        if (r.solved && r.verdict_token == "dm") {
+            if (!r.via.empty()) {
+                out << "info string shortest: not proved; restriction " << r.via
+                    << " found this mate, and a shorter one may exist"
+                    << " (setoption name Portfolio value false proves the shortest)\n";
+            } else if (cfg.direct_depth) {
+                out << "info string shortest: not proved; --direct-depth proves a mate within "
+                    << depth << " only\n";
+            } else {
+                out << "info string shortest: proved\n";
+            }
+        }
 
         // THE PART UCI CANNOT SAY, said on the only channel that can carry it.
         if (r.repeats3) {
