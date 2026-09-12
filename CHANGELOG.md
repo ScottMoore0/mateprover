@@ -8,6 +8,18 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
+## Unreleased
+
+**A run without python-chess is no longer reported as a pass.** The certificate
+checks -- the ones that re-derive the engine's proofs independently, which is
+the single claim this engine exists to make -- stand down when python-chess is
+absent, and the suite used to report everything else as green and exit 0. On a
+fresh clone the benchmark corpora are absent too, so the check-count assertions
+stood down as well and nothing was left to give the reader pause.
+`tests/run_tests.py` now names what did not run and **exits non-zero**; pass
+`--allow-unverified` to accept such a run deliberately. Every CI job that runs
+the suite installs python-chess, so the reference configuration is unchanged.
+
 ## 0.1.0 — 2026-09-04
 
 **Released under the MIT License.** The engine is an independent

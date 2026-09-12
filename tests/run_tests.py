@@ -7,10 +7,15 @@
 """Self-contained test suite for the mateprover directmate prover.
 
 The core tests deliberately have no third-party dependencies so they run
-anywhere CMake/CTest does. If `python-chess` happens to be installed, an extra
-layer of independent verification is enabled automatically: every reported PV is
-replayed for legality and checked to end in real checkmate, and every emitted
-proof certificate is verified to enumerate exactly the legal defender replies.
+anywhere CMake/CTest does. `python-chess` enables an extra layer of independent
+verification: every reported PV is replayed for legality and checked to end in
+real checkmate, and every emitted proof certificate is verified to enumerate
+exactly the legal defender replies.
+
+That layer is not optional in practice. Without it the certificate checks stand
+down and the suite has verified nothing this engine exists to claim, so a run
+without python-chess exits NON-ZERO rather than reporting green. Pass
+--allow-unverified to accept such a run deliberately.
 
 Usage:
     python run_tests.py --engine /path/to/mateprover
@@ -3745,6 +3750,11 @@ def main() -> int:
                              "assertions are skipped: they measure the BUILD, not "
                              "the engine, and a 0.5s budget honoured in 7.5s under "
                              "_GLIBCXX_DEBUG says nothing about the shipped binary."),
+    parser.add_argument("--allow-unverified", action="store_true",
+                        help="accept a run whose certificate checks were skipped "
+                             "for want of python-chess. Without it such a run exits "
+                             "non-zero rather than reporting a green suite that "
+                             "verified none of the engine's proofs.")
     args = parser.parse_args()
 
     if not args.engine.exists():
@@ -3884,6 +3894,34 @@ def main() -> int:
     print(f"\n{res.passed} passed, {len(res.failed)} failed, {len(res.skipped)} skipped")
     for failure in res.failed:
         print(f"  FAILED: {failure}")
+
+    # A green suite that verified nothing is the one failure mode this project
+    # cannot afford. Without python-chess every certificate check stands down --
+    # those are the checks that re-derive the engine's proofs independently, which
+    # is the single claim the engine exists to make -- and the run still ends
+    # "0 failed". The README warns in bold, but a stranger who clones, builds and
+    # runs the suite never reads the README; they read the last line. So the suite
+    # refuses to call that run a pass.
+    #
+    # Deliberately an EXIT CODE and not a warning. A warning scrolls past in a
+    # terminal and is invisible in CI; the exit code is the only part a script
+    # reads. CI installs python-chess, so this changes nothing there.
+    if not HAVE_CHESS:
+        rule = "!" * 74
+        print("")
+        print(rule)
+        print("NOT A PASS. python-chess is not installed, so every certificate check")
+        print("was skipped. Those checks re-derive this engine's proofs from scratch;")
+        print("without them this run has verified none of what the engine claims.")
+        print("")
+        print("    python -m pip install chess")
+        print("")
+        print("Re-run with an interpreter that has it. To accept this run as it")
+        print("stands, pass --allow-unverified.")
+        print(rule)
+        if not args.allow_unverified:
+            return 1
+
     return 1 if res.failed else 0
 
 

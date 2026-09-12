@@ -394,11 +394,12 @@ python tests/run_tests.py --engine build/mateprover
 ```
 
 **Run the suite with an interpreter that has python-chess installed.** Without
-it the suite still reports green (587 passed), but fourteen sections are
-skipped, and they are the certificate checks that re-derive the engine's
-proofs from scratch. A green run under a bare system Python has verified
-nothing this engine exists to claim. The full run is 599 automated checks,
-reported as 599 passed, 0 skipped.
+it fourteen sections are skipped, and they are the certificate checks that
+re-derive the engine's proofs from scratch -- the one claim this engine exists
+to make. Such a run is not a pass, and the suite now says so and **exits
+non-zero** rather than printing a green line that verified nothing; pass
+`--allow-unverified` to accept one deliberately. The full run is
+599 automated checks, reported as 599 passed, 0 skipped.
 
 They cover:
 
