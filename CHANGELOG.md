@@ -8,7 +8,7 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## Unreleased
+## 0.2.0 — 2026-09-13
 
 **A corpus of 4,218 verified proof certificates now ships in `certificates/`.**
 One certificate per position, for every matetrack directmate MateProver proves
