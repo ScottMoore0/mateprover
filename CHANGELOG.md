@@ -10,6 +10,17 @@ without one.
 
 ## Unreleased
 
+**A corpus of 3,018 verified proof certificates now ships in `certificates/`.**
+One certificate per position, for every matetrack directmate MateProver proves
+within 4,000,000 nodes under `--iterative-depth --no-portfolio`, each checked by
+`tools/verify_proof.py`, which re-derives every legal move without consulting
+the engine. Every certificate contains its position, and the positions come from
+matetrack, so the directory is GPL-3.0, with the full text in
+`certificates/COPYING`. It is the one exception both to the MIT licence and to
+the rule that nothing derived from that corpus is committed: the benchmark
+position sets are still rebuilt locally, and nothing outside the directory
+reads from it.
+
 **UCI now says whether a mate is the shortest.** `score mate N` is how every
 engine reports a mate it found; the protocol cannot add that no shorter one
 exists. Under a time or node budget the restriction portfolio runs beside the

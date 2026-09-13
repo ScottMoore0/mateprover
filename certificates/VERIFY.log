@@ -1,0 +1,9 @@
+command: python tools/verify_proof.py certificates/certificates.epd --require-proof --expect 3018 --quiet
+input: certificates/certificates.epd.xz as committed (git blob e88ea4a699bb7ebf699130f75d39bd788d5d17b0), decompressed
+certificates.epd.xz sha256: c9ac9c7f6ebc3be5b64e23f4471eb45e06d281ee705d33a1ab339c9ac51b88cd (matches MANIFEST.json)
+certificates.epd sha256: 30906283ae22e4358d04393f2a9463a21d8897401df7145685bf4c587d11399b (matches MANIFEST.json)
+python-chess: 1.11.2
+exit: 0
+seconds: 74
+
+3018 certificate(s) verified, 0 pv-only, 0 failed, 0 line(s) with no mate reported

@@ -20,4 +20,8 @@ benchmarks/corpus/
 # Derived position sets. Rebuilt locally by tools/mint_eval_set.py, never
 # committed: they are subsets of a separately-licensed corpus, and committing
 # them would re-create the redistribution obligation their removal eliminated.
+# certificates/ is the one deliberate exception, and carries that licence itself.
 benchmarks/*.jsonl
+
+# The decompressed certificate corpus (140 MB). The .xz beside it is committed.
+certificates/certificates.epd

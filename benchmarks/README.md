@@ -10,6 +10,12 @@ nothing is lost in reproducibility: a set is determined by its corpus revision,
 depth, count and seed, and `MANIFEST.json` records all four — except for two
 early sets minted before seeds were recorded, which are marked as such below.
 
+The certificate corpus in `certificates/` is the one deliberate exception. It
+contains positions from the same corpus, so it is distributed under that
+corpus's licence, GPL-3.0, confined to that directory; see
+`certificates/README.md`. The position sets described here are still not
+shipped, and nothing in this directory reads from it.
+
 Rebuild any set in two steps:
 
     python ../tools/fetch_corpus.py

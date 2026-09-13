@@ -607,6 +607,14 @@ measured.
 MateProver is released under the MIT License. See `LICENSE` for the full
 text.
 
+The one exception is `certificates/`, a corpus of 3,018 verified proof
+certificates. Every certificate contains the position it proves, and those
+positions come from matetrack, which is GPL-3.0, so that directory is GPL-3.0
+too; the full text is in `certificates/COPYING`. The licence covers that
+directory only. Nothing outside it is derived from it or reads from it, and the
+engine that generated the certificates and the checker that verifies them
+remain MIT.
+
 `tools/verify_proof.py` requires python-chess, which is separately licensed
 and is not distributed with MateProver. Benchmark position sets are not
-distributed either; `benchmarks/README.md` explains how to regenerate them.
+distributed; `benchmarks/README.md` explains how to regenerate them.
