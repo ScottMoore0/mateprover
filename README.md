@@ -96,7 +96,7 @@ the proof still verifies, and several plausible ones were rejected on that
 ground rather than for being slow.
 
 For worked examples at scale, [`certificates/`](certificates/README.md) holds
-3,018 certificates for positions from matetrack, mates in 1 to 19, every one
+4,218 certificates for positions from matetrack, mates in 1 to 24, every one
 verified by that checker. That directory is GPL-3.0 rather than MIT; see
 [Licence](#licence).
 
@@ -612,7 +612,7 @@ measured.
 MateProver is released under the MIT License. See `LICENSE` for the full
 text.
 
-The one exception is `certificates/`, a corpus of 3,018 verified proof
+The one exception is `certificates/`, a corpus of 4,218 verified proof
 certificates. Every certificate contains the position it proves, and those
 positions come from matetrack, which is GPL-3.0, so that directory is GPL-3.0
 too; the full text is in `certificates/COPYING`. The licence covers that

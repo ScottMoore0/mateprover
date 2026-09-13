@@ -10,11 +10,11 @@ without one.
 
 ## Unreleased
 
-**A corpus of 3,018 verified proof certificates now ships in `certificates/`.**
+**A corpus of 4,218 verified proof certificates now ships in `certificates/`.**
 One certificate per position, for every matetrack directmate MateProver proves
-within 4,000,000 nodes under `--iterative-depth --no-portfolio`, each checked by
-`tools/verify_proof.py`, which re-derives every legal move without consulting
-the engine. Every certificate contains its position, and the positions come from
+within 64,000,000 nodes under `--iterative-depth --no-portfolio`, mates in 1 to
+24, each checked by `tools/verify_proof.py`, which re-derives every legal move
+without consulting the engine. Every certificate contains its position, and the positions come from
 matetrack, so the directory is GPL-3.0, with the full text in
 `certificates/COPYING`. It is the one exception both to the MIT licence and to
 the rule that nothing derived from that corpus is committed: the benchmark

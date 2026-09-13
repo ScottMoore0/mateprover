@@ -23,5 +23,5 @@ benchmarks/corpus/
 # certificates/ is the one deliberate exception, and carries that licence itself.
 benchmarks/*.jsonl
 
-# The decompressed certificate corpus (140 MB). The .xz beside it is committed.
+# The decompressed certificate corpus (2.3 GB). The .xz beside it is committed.
 certificates/certificates.epd

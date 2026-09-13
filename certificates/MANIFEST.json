@@ -1,25 +1,51 @@
 {
   "name": "mateprover-certificates",
-  "generated": "2026-09-12",
+  "generated": "2026-09-12 (pass 1), 2026-09-13 (pass 2)",
   "licence": "GPL-3.0, this directory only; see COPYING. The rest of MateProver is MIT.",
-  "engine": {
-    "version": "mateprover 0.1.0",
-    "binary_sha256": "5a69320a25cd5ff0e68b824fc086f7a2d774daeb4e909698fbbc5f4b342d1027",
-    "source": "https://github.com/ScottMoore0/mateprover",
-    "source_commit": "3b5b46f4b863e860feda4da85f6185f20ce3fca8",
-    "note": "binary built from the src/ tree of this commit",
-    "flags": [
-      "--iterative-depth",
-      "--no-portfolio",
-      "--emit-proof",
-      "--threads",
-      "1",
-      "--parallel-positions",
-      "12",
-      "--node-limit",
-      "4000000"
-    ]
-  },
+  "passes": [
+    {
+      "pass": 1,
+      "engine_version": "mateprover 0.1.0",
+      "binary_sha256": "5a69320a25cd5ff0e68b824fc086f7a2d774daeb4e909698fbbc5f4b342d1027",
+      "source_commit": "3b5b46f4b863e860feda4da85f6185f20ce3fca8",
+      "flags": [
+        "--iterative-depth",
+        "--no-portfolio",
+        "--emit-proof",
+        "--threads",
+        "1",
+        "--parallel-positions",
+        "12",
+        "--node-limit",
+        "4000000"
+      ],
+      "attempted": 6528,
+      "certified": 3018
+    },
+    {
+      "pass": 2,
+      "engine_version": "mateprover 0.1.0",
+      "binary_sha256": "14b34dffaf919504881e2afb81d05c09895b15be7df8da460c6088731d9c8345",
+      "source_commit": "955281221227eacf4db35e5c2399471988711ce7",
+      "flags": [
+        "--iterative-depth",
+        "--no-portfolio",
+        "--emit-proof",
+        "--threads",
+        "1",
+        "--parallel-positions",
+        "16",
+        "--node-limit",
+        "64000000"
+      ],
+      "attempted": 3510,
+      "certified": 1200,
+      "input": "the positions pass 1 left uncertified",
+      "reproduction_check": "reproduced 24 pass-1 certificates byte for byte (timing field aside) before running"
+    }
+  ],
+  "engine_source": "https://github.com/ScottMoore0/mateprover",
+  "engine_note": "each binary built from the src/ tree of its source_commit; --parallel-positions does not change any result",
   "corpus": {
     "name": "matetrack.epd",
     "source": "https://github.com/vondele/matetrack",
@@ -30,10 +56,8 @@
     "attempted": 6528
   },
   "outcome": {
-    "certified": 3018,
-    "timeout_at_node_limit": 3510,
-    "solved_without_certificate": 0,
-    "other": 0,
+    "certified": 4218,
+    "timeout_at_64M_nodes": 2310,
     "errors": 0
   },
   "certified_by_mate_depth": {
@@ -42,34 +66,35 @@
     "3": 23,
     "4": 67,
     "5": 185,
-    "6": 362,
-    "7": 1469,
-    "8": 530,
-    "9": 194,
-    "10": 89,
-    "11": 30,
-    "12": 22,
-    "13": 10,
-    "14": 2,
-    "15": 6,
-    "16": 2,
-    "17": 2,
-    "18": 3,
-    "19": 1
+    "6": 365,
+    "7": 1637,
+    "8": 906,
+    "9": 481,
+    "10": 284,
+    "11": 113,
+    "12": 69,
+    "13": 23,
+    "14": 11,
+    "15": 12,
+    "16": 9,
+    "17": 3,
+    "18": 5,
+    "19": 3,
+    "24": 1
   },
   "files": {
     "certificates.epd.xz": {
-      "sha256": "c9ac9c7f6ebc3be5b64e23f4471eb45e06d281ee705d33a1ab339c9ac51b88cd",
-      "bytes": 1324380
+      "sha256": "a9e8828d86fc91a329bfc07c526ae02137e9d99e35866c694685907694c583c8",
+      "bytes": 2645064
     },
     "certificates.epd (uncompressed)": {
-      "sha256": "30906283ae22e4358d04393f2a9463a21d8897401df7145685bf4c587d11399b",
-      "bytes": 139841984
+      "sha256": "0e821aa721097e2a5896c34866e61cb6e0e19c88314819bacc666701c0a1af6e",
+      "bytes": 2286502756
     }
   },
   "verification": {
     "tool": "tools/verify_proof.py (python-chess; independent of the engine)",
-    "result": "all 3018 certificates verified",
-    "seconds": 126.5
+    "result": "all 4218 certificates verified",
+    "seconds": 1098
   }
 }
