@@ -95,6 +95,11 @@ This is the central design constraint. An optimisation is acceptable only if
 the proof still verifies, and several plausible ones were rejected on that
 ground rather than for being slow.
 
+For worked examples at scale, [`certificates/`](certificates/README.md) holds
+3,018 certificates for positions from matetrack, mates in 1 to 19, every one
+verified by that checker. That directory is GPL-3.0 rather than MIT; see
+[Licence](#licence).
+
 ## Installing
 
 ### Release binaries
