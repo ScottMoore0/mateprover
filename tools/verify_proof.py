@@ -15,7 +15,7 @@ A certificate is valid only when, at every node:
 
   * the attacker's move is legal in the position reached so far;
   * a leaf marked `mate` really is checkmate;
-  * a defender node lists **exactly** the legal replies — no more, no fewer,
+  * a defender node lists **exactly** the legal replies - no more, no fewer,
     so a proof cannot quietly omit a defence that refutes it;
   * every listed reply leads to a valid sub-proof.
 

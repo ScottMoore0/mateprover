@@ -1,4 +1,4 @@
-# The helpmate flight-square bound — derivation
+# The helpmate flight-square bound - derivation
 
 **Status: derivation only. No code depends on this document yet.**
 
@@ -31,7 +31,7 @@ happily lets that subtree run.
 The natural next step is to count: the king's flight squares must each be
 attacked or blocked, so count the unhandled ones and require that many moves.
 
-**This is invalid.** A single move can handle several flight squares at once — a
+**This is invalid.** A single move can handle several flight squares at once - a
 queen arriving beside the king can cover three or four of them in one move, and a
 discovered line can cover more without the covering piece moving at all. "One
 move per unhandled square" is not a lower bound, it is a guess, and a bound that
@@ -57,17 +57,17 @@ combinatorial difficulty disappears.
 Fix a node with the mated side to move or not, `w` moves remaining for the mating
 side and `b` for the mated side. Write:
 
-- **A(w)** — squares some mating unit **other than the king** can ATTACK within
+- **A(w)** - squares some mating unit **other than the king** can ATTACK within
   `w` of its own moves, on an empty board. (The king is excluded because a king
   cannot give check; a discovered check is delivered by the piece whose line
   opens, not by the king that vacated.)
-- **U(w)** — squares some mating unit, **including** the king, can attack within
+- **U(w)** - squares some mating unit, **including** the king, can attack within
   `w` moves. The king cannot check, but it can perfectly well cover a flight
   square, so it belongs here and not in A.
-- **Rm(w)** — squares some mating unit can OCCUPY within `w` moves.
-- **Rd(b)** — squares some mated-side unit can OCCUPY within `b` moves.
-- **O** — squares occupied right now.
-- **D(b)** — squares within `b` king-steps of the mated king.
+- **Rm(w)** - squares some mating unit can OCCUPY within `w` moves.
+- **Rd(b)** - squares some mated-side unit can OCCUPY within `b` moves.
+- **O** - squares occupied right now.
+- **D(b)** - squares within `b` king-steps of the mated king.
 
 Define the **handled set**
 
@@ -89,9 +89,9 @@ check, and the checker is not a king, so k ∈ A(w). Hence k ∈ D(b) ∩ A(w).
 Now take any flight f of k. In the final position the king cannot move to f, so
 one of these holds:
 
-- f is attacked by the mating side — then f ∈ U(w);
-- f holds a mating unit — then f ∈ Rm(w), or f ∈ O if it never moved;
-- f holds a mated unit — then f ∈ Rd(b), or f ∈ O if it never moved.
+- f is attacked by the mating side - then f ∈ U(w);
+- f holds a mating unit - then f ∈ Rm(w), or f ∈ O if it never moved;
+- f holds a mated unit - then f ∈ Rd(b), or f ∈ O if it never moved.
 
 Every case puts f ∈ H. So all of flights(k) ⊆ H, contradicting the hypothesis. ∎
 
@@ -106,10 +106,10 @@ truth. Each one, and the direction it errs in:
 
 | set | relaxation | direction |
 | --- | --- | --- |
-| A, U, Rm, Rd | computed on an empty board | superset — blockers shorten a slider's reach and obstruct a route, they never create one |
-| Rd(b) | the mated king's own moves are not deducted from `b` | superset — the real budget for other units is smaller |
+| A, U, Rm, Rd | computed on an empty board | superset - blockers shorten a slider's reach and obstruct a route, they never create one |
+| Rd(b) | the mated king's own moves are not deducted from `b` | superset - the real budget for other units is smaller |
 | D(b) | the king is given `b` moves even though other units may use them | superset |
-| O | a currently occupied square counts as handled forever | permissive — it may empty, but treating it as handled only *prevents* a prune |
+| O | a currently occupied square counts as handled forever | permissive - it may empty, but treating it as handled only *prevents* a prune |
 | a mating unit on f counts as handling f | ignores that the king may capture it if undefended | permissive |
 
 Every one errs toward **not pruning**. That is the only safe direction: a bound
@@ -117,7 +117,7 @@ that is too loose costs time, a bound that is too tight costs correctness.
 
 **And the trap from 74, restated so it is not walked into twice.** A pawn's
 relaxed move set must include its diagonal captures. On an empty board a pawn has
-nothing to capture — but the table models what a pawn may do on a REAL board,
+nothing to capture - but the table models what a pawn may do on a REAL board,
 where it captures sideways and changes file. Omitting the diagonals makes the
 pawn sets an *underestimate*, which is the one direction that makes the whole
 thing unsound. This is exactly the bug 74 found, and the new sets Rm and Rd have
@@ -142,13 +142,13 @@ test costs more there than the rare prune returns.
 
 The weak bound is worth eleven positions of 546 single-threaded. This one adds
 the flight-square requirement, which is where most of the work of a mate lives,
-so it should prune considerably more — but 73 predicted a gain and lost eight
+so it should prune considerably more - but 73 predicted a gain and lost eight
 positions instead, so no number is claimed here.
 
 Judged by the gate 74 established, which is now the standard for anything that
 can only lose solutions silently:
 
-- an explicit on/off switch, read **once** into a static — read per node, `getenv`
+- an explicit on/off switch, read **once** into a static - read per node, `getenv`
   cost more than the bound saved and moved the result by 39 positions;
 - the whole 546-position corpus, both settings;
 - compare solved **sets**, not counts;

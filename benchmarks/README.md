@@ -7,7 +7,7 @@ They are drawn from a public mate-tracking EPD corpus that is published under a
 copyleft licence. Redistributing derived subsets of it would carry that
 licence's obligations into this tree; deriving them locally does not. Almost
 nothing is lost in reproducibility: a set is determined by its corpus revision,
-depth, count and seed, and `MANIFEST.json` records all four — except for two
+depth, count and seed, and `MANIFEST.json` records all four - except for two
 early sets minted before seeds were recorded, which are marked as such below.
 
 The certificate corpus in `certificates/` is the one deliberate exception. It
@@ -44,15 +44,15 @@ tested by rebuilding against the recorded digest, not assumed:
 |---|---|
 | `d12_eval40`, `d14_eval40`, `d16_eval40`, `d16_dev40`, `d8_train60`, `d10_train24` | see below |
 
-- `d8_eval200`, `d10_eval60` — minted 2026-08-01, **before `mint_eval_set.py`
+- `d8_eval200`, `d10_eval60` - minted 2026-08-01, **before `mint_eval_set.py`
   existed**, so the recorded seed does not reproduce them through it: measured,
   40/200 and 7/60 overlap. Every position remains in the pinned corpus; the draw
   is what is lost.
-- `d8_holdout60`, `d10_holdout24` — no seed was recorded.
-- `d20_eval40` — rebuilding reproduces **39 of 40**. Nothing about the recipe is
+- `d8_holdout60`, `d10_holdout24` - no seed was recorded.
+- `d20_eval40` - rebuilding reproduces **39 of 40**. Nothing about the recipe is
   wrong; the corpus itself drifted between the draw and the pinned revision.
   Direct evidence of the hazard the pin now prevents, from before it existed.
-- `d8_eval150_dfpn`, `d8_eval200_dfpn`, `d10_eval60_dfpn` — these rebuild
+- `d8_eval150_dfpn`, `d8_eval200_dfpn`, `d10_eval60_dfpn` - these rebuild
   *exactly*, but only when their `excludes` are present, and those name sets
   that are themselves unrebuildable. Reachable if you already hold the
   predecessors; not reachable from the corpus alone.
@@ -64,7 +64,7 @@ they are measurements that were made, not measurements you can repeat.
 
 **Two evaluation sets cannot be rebuilt at all.** `d8_eval200` and `d10_eval60`
 were minted on 2026-08-01, before `mint_eval_set.py` existed, so the seed
-recorded against them does not reproduce them through it — measured, 40/200 and
+recorded against them does not reproduce them through it - measured, 40/200 and
 7/60 overlap. Every one of their positions is still in the pinned corpus; the
 draw is what is lost. They are marked `"rebuildable": false`, and the figures
 they produced (85.5% at mate-in-8, 90.0% at mate-in-10) should be read as
@@ -100,21 +100,21 @@ Positions are classified, never filtered:
 | status | meaning |
 |---|---|
 | `solved` | proved at the stated depth |
-| `unsolved` | ran out of budget — **kept**, this is the evidence of reach |
+| `unsolved` | ran out of budget - **kept**, this is the evidence of reach |
 | `shorter` | proved at a shallower depth than stipulated |
 | `refuted` | searched to completion; no solution at that depth |
 | `unsupported` | a job type this engine does not implement (`s#`, `h#`) |
 
-`shorter` and `refuted` are kept too. Published collections do contain errors —
+`shorter` and `refuted` are kept too. Published collections do contain errors -
 matetrack's own documentation notes its predecessor held "positions with a
-sub-optimal or likely incorrect value" — and a corpus that silently drops
+sub-optimal or likely incorrect value" - and a corpus that silently drops
 whatever disagrees with it is a corpus that cannot be wrong.
 
 **Sourcing status.** No stalemate collection has been imported yet.
 `pdb.dieschwalbe.de` requires an account: its search redirects to `login.jsp`.
 YACPDB has ~570k problems and a documented query language, but no reachable API;
 its export is manual, capped at 1,000 results per search, in `.olv` format. Both
-are usable by hand, and using a collection locally is not redistribution — only
+are usable by hand, and using a collection locally is not redistribution - only
 shipping derived sets would be, which is what `fetch_corpus.py` and the recorded
 seeds exist to avoid.
 
@@ -143,7 +143,7 @@ containing one, so the file ships freely where the positions cannot -- and a
 fresh set can exclude everything already seen without needing, or redistributing,
 the sets that saw it.
 
-## Retired sets — kept in the manifest, relied on by nothing
+## Retired sets - kept in the manifest, relied on by nothing
 
 | set | positions | depth |
 |---|---:|---|
@@ -155,7 +155,7 @@ all development was complete and measured exactly once. **Do not tune against
 them.** Their only value is that nothing has been decided by looking at them, and
 that is spent the first time it is.
 
-## Development sets — consulted repeatedly
+## Development sets - consulted repeatedly
 
 | set | positions | depth |
 |---|---:|---|
@@ -163,7 +163,7 @@ that is spent the first time it is.
 | `d10_holdout24` | 24 | mate in 10 |
 
 These were held out from *tuning* but were used for promote-or-reject decisions
-throughout development — about ten times for the mate-in-8 set. That is enough to
+throughout development - about ten times for the mate-in-8 set. That is enough to
 make them optimistic: the same configuration scores 86.7% on the mate-in-8 set
 here and 79.5% on the 200-position evaluation set, with the former outside the
 latter's confidence interval. They remain useful for comparing two builds, which
@@ -173,7 +173,7 @@ is what they were used for; they are no longer evidence of absolute reach.
 
 A reach figure is evidence about the engine only if nothing about the engine was
 chosen by looking at it. That property is consumed by use, silently, and it does
-not require anything as deliberate as tuning — ten promote-or-reject decisions
+not require anything as deliberate as tuning - ten promote-or-reject decisions
 were enough to overstate mate-in-8 reach by seven points.
 
 So, for any future work that could change reach:

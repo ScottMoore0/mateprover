@@ -164,7 +164,7 @@ has no certificate.
 
 ## Goal tokens
 
-The depth token names the goal, and the goals are disjoint — a result for one is
+The depth token names the goal, and the goals are disjoint - a result for one is
 never a result for another, so no consumer can read one as the other:
 
 | token | goal |
@@ -174,7 +174,7 @@ never a result for another, so no consumer can read one as the other:
 | `sfm N` | selfmate: the attacker forces the DEFENDER to mate him in N (`--selfmate`) |
 
 A selfmate's principal variation is **2N plies**, ending with the defender's
-mating move — one ply longer than a directmate of the same N, which ends with
+mating move - one ply longer than a directmate of the same N, which ends with
 the attacker's.
 
 Input accepts each engine's own spelling so a run's output feeds back in, plus

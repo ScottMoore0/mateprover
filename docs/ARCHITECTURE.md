@@ -402,7 +402,7 @@ depth-keyed table threw away. The shared proof/disproof table provides them
 directly, so the second table had nothing left to contribute.
 
 It was not merely dead: measured after the shared table landed, `--bound-tt`
-produced an **identical node count** (245,083 — it changed nothing) while
+produced an **identical node count** (245,083 - it changed nothing) while
 costing **25% more time**, because it still allocated a table and performed its
 own probes and stores. A flag that can only make the engine slower is a trap,
 not an option.
@@ -811,9 +811,9 @@ Flat across a **12x** increase in time. The three solved problems resolve inside
 
 Together with the other axes the picture is complete: threads 8 to 32, memory 64 MB to unbounded, and time 5 s to 60 s all leave mate-in-10 unchanged. **No resource axis extends reach.**
 
-This bounds the value of the performance work in this document. The 1.44x sequential gain and the parallel speedup are real and verified, and they move problems across a budget boundary at mate-in-8 — but at mate-in-10 a further 12x would solve nothing, because 12x more time is equivalent to a 12x faster engine at a fixed budget. The unsolved problems are likely orders of magnitude away, which is what exhaustive AND/OR search at depth 10 with branching near 39 implies.
+This bounds the value of the performance work in this document. The 1.44x sequential gain and the parallel speedup are real and verified, and they move problems across a budget boundary at mate-in-8 - but at mate-in-10 a further 12x would solve nothing, because 12x more time is equivalent to a 12x faster engine at a fixed budget. The unsolved problems are likely orders of magnitude away, which is what exhaustive AND/OR search at depth 10 with branching near 39 implies.
 
-Every avenue that redistributes or accelerates the same search is therefore closed: more cores, more memory, more time, faster nodes, DFPN, and root scheduling have each been measured and each changed nothing at this depth. What remains is **reducing the size of the tree** — proof-safe pruning, meaning exact tests that discharge subtrees without traversing them.
+Every avenue that redistributes or accelerates the same search is therefore closed: more cores, more memory, more time, faster nodes, DFPN, and root scheduling have each been measured and each changed nothing at this depth. What remains is **reducing the size of the tree** - proof-safe pruning, meaning exact tests that discharge subtrees without traversing them.
 
 ### 8e. Resource Scaling Is Exhausted
 
@@ -4627,7 +4627,7 @@ retro-legality in its own right must add it.
 
 GAP-11 was specified as meet-in-the-middle for the cooperative goals: enumerate
 forward half the plies from the root, enumerate backward half the plies from the
-set of mating positions, intersect. Roughly b⁸ becomes 2·b⁴ — a change of
+set of mating positions, intersect. Roughly b⁸ becomes 2·b⁴ - a change of
 complexity class rather than of constant, and the only such item in either
 document.
 
@@ -4644,15 +4644,15 @@ can begin. Enumerating it means walking the placements of that material:
 | --- | --- | --- |
 | K+Q v K+R (4 men) | 15,249,024 | ~10,100 |
 | K+N+N v K+R+R (6 men) | 13,495,386,240 | ~270,000 |
-| 8 men (the h#4 corpus median) | ~10¹³ | — |
-| 25 men (the largest h#4 in the corpus) | ~10³⁰ | — |
+| 8 men (the h#4 corpus median) | ~10¹³ | - |
+| 25 men (the largest h#4 in the corpus) | ~10³⁰ | - |
 
 Mate counts are sampled (300,000 uniform placements each, filtered to legal
 positions with Black to move); placement counts are exact.
 
 Now put that beside the forward search it would replace. The six-man h#4
-`8/7r/5Nk1/6N1/4r3/8/2K5/8` costs **23,288,236 distinct (position, plies) states**
-— the profile records exactly that many stores against 83,214,104 table hits and
+`8/7r/5Nk1/6N1/4r3/8/2K5/8` costs **23,288,236 distinct (position, plies) states** -
+the profile records exactly that many stores against 83,214,104 table hits and
 zero evictions, so the search already visits each state once and is at frontier
 cost, with no slack for a better forward algorithm to recover.
 
@@ -4666,14 +4666,14 @@ does not need help, and where the forward search needs help the goal set cannot
 be enumerated.
 
 The obvious repair fails too. Constrain the goal set to what the root can
-actually reach — in h#N each side makes exactly N moves, so at most N units per
+actually reach - in h#N each side makes exactly N moves, so at most N units per
 side have left their diagram squares. That constraint is real, but the set it
 defines is precisely the forward frontier at ply 2N, so computing it costs the
 forward search it was supposed to replace.
 
 **The signature measurement gave a false green light, and it is worth saying why.**
 The suggested cheap probe was to count distinct material signatures at the
-meeting ply and proceed if the set was small. It was small — median 14. But the
+meeting ply and proceed if the set was small. It was small - median 14. But the
 binding constraint is not how MANY signatures need backward frontiers, it is what
 ONE of them costs, and that probe cannot see it. A discriminator has to be able
 to return the answer you do not want.
@@ -4681,8 +4681,8 @@ to return the answer you do not want.
 GAP-11 is therefore **rejected**, and it collapses into GAP-4b: a backward
 frontier from an enumerable goal set with fixed material is a retrograde
 tablebase, which is already demoted on its own evidence. The retrograde generator
-of 65 keeps its value — it was always independently useful and independently
-tested — but it has no bidirectional search to carry.
+of 65 keeps its value - it was always independently useful and independently
+tested - but it has no bidirectional search to carry.
 
 #### What was actually wrong
 
@@ -4701,7 +4701,7 @@ The cooperative split scaled like this, and the middle column is the tell:
 
 The right-hand column is the same engine on the same position with the early exit
 removed, so every thread must work to the end: it scales 5.9× at sixteen threads.
-The threads were not contending. On the real solve they were **starved** — and at
+The threads were not contending. On the real solve they were **starved** - and at
 sixteen the search was slower than at four.
 
 The cause is granularity. The split ran one ply deep, so there were as many tasks
@@ -4717,10 +4717,10 @@ hundreds rather than tens, and the imbalance averages out.
 | --- | --- | --- |
 | 4 | 13.9 s | 13.2 s |
 | 16 | 20.1 s | **6.2 s** |
-| 32 | — | 5.6 s |
+| 32 | - | 5.6 s |
 
 At the default sixteen threads that is 3.2× on the position, and 6.0× against one
-thread — which is the 5.9× the exhaustive column said was available all along.
+thread - which is the 5.9× the exhaustive column said was available all along.
 
 It also moves the answer TOWARD the sequential one. Lexicographic (first, second)
 order is the order a sequential depth-first search visits these subtrees in, so
@@ -4733,7 +4733,7 @@ already holds, and that was never promised.
 On the full 546-position helpmate corpus at an unchanged 10 s cap: **500 → 501
 solved**, with total wall time 744 s → 615 s. Since the timeouts account for a
 fixed 450 s, the time spent on positions that were actually solved fell from about
-284 s to about 165 s — 1.7× on aggregate solve time, and 3.2× where it was
+284 s to about 165 s - 1.7× on aggregate solve time, and 3.2× where it was
 measured directly.
 
 One converted position is a thin return for a 3.2× speedup, and the reason is in
@@ -4748,7 +4748,7 @@ rather than timing out. An exhaustive python-chess search, independent of this
 engine, agrees: there is no h#4 there, and the shortest cooperative mate is h#5.
 The corpus entry is wrong. A definitive refusal against a corpus that expects a
 solution is either a corpus error or a soundness bug, and the two look identical
-in a solve-rate table — so a refusal must never be counted as a timeout, which is
+in a solve-rate table - so a refusal must never be counted as a timeout, which is
 what a bare percentage does.
 
 ### 67. Auditing The Corpora: Fifteen Wrong Entries, And A Denominator That Cannot Be Trusted To Itself
@@ -4855,7 +4855,7 @@ have nine men or fewer, and the 36 misses sit at six and seven.
 
 | | solved | gained | lost |
 | --- | --- | --- | --- |
-| `--dfpn-min-men 0` (default) | **232** / 377 | — | — |
+| `--dfpn-min-men 0` (default) | **232** / 377 | - | - |
 | `--dfpn-min-men 9` | 185 / 377 | 12 | 59 |
 
 **The effect is real and the lever is still wrong.** Twelve positions are
@@ -5085,7 +5085,7 @@ lattice. `docs/GAP2_DERIVATION.md` has the theorem and the three corrections the
 specification's sketch needed; this is what it measured.
 
 **Sound.** The bar the specification sets is that the predicate must never fire
-on a selfmate that has a solution — a single false positive is a critical bug,
+on a selfmate that has a solution - a single false positive is a critical bug,
 not a regression. Run paired over all 319 solvable positions in the 904-corpus,
 at 10 s each, with the gate on and off:
 
@@ -5098,7 +5098,7 @@ at 10 s each, with the gate on and off:
 
 Identical sets, not merely identical counts. The paired form is what matters: two
 positions fail either way, and without the pairing they would have looked like
-false positives. Both are budget effects — one solves in 10.1 s when run alone,
+false positives. Both are budget effects - one solves in 10.1 s when run alone,
 the other still times out at 60 s with the gate on rather than being refuted.
 
 **And it converts nothing.** On the 22 unsolved roots with a king+queen defender,
@@ -5110,8 +5110,8 @@ which is precisely the class it was built for:
 | gate on | 10 | **0** | 12 |
 
 Zero on the 14 selfmates still open after independent adjudication, too. What it
-does buy is a subtree prune where it fires — 18,329 nodes down to 15,063 on a
-king+queen position, about 18% — and the predicate fires 69,452 times across the
+does buy is a subtree prune where it fires - 18,329 nodes down to 15,063 on a
+king+queen position, about 18% - and the predicate fires 69,452 times across the
 solvable corpus, so it is doing real work deep in the tree. None of that reaches
 a root.
 
@@ -5124,7 +5124,7 @@ residue and the measurement agrees.
 
 The specification called this "the highest value-per-line item in the document".
 On this corpus it is not. It is sound, it is cheap, it prunes, and it converts
-nothing — which is a result worth having, because the alternative was believing
+nothing - which is a result worth having, because the alternative was believing
 it had.
 
 **The composition gap.** A refutation at a defender node currently prunes its
@@ -5135,7 +5135,7 @@ than small. Even wired, a root refutation needs the universal condition above,
 so the honest expectation is small rather than transformative.
 
 **What the residue actually needs.** King+pawn, 127 roots and the largest class
-by a distance. The perpetual argument does not transfer at all — a lone pawn
+by a distance. The perpetual argument does not transfer at all - a lone pawn
 cannot check repeatedly, so there is no perpetual to find, and the "decline
 forever" mechanism is unavailable. A lone pawn can also promote and mate, so
 there is no trivial impossibility either. That theorem is genuinely different,
@@ -5149,14 +5149,14 @@ Five items that were all measurement or small code, run together.
 caller could see it. Three negatives now read differently: no marker means none
 within the depth searched, `; refuted` means none at any depth, `; timeout` means
 no claim at all. A field added, so it sits inside the format's stability promise,
-and the soundness rule travels with it — only an unrestricted search may assert
+and the soundness rule travels with it - only an unrestricted search may assert
 it, because a restricted lane's failure is silent about the moves it was not
 allowed.
 
 Wiring it found a defect that would have shipped quietly. The parallel portfolio
 writes `results[i]` only for ACCEPTABLE results, and a refutation is never one, so
 reading the verdict back out of `results` gave false every time. The token worked
-perfectly under `--no-portfolio` and never appeared under the default — a bug that
+perfectly under `--no-portfolio` and never appeared under the default - a bug that
 passes a hand test and fails in production.
 
 **Selfstalemate is a win, and the tie was a corpus artefact.** The row was 23-23
@@ -5165,8 +5165,8 @@ both provers refuse: there was nothing left to out-solve. Extending the corpus t
 76 problems (52 sound, 13 refuted, 11 unsolved) gives **52 to 49**, one position to
 Chest and four to mateprover. The tie was never a statement about the engines.
 
-**Five residues, five budgets.** The uncharacterised only-Chest positions —
-mate-in-10's two, stalemate's one, helpmate's two — all solve at a larger budget:
+**Five residues, five budgets.** The uncharacterised only-Chest positions -
+mate-in-10's two, stalemate's one, helpmate's two - all solve at a larger budget:
 four inside 60 s and the fifth at 147 s. None is a reach gap.
 
 **Mate-in-8 with the clock levelled.** The nine only-Chest positions, both engines
@@ -5189,14 +5189,14 @@ was not evidence. Run clean:
 
 | helpmate, 546 positions, 10 s | solved | only Chest |
 | --- | --- | --- |
-| Chest (single-threaded) | 491 | — |
+| Chest (single-threaded) | 491 | - |
 | mateprover, 16 threads | **501** | 2 |
 | mateprover, 1 thread | **464** | **30** |
 
 **mateprover wins helpmate only by spending sixteen cores.** Per core it is behind
 by 27 positions against a single-threaded 1999 program. Every other goal is the
-opposite way round — mate-in-8 is 169 single-threaded against 168 at sixteen
-threads, stalemate 759 against 759 — so this is specific to the cooperative
+opposite way round - mate-in-8 is 169 single-threaded against 168 at sixteen
+threads, stalemate 759 against 759 - so this is specific to the cooperative
 search, and it is consistent with the 3.3x median speedup being the lowest of any
 goal.
 
@@ -5212,18 +5212,18 @@ per-core basis that is still too modest.
 ### 73. The Cooperative Search: One Idea Rejected, One Kept
 
 72 established that helpmate is this engine's weakest goal and that the win was
-bought with hardware — 501 at sixteen threads against Chest's single-threaded
+bought with hardware - 501 at sixteen threads against Chest's single-threaded
 491, but only **464 on one thread**. That is an algorithm problem, and threads
 were never going to fix it.
 
 **Attempt 1, rejected: order the last ply only.** 66 measured the ordering pass at
 70% of the cooperative search's time. Ordering costs a make_move and an in_check
-per candidate, and what it buys is finding a solution sooner — which a search
+per candidate, and what it buys is finding a solution sooner - which a search
 that spends most of its life proving branches empty should barely value. The last
 ply is different, because the prune there reads the check bit scoring computes.
 So: score at ply 1, plain legal moves everywhere else.
 
-On the six-man h#4 it was worth 1.83x — 38.9 s to 21.2 s, and 53.6M nodes to
+On the six-man h#4 it was worth 1.83x - 38.9 s to 21.2 s, and 53.6M nodes to
 29.2M. On the corpus it **lost 8 positions**, 464 to 456.
 
 Ordering was earning its cost. Coverage under a time cap is decided by how fast
@@ -5246,7 +5246,7 @@ bitboard ANDs:
   on an empty board, promotion included.
 
 Both relaxations only widen what is allowed, so the bound can rule a subtree out
-but never rule one in — blockers can shorten a slider's reach and obstruct a
+but never rule one in - blockers can shorten a slider's reach and obstruct a
 route, never create one. If no unit of the mating side can attack ANY square the
 king could reach, no mate exists down that line and the subtree is dead. The test
 runs before the move list is built, so it saves generation as well as recursion.
@@ -5263,15 +5263,15 @@ that would UNDERSTATE reach, which is the one way this becomes unsound.
 | helpstalemate, 16 threads | 362 | **363** |
 
 The prune fires 14.3 million times on a single six-man h#4 and takes it from
-38.9 s to 29.0 s. All 412 checks pass, including the 240 cooperative negatives —
+38.9 s to 29.0 s. All 412 checks pass, including the 240 cooperative negatives -
 which are the ones that matter, because a bound that is too tight loses solutions
 silently and would show up nowhere else.
 
 **The gap is narrowed, not closed.** Single-threaded, 473 against Chest's 491:
 eighteen positions, down from twenty-seven. The bound only applies in the last
 three mating moves; extending the table deeper would widen its reach, and a
-tighter bound — counting the moves needed to cover the king's flight squares
-rather than merely to check it — is the obvious next step and a much harder
+tighter bound - counting the moves needed to cover the king's flight squares
+rather than merely to check it - is the obvious next step and a much harder
 theorem to keep admissible.
 
 ### 74. Tightening The Reachability Bound Found It Was Unsound
@@ -5285,7 +5285,7 @@ bug had already shipped and every gate in place had passed it.
 **The tightening.** Two candidates, both free:
 
 - Exclude the mating KING from the "can attack the enemy king" test. A king
-  cannot give check, so it can never be the unit attacking at the end — and a
+  cannot give check, so it can never be the unit attacking at the end - and a
   discovered check is delivered by the piece whose line opens, not by the king
   that vacated. Strictly tighter at zero cost.
 - Extend the table from three of the mating side's moves to five, so the bound
@@ -5300,7 +5300,7 @@ The first exposed the bug. With the king excluded, one position stopped solving:
 two pawns. Solvable in 0.36 s before the tightening; unsolvable after.
 
 **A tighter admissible bound cannot lose a solution.** So either the tightening
-was wrong — it is not, a king really cannot give check — or the bound was already
+was wrong - it is not, a king really cannot give check - or the bound was already
 unsound and the king's very wide attack set had been masking it.
 
 It was the second. The pawn model:
@@ -5316,14 +5316,14 @@ mated by a pawn that captures its way off its file, so the bound declared the
 subtree dead. Including the king had been hiding it: a king near the action
 attacks so much that the test almost never failed, whatever the pawns did.
 
-The fix is three lines — a pawn's relaxed moves include both diagonals — and the
+The fix is three lines - a pawn's relaxed moves include both diagonals - and the
 position returns in 0.43 s.
 
 #### The gate that should have existed from the start
 
 The bound is unconditional, so it cannot be tested by toggling a flag, and 73's
 guard tested it only by consequence on a 30-position sample. That sample is what
-caught this, at 26 of 30 against a threshold of 27 — a margin of one, on an
+caught this, at 26 of 30 against a threshold of 27 - a margin of one, on an
 arbitrary threshold. It could as easily have passed.
 
 So the bound was measured properly: a temporary switch, the whole 546 at 10 s,
@@ -5337,7 +5337,7 @@ bound on against bound off, comparing solved SETS rather than counts.
 | gained | 8 | |
 
 (The switch had to be read once into a static. Read per node, `getenv` cost more
-than the bound saved and dropped the same binary from 508 to 469 — a measurement
+than the bound saved and dropped the same binary from 508 to 469 - a measurement
 apparatus expensive enough to destroy the measurement.)
 
 **Where it stands.** With the pawn model fixed and the king excluded:
@@ -5349,7 +5349,7 @@ apparatus expensive enough to destroy the measurement.)
 
 Single-threaded, 476 against Chest's 491: fifteen positions, from twenty-seven
 before any of this. The gap is two thirds closed and the remaining third still
-wants the harder theorem — counting the moves needed to COVER the king's flight
+wants the harder theorem - counting the moves needed to COVER the king's flight
 squares, not merely to check it, which needs a coverage argument where one move
 can cover several squares at once.
 
@@ -5360,14 +5360,14 @@ the next step: count the moves needed to COVER the mated king's flight squares,
 not merely to check it. `docs/HELPMATE_COVERAGE_DERIVATION.md` has the derivation;
 this is what it cost and what it bought.
 
-**Counting is the wrong question.** The obvious version — count unhandled flight
-squares, require that many moves — is not a lower bound at all. One move can
+**Counting is the wrong question.** The obvious version - count unhandled flight
+squares, require that many moves - is not a lower bound at all. One move can
 handle several flights at once: a queen arriving beside the king covers three or
 four, and a discovered line covers more with the covering piece not moving. There
 is no useful constant either, since a queen attacks up to 27 squares.
 
 **Containment is the right question.** Instead of "how many moves would covering
-cost?", ask "is covering possible at all?" — which an empty-board relaxation
+cost?", ask "is covering possible at all?" - which an empty-board relaxation
 answers soundly and the combinatorial difficulty disappears. Build
 
     H = (squares the mating side can attack within its remaining moves)
@@ -5379,7 +5379,7 @@ unit can attack, that all of its flights lie in H. If no such square exists, no
 mate does either. The proof needs nothing about how many moves the covering costs,
 or which unit covers what, or whether one move covers several.
 
-Measured on the six-man h#4: **40.8 s with no bound, 13.7 s with this one** — three
+Measured on the six-man h#4: **40.8 s with no bound, 13.7 s with this one** - three
 times, against the check-only bound's 22 s.
 
 #### It failed its own gate, and the reason was underpromotion
@@ -5388,7 +5388,7 @@ times, against the check-only bound's 22 s.
 compare solved SETS, **zero lost** to pass. First run: **one lost**.
 
 `6bq/1p1np2r/1p2k1pP/2bp2rp/4pK2/8/8/8 b - -`, solved in 0.24 s with the bound off
-and refused in 0.28 s with it on — not a timing boundary, a wrong answer.
+and refused in 0.28 s with it on - not a timing boundary, a wrong answer.
 
 Debug output narrowed it to the CHECK half rather than the new flight half:
 the candidate set was empty. The position has White with a king and one pawn on
@@ -5397,7 +5397,7 @@ king stands. **A queen on f8 does not.** The table modelled promotion as "become
 a queen", so it concluded the pawn could never attack the king's square, and
 pruned the mate away.
 
-Rook and bishop need no modelling of their own — their attacks are subsets of the
+Rook and bishop need no modelling of their own - their attacks are subsets of the
 queen's. The knight is the exception, and it is the whole exception.
 
 This is the third instance of one pattern, and the pattern is worth naming: **a
@@ -5435,7 +5435,7 @@ and what remains is not another relaxation of the same argument.
 
 75 left the cooperative search nine positions behind Chest per core and the
 obvious next move was another theorem. Before proposing one, the residue was
-characterised — because the mechanism had been predicted twice already and was
+characterised - because the mechanism had been predicted twice already and was
 wrong about which half mattered both times.
 
 **Nine was a net figure and the wrong number to reason from.** Chest solves 491
@@ -5455,7 +5455,7 @@ engine cannot reach.
 And there is no shape to them. Depths 3 and 4; six men to twenty; White holding
 anything from a lone king and pawn to bishop-knight-pawn-rook; no repeated
 material signature. Compare the selfmate residue, where king+pawn is 127 of 904
-and king+queen 42 — a class with a name. This is not a class. It is fourteen
+and king+queen 42 - a class with a name. This is not a class. It is fourteen
 ordinary helpmates that happen to sit the wrong side of a ten-second cap.
 
 #### Where the per-core deficit actually lives
@@ -5466,25 +5466,25 @@ On the 478 positions both engines solve single-threaded:
 | --- | --- |
 | total time, Chest | 260.7 s |
 | total time, mateprover | 367.2 s |
-| **aggregate** | **0.71x — mateprover is 1.4x SLOWER** |
-| **median per position** | **1.44x — mateprover is faster** |
+| **aggregate** | **0.71x - mateprover is 1.4x SLOWER** |
+| **median per position** | **1.44x - mateprover is faster** |
 | positions where Chest is faster | 187 of 478 |
 
 Those two rows point opposite ways and both are true. mateprover wins the typical
 position and loses the aggregate, which can only mean it is much slower on the
-HARD ones — and the hard ones are what a fixed cap decides. The deficit is not
+HARD ones - and the hard ones are what a fixed cap decides. The deficit is not
 spread across the corpus; it is concentrated in the deep tail.
 
 #### What that rules out
 
 **A better admissible bound is not the answer.** The bound of 75 is worth 3x and
-none of the fourteen is out of reach — they are reachable, just not inside ten
+none of the fourteen is out of reach - they are reachable, just not inside ten
 seconds. A bound prunes dead subtrees; these positions lose their time in
 subtrees that are alive.
 
 **Nor is there a theorem to find.** A theorem needs a class, and there is no
-class. Every structural axis tried — depth, material count, material signature,
-which side holds what — separates nothing.
+class. Every structural axis tried - depth, material count, material signature,
+which side holds what - separates nothing.
 
 What remains is ordinary throughput on deep cooperative trees: the node cost
 itself, or move ordering good enough to reach the solution sooner. 73 measured
@@ -5510,7 +5510,7 @@ must deliver mate is the defender and the side that gets mated is the attacker. 
 king+pawn defender therefore means
 
 > the mate must be delivered by a pawn, or by what that pawn promotes to, and by
-> nothing else — the only other unit that side owns is a king, and a king cannot
+> nothing else - the only other unit that side owns is a king, and a king cannot
 > give check.
 
 That is not a theorem needing its own mathematics. It is the reachability
@@ -5520,7 +5520,7 @@ work with.
 
 So the work became: apply the 75 bound to selfmate with the roles swapped. The
 derivation is `docs/SELFMATE_REACH_DERIVATION.md`, written first as the three
-before it were, and it flags the two things that differ — who is mated, and that
+before it were, and it flags the two things that differ - who is mated, and that
 the budgets are asymmetric (the recursion runs `attacker(d) → defender(d) →
 attacker(d-1)`, so at a defender node the MATED side has one move fewer).
 
@@ -5532,8 +5532,8 @@ benchmark.
 
 #### It is sound, and it does not pay
 
-It fires enormously — 39.9M, 49.9M and 6.9M prunes on the three king+pawn
-positions from the open set — and converts none of them.
+It fires enormously - 39.9M, 49.9M and 6.9M prunes on the three king+pawn
+positions from the open set - and converts none of them.
 
 Over all 903 distinct selfmates at a 5 s cap:
 
@@ -5545,7 +5545,7 @@ Over all 903 distinct selfmates at a 5 s cap:
 | gained | 2 |
 
 **The five are not false prunes.** Every one solves with the bound enabled given
-60 s, so nothing was pruned that should not have been — the bound is correct.
+60 s, so nothing was pruned that should not have been - the bound is correct.
 They are lost to its cost. Net **-3**, and it is defaulted OFF.
 
 The derivation predicted the mechanism before the measurement, which is some
@@ -5555,7 +5555,7 @@ set enormous and the prune rare, while the test still costs at every node. The
 same argument that is worth 3x on a helpmate is worth less than its own overhead
 here, because the two goals put the cooperating side on opposite ends of it.
 
-Kept, gated, default off, with the numbers — the same disposition as
+Kept, gated, default off, with the numbers - the same disposition as
 `--dfpn-min-men` at 68. Two of this project's measured-and-rejected items now
 share a shape: a mechanism that is sound, fires constantly, and converts nothing.
 
@@ -5565,12 +5565,12 @@ The 15 selfmate misses are not a reachability problem and not a lone-defender
 problem. GAP-2 covered the queen case and converted nothing; this covers the pawn
 case and converts nothing. Both were the classes the analysis named. Whatever
 Chest is doing on these, it is not something either theorem describes, and the
-next honest step is to find out what — not to write a third one.
+next honest step is to find out what - not to write a third one.
 
 ### 78. Level Skipping Is Correct, Fires Zero Times, And Cannot Be Evaluated Alone
 
 The clean-room search spec orders its items by expected value and puts §6.2 level
-skipping near the top: *"Pure win, no risk."* It is neither, here — not because
+skipping near the top: *"Pure win, no risk."* It is neither, here - not because
 the idea is wrong, but because its value is not a property of the idea.
 
 #### What was built
@@ -5580,13 +5580,13 @@ Both halves of the spec's proposal, in full:
 - **§6.1, the graded failure depth.** A failed search stops reporting a bare
   "no", and reports instead the largest depth for which absence is *proven*.
   `Proof.fail_depth` carried it, and it propagated through both node pairs with
-  the arithmetic each one needs — a directmate OR node takes
+  the arithmetic each one needs - a directmate OR node takes
   `min(reply.fail_depth + 1)` over all replies, its AND node takes
   `max(depth, child.fail_depth)`; the selfmate pair inverts the `+1` between them
   because in a selfmate the roles invert. The proof table stored the stronger of
   `depth` and `fail_depth` on a miss, so a bound survived eviction and reuse.
 - **§6.2, level skipping.** The three iterative-deepening route loops stopped
-  doing `++depth` and advanced to `fail_depth + 1` instead — past everything the
+  doing `++depth` and advanced to `fail_depth + 1` instead - past everything the
   failed depth actually disproved rather than one step past what it was asked.
   Bounded below by `depth + 1`, so it can only move forwards, and an abandoned or
   split depth leaves `fail_depth` at zero and the loop simply steps.
@@ -5595,8 +5595,8 @@ Both halves of the spec's proposal, in full:
 
 #### It bought nothing, and "nothing" here is exact
 
-On the target position — `1bR5/rPPPPPPP/n7/8/8/8/2pP4/KRqr3k w - -`, `sfm 6`,
-which Chest answers in 0.06 s — the counter read **zero**, with any-depth
+On the target position - `1bR5/rPPPPPPP/n7/8/8/8/2pP4/KRqr3k w - -`, `sfm 6`,
+which Chest answers in 0.06 s - the counter read **zero**, with any-depth
 refutations both off and on.
 
 One position is a sample, and this project has been reversed by sample-vs-corpus
@@ -5618,22 +5618,22 @@ Not "rarely". Not "less than the overhead". Zero, over half a billion nodes.
 Level skipping consumes over-proof: it pays exactly when a search proves *more*
 than it was asked to. **MateProver never over-proves.** Every one of its
 disproofs is a disproof of the question it was handed, because every one comes
-from exhausting the move tree at that depth — and exhausting depth *d* says
+from exhausting the move tree at that depth - and exhausting depth *d* says
 nothing whatever about *d+1*, where the extra ply supplies moves that did not
 exist.
 
 The spec's own sources of over-proof are the reason it works there, and
 MateProver has neither:
 
-- **§7.6, material and endgame knowledge** — "this material cannot mate in *any*
+- **§7.6, material and endgame knowledge** - "this material cannot mate in *any*
   number of moves" is a statement about all depths at once. Absent here.
-- **§7.1, anti-mate failing at the sentinel** — returns a disproof carrying a
+- **§7.1, anti-mate failing at the sentinel** - returns a disproof carrying a
   depth larger than the one asked. Absent here.
 
 The one mechanism that *could* have been a source is the reachability bound of
 75 and 77, and it is not: it proves "no mate within *d* plies" for the specific
 *d* it was given, and more plies mean more reach, so it says nothing about *d+1*
-either. The refutation lattice of GAP-1 does prove something depth-independent —
+either. The refutation lattice of GAP-1 does prove something depth-independent -
 but that already short-circuits the whole root loop, which is strictly stronger
 than skipping a level of it.
 
@@ -5651,9 +5651,9 @@ is an absent mechanism, and adding it did what an absent mechanism should:
 
     sfm 6 nodes  85,100,000 -> 74,620,775     -12%
 
-And it is *slower*. The paired corpus run — 903 unique selfmates, 5 s cap,
+And it is *slower*. The paired corpus run - 903 unique selfmates, 5 s cap,
 committed engine against the new build, chunk-resumable because this measure had
-already been lost once to a killed job — ran 24 of 40 chunks before the trend
+already been lost once to a killed job - ran 24 of 40 chunks before the trend
 stopped being in question:
 
 | chunk | 1 | 7 | 14 | 20 | 24 |
@@ -5666,7 +5666,7 @@ run was stopped there: a difference that has not moved across 400 positions and
 four depth bands is not going to be decided by the remaining 500.
 
 Twelve percent fewer nodes and two fewer solutions is the same shape as
-`--dfpn-min-men` at 68 and the selfmate reach bound at 77 — a mechanism that is
+`--dfpn-min-men` at 68 and the selfmate reach bound at 77 - a mechanism that is
 sound, does what it claims, and converts none of it. The nodes it saves are
 cheap ones; the cost is paid at every defender node including the ones that were
 never going to repeat.
@@ -5674,7 +5674,7 @@ never going to repeat.
 #### Disposition
 
 Both reverted. Not gated-and-defaulted-off like 68 and 77, because neither has
-the property that made gating worthwhile there — those two fire constantly and
+the property that made gating worthwhile there - those two fire constantly and
 might pay under a different budget, whereas level skipping fires *never* under
 any budget this engine can currently produce, and the defender table's loss is
 flat across every depth band measured. Dead code that no test can exercise is
@@ -5685,7 +5685,7 @@ section is the specification for rebuilding it.
 endgame knowledge is the thing that makes a disproof depth-independent, and until
 something in the engine can say "not in any number of moves", the graded failure
 depth has nothing to grade and level skipping has nothing to skip. If §7.6 lands,
-this comes back with it — and should be measured with it, never alone.
+this comes back with it - and should be measured with it, never alone.
 
 #### What this leaves
 
@@ -5704,7 +5704,7 @@ Rebuilding the tree after the 78 revert turned up a crash that had nothing to do
 with the revert: `g++ -O3 -march=native` produces a binary that dies inside move
 generation. Perft does not reach depth 3.
 
-It was found by accident, which is the interesting part — nothing in the test
+It was found by accident, which is the interesting part - nothing in the test
 suite could have found it, because the suite tests a binary someone else built.
 
 #### Isolating it
@@ -5776,7 +5776,7 @@ AVX is disabled for the engine target on MinGW GCC, appended after
 `CMAKE_CXX_FLAGS` so it wins over a user's `-march=native`, with
 `MATEPROVER_ALLOW_AVX=ON` to override on a toolchain known to be fixed. It is
 unconditional rather than conditional on detecting AVX, because on a baseline
-x86-64 build `-mno-avx` is a no-op — there is no configuration where it removes
+x86-64 build `-mno-avx` is a no-op - there is no configuration where it removes
 something the engine was using.
 
 That last claim was measured rather than asserted. Against a plain `-O3` build:
@@ -5787,14 +5787,14 @@ That last claim was measured rather than asserted. Against a plain `-O3` build:
 | node-limited search, 5 paired runs | mean 39.3 s | mean 42.2 s |
 
 0.3% on perft, and on search the machine's own run-to-run spread was ±14 s on a
-40 s measurement — the same binary varied from 32.0 s to 46.6 s across runs, so
+40 s measurement - the same binary varied from 32.0 s to 46.6 s across runs, so
 there is no signal there to find. Which is the expected result: this engine is
 branchy pointer-chasing over a transposition table and a move list, with no
 hand-vectorised kernel for wider registers to work on. `-march=native` was never
 buying anything, so declining to use it costs nothing.
 
 Verified end to end: `cmake -DCMAKE_CXX_FLAGS=-march=native` now configures with
-the guard announced, builds warning-free, and passes all 414 checks — on the
+the guard announced, builds warning-free, and passes all 414 checks - on the
 exact flags that segfaulted at perft 2 before.
 
 #### The gap this exposes, which is the real lesson
@@ -5803,7 +5803,7 @@ The suite could never have caught this, and neither could CI as described in the
 README, because **every gate tests a binary rather than a build.** Correctness
 here is a property of the compiled artefact, and the compiler is part of the
 system under test. The README advertises builds on Linux/GCC, Linux/Clang,
-macOS/Clang, Windows/MSVC and Windows/MinGW — none with `-march=native`, which is
+macOS/Clang, Windows/MSVC and Windows/MinGW - none with `-march=native`, which is
 the first flag anyone adds to a chess engine.
 
 Two things follow. The direct-`g++` route stays a documented footgun no build
@@ -5812,8 +5812,8 @@ native-flags entry per platform, which is on the release backlog and now has a
 concrete reason to exist rather than a speculative one.
 
 A cosmetic item was fixed on the way past: `mate_out_of_reach` took a
-`const Search&` it never read — the prune counters are incremented by its three
-callers, not by the function — and the parameter is gone, so the shipped build
+`const Search&` it never read - the prune counters are incremented by its three
+callers, not by the function - and the parameter is gone, so the shipped build
 is warning-free under `-Wall -Wextra -pedantic` again.
 
 ### 80. Material Knowledge: The Useful Form Is Unsound And The Sound Form Fires Zero Times
@@ -5827,14 +5827,14 @@ rather than opening it.
 
 | bullet | status |
 | --- | --- |
-| a bare attacker king can never mate | **already implemented** — `position_is_refuted_axiomatically` |
+| a bare attacker king can never mate | **already implemented** - `position_is_refuted_axiomatically` |
 | two bare kings cannot stalemate | true, and worth nothing (below) |
 | bare defender king against king-plus-one: minimum-depth table | applies to **2 of 2093** positions |
 | king-and-bishops minimum-depth bound | same precondition, same problem |
 | endgame tablebase | out of scope by standing instruction |
 
 Applicability was measured before anything was written, across every mate-goal
-corpus, with the mating side chosen per goal — the side to move for a directmate,
+corpus, with the mating side chosen per goal - the side to move for a directmate,
 its opponent for a selfmate or helpmate, because in both of those the roles
 invert. The stalemate corpora are excluded on purpose: the theorem is about
 reaching a *checkmate*, and K+B cannot mate but stalemates easily.
@@ -5850,7 +5850,7 @@ simply almost never true outside composed miniatures.
 #### The trap
 
 There is an obvious way to make the theorem pay, and it is wrong. Drop the
-requirement that the defender be bare and test the mating side's material alone —
+requirement that the defender be bare and test the mating side's material alone -
 "this side has only a king and a knight, so it cannot mate." That fires on **96**
 positions instead of 2, thirty-three of which are selfmates the engine currently
 loses to the clock. It is very attractive and it is unsound:
@@ -5861,14 +5861,14 @@ A smothered mate. The classical insufficient-material rule is a statement about
 K+N against a **bare** king; against a king with men of its own to be entombed
 by, a lone knight mates perfectly well. Every one of those 33 selfmates has a
 piece-laden attacker, and in a selfmate the attacker *wants* to be mated and will
-self-block deliberately — the single worst place to assume mates are impossible.
+self-block deliberately - the single worst place to assume mates are impossible.
 
 Shipping it would have produced 33 false refutations: positions reported as
 having no solution when they have one. That is the one error class this project
 treats as unrecoverable, and it is the fourth time this session that a rule true
-of the common case has been false in general. The other three — the pawn model
+of the common case has been false in general. The other three - the pawn model
 that omitted diagonal captures, the promotion that considered only queens, the
-retrograde generator that never checked legality — all shared the shape, and all
+retrograde generator that never checked legality - all shared the shape, and all
 three understated what a piece can do. This one overstates what material cannot
 do. The lesson generalises past the direction: **a chess rule quoted from
 memory is a rule about the position it was learned on.**
@@ -5880,9 +5880,9 @@ placement rather than by reasoning:
 
 | claim | positions examined | result |
 | --- | --- | --- |
-| two bare kings, any stalemate? | 7,224 | none — holds |
-| K+B vs bare K, any checkmate? | 417,228 | none — holds |
-| K+N vs bare K, any checkmate? | 429,440 | none — holds |
+| two bare kings, any stalemate? | 7,224 | none - holds |
+| K+B vs bare K, any checkmate? | 417,228 | none - holds |
+| K+N vs bare K, any checkmate? | 429,440 | none - holds |
 
 So the spec is correct on all three counts. The sound theorem is exactly "the
 mating side's material is insufficient **and** the mated side is a bare king",
@@ -5896,7 +5896,7 @@ Not small. None.
 
 Nothing implemented, on the same reasoning as 78: a mechanism that fires zero
 times is dead code no test can exercise, and dead code is worse than a documented
-absence. Bullet 2 is a fair illustration — the claim is true, but the search
+absence. Bullet 2 is a fair illustration - the claim is true, but the search
 already answers a two-bare-kings stalemate request in 7,591 nodes and no corpus
 contains one, so a theorem for it would be pure surface area.
 
@@ -5904,7 +5904,7 @@ The consequence for 78 is the point of this section. Level skipping needed a
 source of over-proof, and the two candidates the spec offers are `7.1` anti-mate
 and `7.6` material knowledge. `7.6` is now measured: it cannot supply over-proof
 here because it cannot fire here. **The `6.1`/`6.2` line is closed, not
-deferred** — there is no longer a pending prerequisite that might unlock it, and
+deferred** - there is no longer a pending prerequisite that might unlock it, and
 it should not be revisited on the strength of the spec's ordering alone.
 
 Four clean-room items have now been implemented or measured and four have come
@@ -5923,7 +5923,7 @@ beforehand, and 80 closed the last of them. What remained was a differential
 investigation: stop reading items off a specification and find out what Chest
 actually does better. This is that, and it moved the target completely.
 
-Chest is treated strictly as a black box throughout — its published input format
+Chest is treated strictly as a black box throughout - its published input format
 and its reported times, nothing else. Its C source sits in the workspace and was
 deliberately not opened, because the clean-room protocol requires the
 specification to come from someone else; measuring behaviour is P-BLACKBOX and
@@ -5939,7 +5939,7 @@ The 15 are a residue, not a deficit.
 The first clue came from the position 78 used as its target,
 `1bR5/rPPPPPPP/n7/8/8/8/2pP4/KRqr3k w - -`, a selfmate in 6 that Chest answers
 in 0.055 s while MateProver needed 20 s and 70 million nodes. Running it with
-`--direct-depth` — prove *a* selfmate in 6 rather than *the shortest* — gives
+`--direct-depth` - prove *a* selfmate in 6 rather than *the shortest* - gives
 
     iterative     70,476,186 nodes    20.1 s
     direct depth     627,113 nodes     0.146 s
@@ -5957,10 +5957,10 @@ So the disproofs were timed directly, on the same position:
 
 | depth | Chest | MateProver | ratio |
 | --- | --- | --- | --- |
-| 3 | 0.000 s | 0.058 s (270 K nodes) | — |
+| 3 | 0.000 s | 0.058 s (270 K nodes) | - |
 | 4 | 0.002 s | 0.981 s (2.9 M nodes) | ~490x |
 | 5 | 0.009 s | 23.47 s (52.3 M nodes) | **~2600x** |
-| 6 — *find* the solution | 0.055 s | 0.146 s | **2.7x** |
+| 6 - *find* the solution | 0.055 s | 0.146 s | **2.7x** |
 
 #### It generalises, which is the part that matters
 
@@ -5972,7 +5972,7 @@ and the solution search is removed from the comparison entirely:
     MateProver needed               401.70 s, timing out on 12 of 15
     median ratio                         90x
 
-The fifteenth is not a disproof at all — see below.
+The fifteenth is not a disproof at all - see below.
 
 **The remaining selfmate gap is entirely a disproof gap.** MateProver's search
 for a solution is competitive with Chest's, within a factor of three on the one
@@ -5987,7 +5987,7 @@ are not tried again:
 
 - **A different branching factor.** Growth per ply was measured on three
   positions at every depth both engines could reach. On the 7-pawn position
-  Chest grows 4.5x a ply against MateProver's 24.5x, which looks decisive — but
+  Chest grows 4.5x a ply against MateProver's 24.5x, which looks decisive - but
   on the second position the two are 5.9-9.5x against 7.1-11x, which is no
   separation at all. Three positions, with MateProver timing out on the deepest
   points of each, cannot distinguish a widening ratio from a large constant one.
@@ -5998,14 +5998,14 @@ are not tried again:
   obvious suspicion was that the aggregate had been dominated by positions that
   solve quickly either way, hiding a win on exactly this class. It was not:
   enabling `--selfmate-bound` on the depth-5 disproof changes 52,253,608 nodes to
-  52,254,837. It fires zero times here, for the reason 77 already gave — in a
+  52,254,837. It fires zero times here, for the reason 77 already gave - in a
   selfmate the mated side is the attacker, who self-blocks, so the handled set
   swallows everything.
 
 The profile does show one asymmetry worth a note: 52.3 M nodes produce only
 1.43 M table probes, because `prove_selfmate_defender` does not memoise at all
-while `prove_selfmate_attacker` does. 78 measured adding it — 12% fewer nodes,
-two positions lost — so it is not the answer either. A 12% effect is not a 90x
+while `prove_selfmate_attacker` does. 78 measured adding it - 12% fewer nodes,
+two positions lost - so it is not the answer either. A 12% effect is not a 90x
 one, and this section's numbers say the search is losing three orders of
 magnitude somewhere the table cannot reach.
 
@@ -6016,7 +6016,7 @@ magnitude somewhere the table cannot reach.
 returned a solution instead. MateProver agrees: `sfm 6` in 0.64 s directly, and
 2.38 s iteratively, which exhausts depths 1 to 5 and so proves 6 is the shortest.
 Two provers agree and one of them proved minimality, so it goes to
-`KNOWN_BAD.jsonl` as a wrong stipulation rather than a missing solution — the
+`KNOWN_BAD.jsonl` as a wrong stipulation rather than a missing solution - the
 first entry of that kind.
 
 #### What this redirects
@@ -6027,14 +6027,14 @@ slightly past it: **cheap disproof in the selfmate recursion**, and specifically
 at shallow remaining depth, where MateProver spends 52 million nodes on a
 question Chest settles in nine milliseconds.
 
-It also says what not to do. The solution search needs no work — it is within 3x
+It also says what not to do. The solution search needs no work - it is within 3x
 of Chest and ahead on coverage, 389 to 318. Nothing in sections 68, 77, 78 or 80
 would have helped, and now there is a reason rather than a run of bad luck: all
 four were general-purpose pruning aimed at a search that is not where the time
 goes.
 
 The specification offers `7.1` anti-mate and `7.2` fatal check cutoff as its
-disproof accelerators. Neither transfers unexamined — `7.1` is written for the
+disproof accelerators. Neither transfers unexamined - `7.1` is written for the
 directmate orientation, where a defender mate refutes the attacker's move, and in
 a selfmate that same event is a *success*; `7.2` is scoped to mate-in-two and its
 selfmate variant wants a defender holding exactly two pieces, which none of these
@@ -7293,7 +7293,7 @@ overrides the flag on the same principle as `-Z` against a line's own depth toke
 
 | goal | a check-count ending is |
 |---|---|
-| mate | **the win being forced** — a win in the variant's own terms. `--no-check-win` demands checkmate instead, for the problemist who meant mate |
+| mate | **the win being forced** - a win in the variant's own terms. `--no-check-win` demands checkmate instead, for the problemist who meant mate |
 | stalemate, selfmate, selfstalemate, helpmate, helpstalemate | a game that ended without reaching the named terminal. The line is **dead at any depth**, since nothing follows a finished game |
 
 That table is why this is a variant. Every stipulation still names what must be
@@ -7301,7 +7301,7 @@ forced; x-check only changes what the board can do underneath all of them.
 
 #### Where it was nearly free, and where it was not
 
-The transposition key's context word had **fifteen spare bits** — the goal at
+The transposition key's context word had **fifteen spare bits** - the goal at
 47-49, en passant at 39-45, and 50-63 unused. Two seven-bit counters fill it
 exactly, which is the whole cost of the soundness-critical part: two positions
 identical on the board but differing in checks remaining are DIFFERENT positions,
@@ -7320,7 +7320,7 @@ same question by a different path. It is now one named predicate,
 
 **The stipulated terminal must win the tie.** A move can be checkmate AND the
 final check at once. Firing the check-count terminal first calls that line dead
-and loses a real solution — silently, and only on the positions where both rules
+and loses a real solution - silently, and only on the positions where both rules
 bite. `check_limit_terminal` therefore defers whenever the side to move has no
 legal move: every stipulated terminal here is "no legal move, and in check or
 not", so deferring hands the decision to the routine that owns the goal. The test
@@ -7328,7 +7328,7 @@ is paid only when an allowance has already been exhausted.
 
 **Shortcuts assuming mate is the only ending had to stand down.** The coverage
 exit of section 92 proves "no mate in one exists here", which is not "no WIN in
-one exists here" — the node it would discard can hold one. Likewise the
+one exists here" - the node it would discard can hold one. Likewise the
 mate-reachability bounds and the shallow-fast route, whose two provers test for
 mate in one and mate in two directly and know nothing of a check ending.
 
@@ -7344,7 +7344,7 @@ with the allowance unspent, and one with no allowance stated at all.
 Standard chess is untouched byte for byte: no fifth field is emitted unless the
 rule is in force, the extra attack query in `make_move` sits behind a comparison
 that standard play never passes, and a corpus annotation occupying exactly the
-position the field would take — `tests/smoke.epd` puts `bm #1` there — is not
+position the field would take - `tests/smoke.epd` puts `bm #1` there - is not
 mistaken for one. That last is not fastidiousness: every corpus, every
 differential in the suite and the harness's strict parser compare those strings.
 

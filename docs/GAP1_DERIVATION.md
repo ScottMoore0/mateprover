@@ -1,4 +1,4 @@
-# GAP-1: the any-depth verdict lattice — derivation
+# GAP-1: the any-depth verdict lattice - derivation
 
 **Status: derivation only. No code depends on this document yet.**
 
@@ -38,8 +38,8 @@ conclusion, a theorem that fires buys nothing: the next iteration re-derives it.
 Fix a goal G (directmate, selfmate, …). Positions form a directed graph; edges are
 legal moves. Two kinds of node:
 
-- **OR nodes** — the attacker moves. The attacker chooses.
-- **AND nodes** — the defender moves. The defender chooses.
+- **OR nodes** - the attacker moves. The attacker chooses.
+- **AND nodes** - the defender moves. The defender chooses.
 
 Cooperative goals (helpmate, helpstalemate) have no AND layer at all: both sides
 are OR nodes. Everything below still applies, with the AND rule simply never used.
@@ -53,7 +53,7 @@ W is the least fixed point of
 - OR node *x* ∈ W ⟺ **some** successor of *x* is in W (or *x* is itself a
   G-terminal);
 - AND node *x* ∈ W ⟺ **every** successor of *x* is in W (and *x* has at least
-  one successor — a node with none is terminal and settled by G directly).
+  one successor - a node with none is terminal and settled by G directly).
 
 *Least* is the load-bearing word. The attacker must reach the goal in **finite**
 time, so membership of W must be well-founded: each node's membership is
@@ -76,7 +76,7 @@ the design, and the easiest to violate by accident, because the code path for
 
 **(b) Cyclic justification is valid for A and invalid for W.** Because A is a
 *greatest* fixed point, a defender who shuffles forever inside a region
-containing no G-terminal is genuinely avoiding the goal forever — the cycle is
+containing no G-terminal is genuinely avoiding the goal forever - the cycle is
 the proof. Because W is a *least* fixed point, the attacker may not argue "x is
 won because y is won because x is won"; that is circular and unsound.
 
@@ -101,7 +101,7 @@ never both, and a search that derives both has a bug.
 `Refuted` is the top of the disproof chain, and **absorbing**: once a node is
 Refuted it is Refuted for every depth, for every later iteration, forever.
 
-`Unknown` is the bottom. It is what an aborted search records — which is the
+`Unknown` is the bottom. It is what an aborted search records - which is the
 existing abort invariant, unchanged and now expressible: *an aborted search
 records no verdict* is exactly *an aborted search records Unknown*.
 
@@ -119,7 +119,7 @@ Let `succ(x)` be the legal successors of x.
 *Why.* The attacker achieves G from x only by choosing some successor from which
 he achieves G. If from every successor he can never achieve it, he can never
 achieve it from x. If `succ(x)` is empty the node is terminal and G decides it
-directly — an OR node with no moves is not "refuted by composition", it is
+directly - an OR node with no moves is not "refuted by composition", it is
 settled.
 
 ### AND node (defender to move)
@@ -137,7 +137,7 @@ specification calls far worse than a slow one.
 
     x is Refuted  ⟸  a gated static theorem proves it        (GAP-2, GAP-3, GAP-4)
 
-These are the **axioms** — the only way `Refuted` enters the system from outside
+These are the **axioms** - the only way `Refuted` enters the system from outside
 composition. Each is a separate theorem with its own proof obligation and its own
 flag.
 
@@ -156,7 +156,7 @@ this engine is.
 Consider a DFS that is expanding x, descends to y, and y transposes back to x.
 x's verdict is not yet known, so the table holds nothing for x. If the
 implementation treats "no entry" or "in progress" as anything other than
-`Unknown`, y may conclude something about x's status and hand it back — and x
+`Unknown`, y may conclude something about x's status and hand it back - and x
 will then justify itself with a value derived from itself. For the *proof*
 direction this is the classical graph-history-interaction problem. For the
 *refutation* direction it is worse, because the answer looks like a theorem.
@@ -167,7 +167,7 @@ in stack order, and does not compute that.
 
 **Rule (conservative).** A node currently on the search stack has verdict
 `Unknown` for all purposes. When composing a node's verdict, a child whose result
-was obtained from — or depends on — a node on the current stack contributes
+was obtained from - or depends on - a node on the current stack contributes
 `Unknown`, never `Refuted`.
 
 Consequences, stated honestly:
@@ -175,7 +175,7 @@ Consequences, stated honestly:
 - **Sound.** Every `Refuted` is then justified by a well-founded derivation
   bottoming out in axioms. No circular derivation survives.
 - **Incomplete.** Genuine forever-avoidance that is *only* provable by a cyclic
-  argument — the defender shuffling in a closed region — will not be derived by
+  argument - the defender shuffling in a closed region - will not be derived by
   composition. It has to come from an axiom instead. This is precisely why GAP-2
   is a separate theorem rather than a consequence of the lattice: perpetual check
   is the cyclic case, and the lattice deliberately cannot see it.
@@ -196,7 +196,7 @@ Two requirements on the entry:
 
 1. **Refuted dominates.** Merging a new result into an existing entry:
    `Refuted` ⊔ anything = `Refuted`. A deeper search may not overwrite `Refuted`
-   with `Disproved(d)`, and must not overwrite it with `Proved(d)` either — if
+   with `Disproved(d)`, and must not overwrite it with `Proved(d)` either - if
    that ever happens, one of the two is a bug, and the merge must fail loudly
    rather than pick a winner.
 2. **Refuted survives table ageing.** Depth-bounded entries may be evicted or
@@ -208,7 +208,7 @@ Two requirements on the entry:
 
 ## 7. Why the inert case is byte-identical by construction
 
-The acceptance criterion is: with the theorems disabled, no behaviour change —
+The acceptance criterion is: with the theorems disabled, no behaviour change -
 byte-identical verdicts across the 903-position selfmate corpus and the
 200-position mate-in-8 set.
 
@@ -220,8 +220,8 @@ That is obtained structurally, not by testing:
 > becomes `Refuted`, so no branch is ever cut, no table entry ever differs, and
 > the search executes exactly as before.
 
-The test still gets written — a structural argument is a reason to expect the
-result, not a substitute for observing it — but the argument is what makes the
+The test still gets written - a structural argument is a reason to expect the
+result, not a substitute for observing it - but the argument is what makes the
 result trustworthy rather than lucky.
 
 ---

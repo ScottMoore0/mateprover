@@ -8,7 +8,7 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## 0.2.0 — 2026-09-13
+## 0.2.0 - 2026-09-13
 
 **A corpus of 4,218 verified proof certificates now ships in `certificates/`.**
 One certificate per position, for every matetrack directmate MateProver proves
@@ -86,7 +86,7 @@ stood down as well and nothing was left to give the reader pause.
 `--allow-unverified` to accept such a run deliberately. Every CI job that runs
 the suite installs python-chess, so the reference configuration is unchanged.
 
-## 0.1.0 — 2026-09-04
+## 0.1.0 - 2026-09-04
 
 **Released under the MIT License.** The engine is an independent
 implementation and carries no third-party code, so the licence was free to be
@@ -475,16 +475,16 @@ missing solution.
 
 **Material knowledge is rejected, and the attractive form of it is unsound.**
 Section 78 named material knowledge as the prerequisite for level skipping, so
-it was measured before being built. Its main lever — a minimum-depth table for a
-bare defender king against king-plus-one — applies to 2 positions out of 2093.
+it was measured before being built. Its main lever - a minimum-depth table for a
+bare defender king against king-plus-one - applies to 2 positions out of 2093.
 Dropping the bare-king requirement and testing the mating side's material alone
 would fire on 96, but it is wrong: `6rk/5Npp/8/8/8/8/8/3K4 b - -` is checkmate
 with White holding only king and knight, and a smothered mate needs the mated
 side to have men to be entombed by. Shipping it would have produced 33 false
 refutations, all selfmates, where the attacker is piece-laden and *wants* to be
-mated. Exhaustive checks confirm the spec's underlying claims — no stalemate
+mated. Exhaustive checks confirm the spec's underlying claims - no stalemate
 exists between two bare kings (7,224 positions), and neither K+B nor K+N mates a
-bare king (417,228 and 429,440) — but the sound theorem's applicability across
+bare king (417,228 and 429,440) - but the sound theorem's applicability across
 the corpora is zero. Nothing implemented; see `docs/ARCHITECTURE.md` section 80.
 
 This closes the level-skipping line from section 78 rather than deferring it:
@@ -495,16 +495,16 @@ the prerequisite exists, was measured, and cannot fire here.
 depth 3. GCC copies the board struct through `ymm` registers and spills it with
 `vmovdqa` into a stack slot it assumed was 32-byte aligned, without emitting the
 prologue that would make that true; Windows guarantees 16, so the store faulted
-whenever the frame landed on the wrong half. The engine requests nothing unusual
-— `Board` is a plain aggregate of alignment 8, and there is no `alignas` in the
-source — so this is a MinGW-w64 GCC 15.2.0 codegen defect rather than a bug here.
+whenever the frame landed on the wrong half. The engine requests nothing unusual -
+`Board` is a plain aggregate of alignment 8, and there is no `alignas` in the
+source - so this is a MinGW-w64 GCC 15.2.0 codegen defect rather than a bug here.
 `-mstackrealign`, `-mpreferred-stack-boundary=5` and `-fno-tree-vectorize` all
 fail to avoid it; only disabling AVX does. The build file now does that on MinGW,
 appended so it wins over a user's `-march=native`, with `MATEPROVER_ALLOW_AVX=ON`
 to override. It costs nothing measurable: AVX is worth 0.3% on perft and less
 than run-to-run noise on search, because the engine has no hand-vectorised kernel.
-Release builds were never affected — the shipped CMake configuration adds no
-`-march` — so this was a footgun for people building from source, not a defect in
+Release builds were never affected - the shipped CMake configuration adds no
+`-march` - so this was a footgun for people building from source, not a defect in
 any published binary. See `docs/ARCHITECTURE.md` section 79.
 
 The same section records the gap that let it through: every existing gate tests a
@@ -521,7 +521,7 @@ bound propagating through both node pairs and surviving in the proof table, and
 the three iterative-deepening loops advancing past it rather than by one. The
 counter says how often it fired across 420 positions, four corpora, both goal
 families and 555 million nodes: **zero times.** Level skipping consumes
-over-proof, and MateProver never over-proves — every disproof it makes comes from
+over-proof, and MateProver never over-proves - every disproof it makes comes from
 exhausting a move tree at one depth, which says nothing about the next. The
 mechanisms that would supply over-proof (material knowledge that holds for all
 depths at once; an anti-mate test failing at the sentinel) are not present, so
@@ -532,11 +532,11 @@ condition for revisiting stated: build the material knowledge first. See
 The same work found that **`prove_selfmate_defender` had no transposition table**
 while its directmate counterpart has always had one. Adding it cut a hard `sfm 6`
 by 12% of nodes and still lost two positions across 400 selfmates at a 5 s cap,
-flat across four depth bands — the third mechanism in this project that is sound,
+flat across four depth bands - the third mechanism in this project that is sound,
 fires constantly, and converts nothing. Also reverted, also documented.
 
 **The cooperative split now runs two plies deep.** Splitting on the root move
-alone made as many parallel tasks as there were root moves — around thirty — and
+alone made as many parallel tasks as there were root moves - around thirty - and
 cooperative subtrees are wildly uneven, so one task held most of the work and the
 other threads idled. Sixteen threads were SLOWER than four. Pairing each root move
 with each reply gives hundreds of tasks instead of tens: 20.1 s to 6.2 s on a hard
@@ -567,8 +567,8 @@ The guarantee is exactly one ply and it holds in both directions: every emitted
 predecessor is a legal position with a legal move to the target, and every such
 predecessor is emitted. Both are gated by tests against an independent adjudicator
 (`python-chess`) rather than by the engine agreeing with itself. It does not
-decide whether a predecessor is reachable from the initial array — 0.7% of output
-is legal one ply back and impossible overall — which `docs/ARCHITECTURE.md` §65
+decide whether a predecessor is reachable from the initial array - 0.7% of output
+is legal one ply back and impossible overall - which `docs/ARCHITECTURE.md` §65
 states as the contract rather than leaving to be discovered.
 
 The first version of this passed a 96% completeness round-trip while emitting
@@ -580,14 +580,14 @@ en-passant squares that no pawn can use are handled; the last of these is a
 disagreement about what a position is, and is resolved in favour of the FEN
 convention the corpora use.
 
-## 1.0.0 — 2026-08-02
+## 1.0.0 - 2026-08-02
 
 Published as **MateProver**. The project was developed under the working name
 "E Chest" because it began as a reimplementation line measured against Heiner
 Marxen's Chest, which it is still benchmarked against below. That name was never
 suitable for release: it borrows the identity of a separate program that this
-one publishes head-to-head results against. `mateprover` names what the tool is
-— a prover, not a solver — which is the distinction the certificates make real.
+one publishes head-to-head results against. `mateprover` names what the tool is -
+a prover, not a solver - which is the distinction the certificates make real.
 
 One wire-format token moved with the name: the `--profile` diagnostic line is
 prefixed `% mateprover_profile` rather than `% e_profile`. Nothing had been
@@ -596,7 +596,7 @@ and certificate formats are untouched.
 
 First complete version. Exact directmate prover: given a position and a depth,
 it either proves a forced mate and emits a machine-checkable certificate, or
-reports that no mate exists, or reports that it ran out of budget — three
+reports that no mate exists, or reports that it ran out of budget - three
 outcomes it never conflates.
 
 **Capability.** Measured on evaluation positions used once and never consulted
@@ -887,14 +887,14 @@ See architecture 119.
 The README had drifted several sessions behind the code, and two of its claims
 were not merely stale but wrong.
 
-- It announced **two** variant rules; there are three. x-escape — a side loses
-  when its own king's escape count reaches N — was undocumented, along with the
+- It announced **two** variant rules; there are three. x-escape - a side loses
+  when its own king's escape count reaches N - was undocumented, along with the
   `--escape-count` diagnostic. The goals-by-rules matrix is now stated: six
   goals, three rules, each rule per-side and composable.
 - Its Limitations section said MateProver "has no answer" for selfstalemate,
   helpmate and helpstalemate. All three ship, are measured against the reference
   implementation, and the same README said so eleven lines from the top. It now
-  describes how the cooperative goals differ instead — both sides are OR nodes,
+  describes how the cooperative goals differ instead - both sides are OR nodes,
   so the preconditioner, the portfolio and the adversarial split are all
   undefined there.
 - It said parallelism "is worth about one extra position in forty per doubling,
@@ -912,7 +912,7 @@ were not merely stale but wrong.
 exactly this engine's question, so it maps to `score mate N` with the same N and
 the same key move the EPD interface reports.
 
-What the protocol cannot express is "no solution exists" — a GUI seeing no
+What the protocol cannot express is "no solution exists" - a GUI seeing no
 `score mate` cannot distinguish an exhaustive disproof from a timeout. Those are
 separated on `info string`, which a human can read and a GUI cannot act on, and
 `bestmove 0000` is returned rather than a legal move the engine never proved
@@ -921,7 +921,7 @@ than silently ignored. The other five goals and three variant rules ride on
 `setoption`, which no GUI populates.
 
 The UCI answer is a RENDERING of the canonical result line, not a second search
-path — same `solve_line`, same portfolio, same gates — so it cannot drift from
+path - same `solve_line`, same portfolio, same gates - so it cannot drift from
 the engine. The suite checks the two interfaces agree on depth and key move.
 
 `stop` needed one line: `SearchConfig` is copied wholesale into every worker and
@@ -929,18 +929,18 @@ lane, so a stop flag on the config is already visible everywhere, and
 `search_cancelled` marks it `timed_out` as well as `aborted` so a stopped search
 can never be read as a disproof.
 
-Beyond GUIs, this lets MateProver run under matetrack's own UCI harness — an
+Beyond GUIs, this lets MateProver run under matetrack's own UCI harness - an
 independent measurement path this project did not write. See architecture 120.
 
 ### 2.4x on deep searches: eviction was scanning, not shedding
 
-`evict()` walks an entire table shard — an `unordered_map`, so a pointer chase
-over scattered nodes — and it did that once per call while shedding only an
+`evict()` walks an entire table shard - an `unordered_map`, so a pointer chase
+over scattered nodes - and it did that once per call while shedding only an
 eighth of capacity. Eight times as many full scans as shedding a half needs.
 
 Depth 8 on the capture quota, 24 threads, 8 GB: **373.3 s to 156.4 s**, with the
 node count moving 1.2%. Half the wall clock of a deep search was iteration over a
-hash map, discarding entries. It is not a trade against table quality either — on
+hash map, discarding entries. It is not a trade against table quality either - on
 a mate-in-10 at 64 MB, where the table matters most, shedding a half does 46%
 more nodes in the same 40 s.
 
@@ -954,12 +954,12 @@ measurement and never re-taken.
 
 Re-tuning the move-ordering weights for x-capture was tried and **rejected**: 21%
 fewer nodes on the training set, 4.5% worse on held-out positions. 108's principle
-holds from a new angle — ordering ranks moves by how fast they resolve a subtree,
+holds from a new angle - ordering ranks moves by how fast they resolve a subtree,
 not by how much they advance the goal.
 
 Two defects fixed in `tools/autotune.py`: its saturation guard counted *solved*
 positions, so it refused any disproof corpus outright, and it did not check the
-engine's exit code, so a truncated run was reported as a changed verdict — the
+engine's exit code, so a truncated run was reported as a changed verdict - the
 loudest alarm it has, for the most benign cause. See architecture 121.
 
 ### Both re-measurements confirm the defaults
@@ -971,8 +971,8 @@ table can never accumulate anything. A half is the corner of the curve, not a
 compromise, and the shipped default is right.
 
 Memory, re-measured now that eviction scanning no longer dominates: 2 GB 173.6 s,
-8 GB 156.4 s, 16 GB 154.0 s. Removing the confound flipped the sign — 2 GB had
-measured *faster* than 8 GB — and left the magnitude small. The knee is 8 GB and
+8 GB 156.4 s, 16 GB 154.0 s. Removing the confound flipped the sign - 2 GB had
+measured *faster* than 8 GB - and left the magnitude small. The knee is 8 GB and
 doubling again buys 1.6%.
 
 ### The flat proof table: 1.76x, and the worker cap lifted
@@ -984,7 +984,7 @@ the scan rather than making it rarer, because a collision is resolved by
 overwriting the slot and `evict()` becomes a no-op.
 
 Depth 8 under the capture quota, 32 threads, 8 GB: **136.1 s to 77.3 s**. The
-node count rises 37% — direct mapping discards harder than an aged hash map —
+node count rises 37% - direct mapping discards harder than an aged hash map -
 and the per-node cost falls far enough that it does not matter.
 
 The safety argument is unchanged and absolute: the table is a memo of verdicts
@@ -998,7 +998,7 @@ included.
 `worker_count = min(threads, n)` no longer caps the pool at the root branching
 factor. It was right when the root split was the only split; sub-root splitting
 gave a spare worker somewhere to go, and the cap was never revisited. It bit
-hardest where branching was smallest — the chess starting array has twenty legal
+hardest where branching was smallest - the chess starting array has twenty legal
 moves, so the `d(3)` search could never build more than twenty workers. Depth 8:
 166.1 s at 20 threads, 153.5 s at 32.
 
@@ -1010,8 +1010,8 @@ day ago. See architecture 122.
 
 `entry_capacity_for_mb` divides by `EST_BYTES_PER_ENTRY` = 192, sized for an
 `unordered_map` entry plus its heap node. A flat slot is **56 bytes**. So since
-the flat table landed, `-M 8192` had been producing 2.51 GB of table — under a
-third of what was asked for — with no symptom but being slower than necessary.
+the flat table landed, `-M 8192` had been producing 2.51 GB of table - under a
+third of what was asked for - with no symptom but being slower than necessary.
 
 Depth 8, 32 threads, `-M 8192`: **74.6 s to 60.9 s**, with the node count falling
 23%. Every figure in the previous release, including the flat table's 1.76×, was
@@ -1019,7 +1019,7 @@ measured with a table two-thirds too small, so that gain was understated.
 
 The knee moved *down*: 8 GB now beats 16 GB, because a megabyte buys three times
 the entries it used to. Fourth time a memory conclusion here has needed re-taking
-after something else moved beneath it, which is now stated as a rule — a memory
+after something else moved beneath it, which is now stated as a rule - a memory
 finding is only valid for the table it was measured on.
 
 Depth 8 across this line of work: 366 s → 156 s → 77 s → **61 s**. See
@@ -1028,7 +1028,7 @@ architecture 123.
 ### `--heartbeat S`: node counts while a depth is still running
 
 `--progress` publishes a proven bound when a depth *completes*. Between the last
-completed depth and the answer, the stream said nothing — so a depth-9
+completed depth and the answer, the stream said nothing - so a depth-9
 capture-quota search ran for an hour, twice, in total silence, and the only
 honest answer to "how much longer?" was that the engine provided nothing to
 estimate from.
@@ -1042,14 +1042,14 @@ The line says **searching**, never *proven*. Every other line in this stream is
 permanent; this one asserts nothing about the position, and the wording keeps
 them apart on sight.
 
-It immediately showed something invisible before — throughput decaying *within* a
+It immediately showed something invisible before - throughput decaying *within* a
 depth as the table fills: 120M nodes in the first ten seconds, then 80M, 77M,
 59M, 53M, 53M.
 
 ### Fixed: the move-ordering hint maps were unbounded
 
 `attacker_proofs` and `defender_refutations` were `unordered_map`s with no
-capacity, no eviction and no periodic clear — one pair per worker, thirty-two of
+capacity, no eviction and no periodic clear - one pair per worker, thirty-two of
 them, growing for the entire search.
 
 At depth 9 of the `d(3)` capture-quota problem, with `-M 3072` set, the process
@@ -1061,8 +1061,8 @@ from 8192 to 3072 changed nothing: the leak was elsewhere and does not scale
 with `-M` at all.
 
 Replaced with `HintTable`, a fixed-size direct-mapped array that overwrites on
-collision. A hint only reorders moves — losing one costs ordering quality and
-can never change a verdict, a depth or a certificate — so discarding on
+collision. A hint only reorders moves - losing one costs ordering quality and
+can never change a verdict, a depth or a certificate - so discarding on
 collision is the right shape rather than a compromise. `--hint-entries N` tunes
 it; the default is 2^18 slots per worker, about 17 MB each.
 
@@ -1070,15 +1070,15 @@ Same search, `-M 3072`, depth 8: commit **30.84 GB → 4.83 GB**, timing unchang
 
 The suite caught a second, quieter fault immediately: an unsized `HintTable`
 accepts every store and returns nothing, and the enclosing search's tables were
-not being sized — so the DFPN preconditioner, which writes its guidance there,
+not being sized - so the DFPN preconditioner, which writes its guidance there,
 was silently contributing nothing. `HintTable` now carries a size from
 construction, so "forgot to size it" cannot be a silent behaviour change.
 
 ### `d(3)` says which problem it means, and the alternative is measured
 
 Architecture 104 recorded `d(3) ≥ 9` without stating the rule it was measured
-under. Every figure there is `cap3+3` — **both** sides win outright on their third
-capture — so `d(N)` is "how fast can White make N captures *without letting Black
+under. Every figure there is `cap3+3` - **both** sides win outright on their third
+capture - so `d(N)` is "how fast can White make N captures *without letting Black
 make N first*", a race rather than a one-sided count. The section read as though
 it described the asymmetric problem, and nobody had run that one.
 
@@ -1091,7 +1091,7 @@ Black can only win by mate:
 | 8 | no win, 352,010,893 | no win, **1,533,755,964** |
 
 `d(3) ≥ 9` holds under both, as do `d(1) = 3` and `d(2) = 5` with identical
-principal variations — so the headline survives the ambiguity. The race stays as
+principal variations - so the headline survives the ambiguity. The race stays as
 the headline rule and the alternative is recorded beside it.
 
 The two diverge at depth 8, and opposite to expectation: the alternative is
@@ -1099,7 +1099,7 @@ weakly *easier to solve* (fewer Black resources) but **4.4× more expensive to
 search**, because in the race a line where Black reaches three captures is cut
 immediately. Black's counter-quota was doing substantial pruning.
 
-104 also gains the `d(1)` and `d(2)` tables it never had — they were a single
+104 also gains the `d(1)` and `d(2)` tables it never had - they were a single
 prose sentence with no node counts beside a `d(3)` result carrying four rows and
 two independent configurations.
 
@@ -1134,10 +1134,10 @@ A twelve-fold break from a trend that had held for four depths usually means a
 bug. It does not here, and the first measurement rules out every hardware
 explanation: the node **rate was flat**, 7.92 M/s early against 5.35 M/s late and
 6.19 M/s overall, versus depth 8's 5.77 M/s. Depth 9 ran *faster per node* than
-depth 8. No memory wall, no table thrash — 206× more nodes at an unchanged cost
+depth 8. No memory wall, no table thrash - 206× more nodes at an unchanged cost
 each.
 
-What changed is the tree, and it decomposes into three terms — attacker width
+What changed is the tree, and it decomposes into three terms - attacker width
 `W`, defender width `B`, and the transposition discount, the factor by which the
 table collapses `W × B` children into fewer real expansions. All three are
 measured, not inferred: `--profile` has always reported the counters
@@ -1150,7 +1150,7 @@ thirty-second measurement rather than a three-hour one.
 | 7 | 19,620,832 | 11.94× | 1.30 | 27.76 | **3.02×** |
 | 8 | 306,627,206 | 15.63× | 1.52 | 29.60 | 2.88× |
 
-Depth 9's memory regime — 0.197% of its nodes held in the table — was reproduced
+Depth 9's memory regime - 0.197% of its nodes held in the table - was reproduced
 by shrinking the table until *depth 7* matched it, which costs 95 seconds instead
 of three hours. At `-M 8` (0.218% coverage) depth 7 pays **3.06×**. The curve is
 very flat, `penalty ~ coverage^-0.237`: a 23,586× range of table sizes costs only
@@ -1167,7 +1167,7 @@ R(9)/R(8) = 13.2× observed
   product                13.18×
 ```
 
-**`B(9) ≈ 6.4`** — the defender is the largest single factor, so the direction was
+**`B(9) ≈ 6.4`** - the defender is the largest single factor, so the direction was
 right. Capacity and defender widening were never rival explanations: the discount
 *is* the table's power, so capacity multiplies into the same equation rather than
 competing with it. Both are real, and `discount(9) ≈ 0.98` says the table's
@@ -1187,7 +1187,7 @@ gives each of them one. The flag accepted its argument, reported no error, and
 did nothing, in the two configurations most likely to be left unattended.
 
 It is now `HeartbeatMonitor<Count>`, a scoped object shared by both paths whose
-destructor joins the thread — which the split needed a hand-rolled guard for,
+destructor joins the thread - which the split needed a hand-rolled guard for,
 because that function returns from two places. Verified on both: 38 lines on a
 38-second single-threaded depth 7 that previously printed nothing.
 
@@ -1210,7 +1210,7 @@ fatal-anti-check work, and it says otherwise.
 | 8 | 102,697,792 | **97.16%** |
 
 `B` is above 1 mostly because of defender nodes where the defender *loses* and
-every reply must be searched by construction — 3.6% of nodes at depth 8 but
+every reply must be searched by construction - 3.6% of nodes at depth 8 but
 **33% of all replies**, at 14 each. No ordering touches those. Perfect,
 unattainable ordering is worth 1.050× per ply, **1.55× over nine plies**. That is
 the ceiling, not the estimate.
@@ -1224,7 +1224,7 @@ is keyed to one position. Measured:
 | off | 1,642,739 | 19,620,832 |
 | on | 2,043,369 | **31,168,364** |
 
-24% and 59% worse — while *improving* its own metric, first-reply-refutes rising
+24% and 59% worse - while *improving* its own metric, first-reply-refutes rising
 97.75% → 98.23%. It displaced an answer ordering that was never trying to refute
 sooner: that ordering picks *which* refutation is taken, because one reaching a
 hopeless position several levels shallower returns a larger proven failure depth,
@@ -1232,18 +1232,18 @@ and the surplus is what level skipping consumes. Cheaper refutations, found
 sooner, cost 59%.
 
 Kept as a switch, defaulted off. Every proven depth is identical across the
-corpus with it on and off — only PVs differ, where duals exist — so it is exactly
+corpus with it on and off - only PVs differ, where duals exist - so it is exactly
 as soundness-neutral as claimed, and useless.
 
 ### `d(3) = 9` exactly, under the rule where Black can only win by mate
 
 Depth 8 was already a proven refusal under `cap3:126`. Depth 9 is solved by
-**`1.b3`**, which wins against all twenty Black replies — 68,409,851,876 nodes
+**`1.b3`**, which wins against all twenty Black replies - 68,409,851,876 nodes
 over 6h37m. An exhibited strategy proves an upper bound (architecture 111) and
 the depth-8 refusal supplies the lower one, so this is exact: **`d(3) = 9` moves
 = 17 plies**. The first exact third-capture value in the project.
 
-Under the race rule `cap3+3` the bound remains `d(3) ≥ 10`. Not a contradiction —
+Under the race rule `cap3+3` the bound remains `d(3) ≥ 10`. Not a contradiction -
 removing Black's winning condition removes Black *resources*, so the asymmetric
 problem is weakly easier to solve.
 
@@ -1261,12 +1261,12 @@ Only five replies force all nine moves and they take **97% of the time**;
 | TT prefetch (`--tt-prefetch`, new) | 1.1–1.2× | **1.00×** |
 
 Six of seven estimates were wrong. The survivor is the only one that had a
-measurement behind it beforehand — 37% parallel efficiency at 24 threads, which
+measurement behind it beforehand - 37% parallel efficiency at 24 threads, which
 correctly predicted that four lanes of six threads beat one of twenty-four.
 Node count *falls* 25% when they do: a wide search on one problem speculates,
 four narrow searches on four problems don't.
 
-`-M 12000` measured **15% slower than `-M 4000` at identical node counts** —
+`-M 12000` measured **15% slower than `-M 4000` at identical node counts** -
 pure memory latency. And the ceiling for all memory work is now bounded: the
 same search runs at 629K nodes/s against an 8 MB table that fits in cache
 against 357K on the working 8 GB table, so **1.76×** is everything prefetch,
@@ -1275,7 +1275,7 @@ it and is defaulted off.
 
 `tools/candidates.py` ships the restricted-root candidate test: two-phase
 scheduling for the bimodal cost distribution, four lanes, iterative deepening,
-and raw engine output written to disk *before* anything is parsed — after a
+and raw engine output written to disk *before* anything is parsed - after a
 driver discarded 6h37m worth of principal variations by keeping only its own
 summary.
 
@@ -1286,7 +1286,7 @@ attacker man within reach of a defender man means no capture, so a node needing
 one could be cut unsearched. It was the only candidate that cuts *node count*
 rather than time per node.
 
-`contact` is now a predicate feature — empty-board move distance from any
+`contact` is now a predicate feature - empty-board move distance from any
 attacker man to any defender-occupied square, BFS tables built once. Measured
 over 3,053,854 attacker nodes:
 
@@ -1295,8 +1295,8 @@ over 3,053,854 attacker nodes:
 | `contact>=2` | **0** |
 | `contact>=1` | 3,053,854 |
 
-Exactly 1 everywhere. Admissibility demanded ignoring obstruction — a cleared
-board can only shorten a journey, never lengthen it — but a queen on an empty
+Exactly 1 everywhere. Admissibility demanded ignoring obstruction - a cleared
+board can only shorten a journey, never lengthen it - but a queen on an empty
 board reaches nearly every square in one move. **The obstruction was the whole
 bound.** Keeping it restores the power and loses the soundness, since blockers
 move; a version that survives has to reason about which blockers can vacate in
@@ -1312,7 +1312,7 @@ the two sides were doing to each other. Added `dattacked`, `aattacked`,
 `dkingring`, `acaptures` and `mate1imp` (exposing the coverage test from 107).
 
 The ceiling first: `depth<=1` measures what a *perfect* depth-1 lemma could
-return — **26.8% of the run, a 1.37× ceiling** — and **47% of its fires land on
+return - **26.8% of the run, a 1.37× ceiling** - and **47% of its fires land on
 nodes that were proved**. Half the nodes at any depth are winnable, which is why
 every previous generator run found only accidents.
 
@@ -1329,7 +1329,7 @@ observer: `dattacked` misses **en passant**, where the captured pawn is not on
 the destination square (91 → 62 once `acaptures` handled it), and the residue is
 the other winning route, mate.
 
-**Soundness costs 400× the fire rate** — the clause removing the last 62
+**Soundness costs 400× the fire rate** - the clause removing the last 62
 counterexamples takes the saving from 3.7% of the run to 0.009%. At depth 1,
 deciding "no win here" *is* the depth-1 search, so a lemma must be cheaper than
 one move generation, and the cheap tests are the conservative ones: `mate1imp`

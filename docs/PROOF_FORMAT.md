@@ -45,7 +45,7 @@ Replaying from the given position, at every `AttackerNode`:
 1. `"a"` parses as a move and is **legal** in the current position.
 2. If `"mate": true`, the position after `"a"` is **checkmate**. This is a leaf.
 3. Otherwise `"d"` is present and non-empty, and the multiset of `"r"` values is
-   **exactly** the legal replies after `"a"` — no reply missing, none listed
+   **exactly** the legal replies after `"a"` - no reply missing, none listed
    that is not legal, and none listed twice.
 4. Each `"p"` is recursively a valid `AttackerNode` in the position after `"r"`.
 

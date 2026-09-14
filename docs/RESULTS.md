@@ -232,7 +232,7 @@ The median and the total say different things and both are true. The median is
 the typical position, usually easy, where mateprover is near-instant; the total
 is dominated by the hardest positions both engines solve, and it is the honest
 aggregate. mate-in-10's median rests on only 18 shared positions, because Chest
-solves 20 of 60 — quote it with that in mind.
+solves 20 of 60 - quote it with that in mind.
 
 
 Every row is a whole corpus rather than a sample, and that is not cosmetic:
@@ -683,7 +683,7 @@ One protocol for every goal, which the previous figures did not have: **5 s and
 2 GB a position for each engine**, full corpora, same machine, same session. And
 since the harness hardening of section 90, every row below carries a
 **measurement identity** and a **result fingerprint**, recorded in
-`docs/measurement_ledger.jsonl` — a hash over the corpus digest, goal, depth
+`docs/measurement_ledger.jsonl` - a hash over the corpus digest, goal, depth
 bound, both budgets and both engine digests, and a second hash over what was
 found. These are the first published numbers here that can be told apart from a
 different measurement by anything other than the heading above them.
@@ -719,7 +719,7 @@ solution".** That is evidence about the CORPUS rather than about either engine,
 and 73 such positions want the same two-prover adjudication that produced
 `KNOWN_BAD.jsonl`.
 
-Two goals — helpmate and helpstalemate — have **zero** positions Chest solves
+Two goals - helpmate and helpstalemate - have **zero** positions Chest solves
 and MateProver does not.
 
 The medians exceed the totals nearly everywhere because the totals are dominated

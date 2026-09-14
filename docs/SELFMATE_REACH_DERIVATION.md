@@ -1,4 +1,4 @@
-# The selfmate reachability bound — derivation
+# The selfmate reachability bound - derivation
 
 **Status: derivation only. No code depends on this document yet.**
 
@@ -23,7 +23,7 @@ mate him. So the side that must deliver mate is the DEFENDER, and the side that
 gets mated is the ATTACKER. A "king+pawn defender" therefore means:
 
 > the mate must be delivered by a pawn, or by what that pawn promotes to, and by
-> nothing else — because the only other unit that side owns is a king, and a king
+> nothing else - because the only other unit that side owns is a king, and a king
 > cannot give check.
 
 That is not a special theorem. It is the ordinary reachability argument of
@@ -40,12 +40,12 @@ Everything in `HELPMATE_COVERAGE_DERIVATION.md` §3 carries over verbatim once t
 roles are read correctly. For a node with `w` moves left for the mating side
 (here the DEFENDER) and `m` for the mated side (here the ATTACKER):
 
-- **A(w)** — squares some **non-king defender** unit can attack within `w` moves,
+- **A(w)** - squares some **non-king defender** unit can attack within `w` moves,
   on an empty board. The check must come from one of these.
-- **H** — the handled set: squares the defender can attack (king included, since
+- **H** - the handled set: squares the defender can attack (king included, since
   a king may cover a flight even though it cannot check), plus squares either
   side can occupy within its own budget, plus squares occupied now.
-- **D(m)** — squares within `m` king-steps of the attacker's king.
+- **D(m)** - squares within `m` king-steps of the attacker's king.
 
 > If every k ∈ D(m) ∩ A(w) has a flight square outside H, no selfmate exists from
 > this node within these moves.
@@ -71,13 +71,13 @@ selfmate recursion runs `attacker(d) → defender(d) → attacker(d-1)`, so:
 The mated side has one fewer move at a defender node because the attacker has
 already spent his move to arrive there. Using `d` for both would OVERSTATE the
 mated king's disc, which is the safe direction, but understating any of these is
-not — so they are written out rather than approximated.
+not - so they are written out rather than approximated.
 
 **(c) The attacker cooperates in being mated.** In a selfmate the mated side
 *wants* to be mated and will self-block its own king's flights. That is not a
 problem for the bound: its own occupancy reach is already in H, exactly as the
 mated side's is for a helpmate. It does mean H is usually large and the bound will
-fire less often than it does on helpmates — which is a prediction to measure, not
+fire less often than it does on helpmates - which is a prediction to measure, not
 a reason to skip it.
 
 **(d) The bound is depth-bounded, not a refutation.** It says "no selfmate within
