@@ -25,7 +25,7 @@ reads from it.
 engine reports a mate it found; the protocol cannot add that no shorter one
 exists. Under a time or node budget the restriction portfolio runs beside the
 unrestricted search, and a restricted search that wins reports a real mate
-that may not be the shortest -- measured, `score mate 8` on a position whose
+that may not be the shortest - measured, `score mate 8` on a position whose
 shortest mate is 4, with nothing on the UCI output to say so. Every UCI mate
 is now followed by `info string shortest: proved` or `info string shortest:
 not proved`, naming the restriction, and a new `Portfolio` option turns the
@@ -56,13 +56,13 @@ field is piece placement and always contains a `/`. A harness that simply
 launches the binary now gets a working UCI engine without knowing to pass a
 flag it has no reason to know about. `--uci` still forces the mode without
 reading anything. The sniff consumes one line to decide, and that line is
-replayed rather than dropped when it turns out to be a position -- a position
+replayed rather than dropped when it turns out to be a position - a position
 silently missing from a corpus run is worse than a missing feature, because the
 run still completes and the count still looks plausible.
 
 **`rep3` marks a solution whose principal variation repeats a position three
-times.** Directmate convention IGNORES threefold repetition -- a forced mate is
-forced -- so the mate stands and the proof is unchanged; the marker is there
+times.** Directmate convention IGNORES threefold repetition - a forced mate is
+forced - so the mate stands and the proof is unchanged; the marker is there
 because a harness applying GAME rules reads the same line as a draw the
 defender could claim. Both readings are defensible and they disagree, so the
 engine says which one the caller is holding. On by default, off with
@@ -72,13 +72,13 @@ minimal. That is not the same as "when --direct-depth was asked for", because a
 restricted portfolio lane searches the requested depth directly whatever the
 caller asked, and marks its line `via`. Measured at a 2,000,000-node cap: zero
 markers over 304 solved positions with no budget and no portfolio, thirteen
-over 197 under `--direct-depth`, and eleven over 199 under `--iterative-depth`
--- every one of those eleven carrying `via`.
+over 197 under `--direct-depth`, and eleven over 199 under `--iterative-depth` -
+every one of those eleven carrying `via`.
 
 
 **A run without python-chess is no longer reported as a pass.** The certificate
-checks -- the ones that re-derive the engine's proofs independently, which is
-the single claim this engine exists to make -- stand down when python-chess is
+checks - the ones that re-derive the engine's proofs independently, which is
+the single claim this engine exists to make - stand down when python-chess is
 absent, and the suite used to report everything else as green and exit 0. On a
 fresh clone the benchmark corpora are absent too, so the check-count assertions
 stood down as well and nothing was left to give the reader pause.
@@ -139,7 +139,7 @@ why this is a minor version and not a major one.
 **x-capture chess, and the variant framework that makes a third rule cheap**
 (`--captures N` or `--captures W:B`). A side wins outright on its Nth capture,
 with independent per-side quotas, composable with `--checks`. The fifth Forsyth
-field is now tagged -- `chk3+3,cap5+2` -- while a bare `3+3` still means checks,
+field is now tagged - `chk3+3,cap5+2` - while a bare `3+3` still means checks,
 so existing corpora and the `checkwin` certificate token are untouched.
 
 x-check shipped as a scalar; adding the second rule generalised it into a quota
@@ -150,13 +150,13 @@ refactor safe: its thirty-two existing checks were the regression test.
 Room for the quotas came from the transposition key's DEPTH field, which held
 thirty-two bits for a value that never exceeds the requested depth. Narrowed to
 eight, freeing twenty-four, with eleven still spare after the two rules. `-z` is
-now refused above 127, because the cooperative key carries plies -- twice the
-requested depth -- and a depth that cannot be keyed exactly must not be searched.
+now refused above 127, because the cooperative key carries plies - twice the
+requested depth - and a depth that cannot be keyed exactly must not be searched.
 
 **The two rules do not need the same soundness gates, and that is the finding.**
 GAP-1's "a lone king cannot mate" survives x-check, because a lone king cannot
-give check either -- but a lone king CAN capture. The last-ply prune "a winning
-move must be a check" survives x-check for the same shape of reason -- but a
+give check either - but a lone king CAN capture. The last-ply prune "a winning
+move must be a check" survives x-check for the same shape of reason - but a
 quiet capture fills a capture quota and wins. Both are now gated, the second
 across six call sites that were discarding the winning move before executing it.
 
@@ -181,8 +181,8 @@ depth. A move that is checkmate and the final check at once counts as mate: the
 stipulated terminal wins the tie, or a real solution is lost silently on exactly
 the positions where both rules bite.
 
-The allowance is part of the transposition key -- two positions identical on the
-board but differing in checks remaining are different positions -- and it fit in
+The allowance is part of the transposition key - two positions identical on the
+board but differing in checks remaining are different positions - and it fit in
 fifteen bits the context word already had spare. The limit is capped at 126 and
 refused above it rather than clamped.
 
@@ -198,20 +198,20 @@ not mistaken for one.
 **The measurement harness is now verified, and it was the least-verified thing
 here.** Four measurement defects arrived in one session and none was in the
 engine, which carried 414 checks of its own against `tools/paired_corpus.py`'s
-zero -- and every published number passes through that file. All four were the
+zero - and every published number passes through that file. All four were the
 same bug, a value attached to the wrong thing: a per-lane budget passed as a
 total, a stalemate line parsed as a selfmate result, a truncated stream shifting
 rows against results, and a resume file keyed by goal alone so mate-in-10
 reported mate-in-8's numbers under its own heading.
 
-Records are now self-describing -- position digest, goal, requested depth,
-engine, engine digest, both budgets, corpus digest, harness commit, schema --
+Records are now self-describing - position digest, goal, requested depth,
+engine, engine digest, both budgets, corpus digest, harness commit, schema -
 so nothing is positional. Resume state is keyed by a hash of the entire
 measurement definition, and reopening it under a different one is a hard error.
 Invariants are asserted at load: no position twice, every depth inside its
 requested bound, every record inside the corpus, and a ledger that refuses a
 result set some *different* measurement already produced, which is the signature
-of the shared-state-file defect and of nothing else. Parsing is strict -- result
+of the shared-state-file defect and of nothing else. Parsing is strict - result
 lines are split into fields and matched on their own FEN and an exact goal
 token, so a foreign token and a shifted row are both errors rather than quiet
 non-solutions. And the harness no longer invents tuning parameters: a flag
@@ -222,7 +222,7 @@ Twenty-nine checks, in the same suite and gate as the engine's.
 **`src/kingescape.h`: one analysis, costed against two residue classes.** The
 per-square attacker sets around a king were rejected twice when priced against
 one residue class at a time. The same five sets feed the direct-mate coverage
-exit and the selfmate rejection test -- 36 of the 38 residue positions -- and
+exit and the selfmate rejection test - 36 of the 38 residue positions - and
 that is what makes them worth building.
 
 `flights` is exact; everything derived from it is conservative. The direction of
@@ -237,7 +237,7 @@ naive computation of the same answers.
 At depth 1 the whole node fails before a move is generated when no single piece
 could deny the enemy king every escape square it unconditionally has. The
 observed 15.2% fire rate reported earlier was an upper bound in three separate
-places -- it used the full escape set rather than the unconditional one, excluded
+places - it used the full escape set rather than the unconditional one, excluded
 kings from the coverage table, and ignored occupation. The last two were unsound
 as a mechanism rather than merely loose as a measurement, and building the thing
 is what forced them out. Castling and en passant are refused outright: both break
@@ -246,19 +246,19 @@ the premise that one move moves one piece.
 **The selfmate node exit is rejected, and named the real target instead**
 (`--selfmate-node-exit`, default off). Requiring a quiet king step to survive
 *every* attacker move rather than one fires on 0.1% of selfmate depth-1 nodes and
-saves 0.1% of moves -- three orders of magnitude weaker than the per-move test.
+saves 0.1% of moves - three orders of magnitude weaker than the per-move test.
 The same run found the per-move test being called 320 million times across sixty
 positions and answering yes 84.9% of the time, which is not a heuristic but an
 inner loop. It now answers with attack queries instead of board copies
 (`--fast-reject`, default on), falling back to the exact form whenever a
 discovered check might be available: 98.9% of 347 million calls resolved without
 a board copy, identical verdicts on all sixty positions, **1.049x total and
-1.013x median**. Recorded at that size deliberately -- the call count answered
+1.013x median**. Recorded at that size deliberately - the call count answered
 how often the predicate runs, not what share of the search it is, and the honest
 answer to the second question is an order of magnitude smaller than the first
 implied.
 On the mate-in-8 corpora at 20 s the exit solves 230 of 260 against 228 without
-it, with **zero positions lost and zero answers changed** -- the direction that
+it, with **zero positions lost and zero answers changed** - the direction that
 matters for a mechanism whose failure mode is a silently missing mate.
 
 **Two more mechanisms measured out before being written.** The fatal-anti-check
@@ -272,8 +272,8 @@ refutations are checks at all. Variants 3 and 2 rejected; variant 1 sits at a
 different filter point and is now last rather than first, on the same evidence
 that made it look attractive being about placement rather than payoff.
 
-**All seven corpora re-measured against Chest 3.19 under one protocol** -- 5 s and
-2 GB a position for each engine, same machine, same session -- and re-run again
+**All seven corpora re-measured against Chest 3.19 under one protocol** - 5 s and
+2 GB a position for each engine, same machine, same session - and re-run again
 through the hardened harness, so every row now carries a measurement identity and
 a result fingerprint in `docs/measurement_ledger.jsonl`.
 
@@ -296,8 +296,8 @@ Against the previous run of the same protocol: MateProver -8, **Chest -14**,
 margin 427 against 421, exclusive wins 465 against 459. No change here can lower
 Chest's score, so the absolute dips are the machine rather than either engine;
 the paired figures are measured within a session and both moved in MateProver's
-favour. The coverage exit is **not** visible in this table -- mate-in-8 went down
-three -- and the table is not offered as evidence for it. Its only clean evidence
+favour. The coverage exit is **not** visible in this table - mate-in-8 went down
+three - and the table is not offered as evidence for it. Its only clean evidence
 is the same-session A/B: 230 against 228 at 20 s with nothing lost.
 
 73 positions where Chest returns a definitive "no solution" are evidence about the
@@ -310,7 +310,7 @@ d10's heading. Re-run with its own state.
 
 **The selfmate residue is now nine positions, characterised, and two more
 mechanisms are measured out.** After the rejection test the Chest-only residue is
-12 at 30 s and **9 at 120 s** -- three fell to budget alone, so part of what has
+12 at 30 s and **9 at 120 s** - three fell to budget alone, so part of what has
 been called structural since the 10 s paired run never was. Eight of the nine are
 6-8 man miniatures at sfm 8 or 9 whose defender holds one strong unit (K+Q four
 times, K+R twice), the material that most resists being forced to mate; the ninth
@@ -320,7 +320,7 @@ Strengthening the rejection test will not move them: it already fires at 94.1% o
 a failing miniature, and extending its witness beyond king moves gains no
 coverage, because a defender node already returns on its first non-mating reply.
 The king-move test is a cheaper route to the same verdict, not a route to more of
-them -- a cost optimisation, not a coverage one.
+them - a cost optimisation, not a coverage one.
 
 The defender transposition table is rejected a second time, now on the class
 picked to favour it. A lone shuffling queen is the textbook case for memoising
@@ -335,7 +335,7 @@ only one position is six-man and buildable. See `docs/ARCHITECTURE.md` section 8
 residue.** At selfmate depth 1 an attacker move is refuted without searching it
 whenever the defender king has a legal move that gives no check: a selfmate in
 one needs EVERY reply to mate, and a king move can never be one. Measured as a
-read-only observer first -- it would reject 92.8% of depth-1 attacker moves, and
+read-only observer first - it would reject 92.8% of depth-1 attacker moves, and
 those are 91.2% of all attacker candidates, so it covers 84.7% of attacker work.
 
     sfm 5 disproof  11,059,528 nodes / 2.87 s  ->  1,867,551 / 1.37 s
@@ -346,7 +346,7 @@ miniatures**, which every previous mechanism had scored zero on. Default on,
 `--no-attacker-reject` is the differential test, `--reject-observer` counts
 without acting.
 
-Implemented exactly -- make the move, walk the king's eight neighbours -- rather
+Implemented exactly - make the move, walk the king's eight neighbours - rather
 than by the specification's board-free geometry, which needs per-square attacker
 sets this board does not maintain and which is unsound if it over-estimates the
 flight set. The exact form cannot over-estimate anything and still skips the
@@ -359,8 +359,8 @@ STALEMATE the attacker, and the two goals share the routine. See
 
 **Internal iterative deepening is rejected, and with it the whole
 graded-failure-depth line.** Built together with the per-move disproof array,
-since section 83's objection to the array -- consultable at only 6.24% of
-expansions -- is specific to root deepening, and a node that deepens itself makes
+since section 83's objection to the array - consultable at only 6.24% of
+expansions - is specific to root deepening, and a node that deepens itself makes
 the array a local variable instead. It fires at **42 of 242,780 attacker
 expansions** and skips 0.014% of candidates, for 9.5% more nodes. The cause is
 structural: internal deepening needs levels to iterate and only the top few plies
@@ -371,7 +371,7 @@ That 0.014% is the same fact as section 82's disproof-excess histogram (99.98% i
 bucket zero) and section 83's 6.24% ceiling, reached from three unrelated
 directions: MateProver's disproofs prove exactly what they are asked, so nothing
 downstream of a graded failure depth can fire. That is correct behaviour for an
-exhaustive AND/OR search, not a defect -- over-proof requires depth-independent
+exhaustive AND/OR search, not a defect - over-proof requires depth-independent
 knowledge, and the only candidates are material theory (measured at zero
 applicability in section 80) and a tablebase (excluded). The line is closed for a
 reason rather than left unfinished. See `docs/ARCHITECTURE.md` section 85.
@@ -379,7 +379,7 @@ reason rather than left unfinished. See `docs/ARCHITECTURE.md` section 85.
 **The exact proof table's soundness is now testable, and tested.** The table is
 keyed by position with no depth in the key, which is sound only because a
 disproof bounds every smaller depth and a proof depth is minimal. Nothing in the
-suite could detect a violation of either -- it would surface as a non-minimal
+suite could detect a violation of either - it would surface as a non-minimal
 mate on some untested position. `--no-exact-tt` exists for that one check:
 running four corpora with the table on and off and comparing reported DEPTHS
 gives 275 positions solved both ways and **zero mismatches**. Both preconditions
@@ -389,13 +389,13 @@ directmate.
 **The 28 remaining Chest-only selfmates are two classes, and mostly not
 disproof-bound.** Fourteen miniatures of 6-8 men with a single-unit mating force,
 fourteen heavy positions of 13-25 men. Given `--direct-depth`, which skips the
-shallow root disproofs entirely, coverage goes from 2 of 28 to 5 -- so the whole
+shallow root disproofs entirely, coverage goes from 2 of 28 to 5 - so the whole
 graded-failure-depth line has a ceiling of about three positions here. Section 81
 was right that the cost concentrates in disproof; it does not follow that the
 residue is unlocked by cheapening it.
 
 **Answer ordering has no headroom left.** The depth-2 additive scorer was ported
-with re-derived constants -- 1.73x fewer nodes on a hard disproof -- and ties the
+with re-derived constants - 1.73x fewer nodes on a hard disproof - and ties the
 width estimator on the corpus: 205 against 205, with ordering off at 202 and zero
 depth disagreements between any pair. Any ordering is worth three positions;
 sophistication is worth none of it. Kept behind `--depth2-scorer`, default off.
@@ -407,7 +407,7 @@ would need incremental per-square attack sets this board does not have. See
 **Selfmate against Chest 3.19, re-measured over all 903 positions at 10 s each:
 626 to 416.** 238 positions only MateProver solves, 28 only Chest; on the 388
 both solve, 2.24x in total time and a 6.14x median per position. Section 81's
-389-against-318 came from a run at a different budget and is not comparable --
+389-against-318 came from a run at a different budget and is not comparable -
 Chest itself scores 318 there and 416 here. The Chest-only residue is now 28
 against a much larger denominator, and that is the baseline for what comes next.
 Chest also returned a definitive "no solution" on 15 positions, which is evidence
@@ -420,7 +420,7 @@ Most of the heuristic's value is at remaining depth exactly two.
 **Two follow-ups were measured out before being built.** A per-move disproof
 array can be consulted at only 6.24% of attacker expansions, because MateProver
 deepens at the root rather than per node, so its table usually settles a position
-outright instead of re-entering it at a greater depth -- it is the second half of
+outright instead of re-entering it at a greater depth - it is the second half of
 an architecture this engine does not have, and internal iterative deepening is
 the prerequisite, not the array. And replacing the estimator's static weights
 with occupancy-aware mobility made it worse (11.1M nodes to 14.0M), because the
@@ -441,14 +441,14 @@ and principal variation. Neither can change a verdict; `--no-answer-order` is th
 differential test and is retained for it.
 
 Also fixes two leaves of the selfmate recursion that reported a depth-limited
-failure where the failure was in fact unbounded -- an axiomatic refutation, and
+failure where the failure was in fact unbounded - an axiomatic refutation, and
 an attacker with no legal move in a position that is not the goal. Both are
 any-depth results and both reported zero.
 
 The disproof-depth histogram added here explains section 78's zero conclusively:
 99.98% of defender disproofs prove exactly what was asked, so level skipping
 never had a ply to skip. It still does not fire, and section 82 now gives the
-structural reason -- an OR node's failure depth is the minimum over its moves, so
+structural reason - an OR node's failure depth is the minimum over its moves, so
 over-proof requires every one of ~41 moves to over-prove. The per-move disproof
 array is therefore not an addition to level skipping but the only workable
 consumer of graded failure depth. See `docs/ARCHITECTURE.md` section 82.
@@ -635,10 +635,10 @@ reads certificates as `utf-8-sig` for the same reason.
 
 **Also included.** A DFPN preconditioner behind `--route dfpn`. It was long
 recorded here as rejected for being slower at every depth; that was measuring a
-defect, not the algorithm -- its transposition key omitted the remaining depth, so
-it burned ten million nodes on a mate-in-2. Repaired -- and with two further
+defect, not the algorithm - its transposition key omitted the remaining depth, so
+it burned ten million nodes on a mate-in-2. Repaired - and with two further
 fixes, preconditioning only the deepest iteration and dropping per-child work
-that computed a value already known -- it is now the **default route**. On freshly
+that computed a value already known - it is now the **default route**. On freshly
 minted positions it solved 90.0% of mate-in-10 against the previous default's
 61.7%, gaining seventeen and losing none, and 85.5% against 83.5% at mate-in-8.
 (Those are the figures from the evaluation sets current at the time. The headline
@@ -660,7 +660,7 @@ an implied roadmap.
 
 `--reply-split` takes the parallel split a second ply down. A worker that runs
 out of root moves helps prove another root move's defender replies, on the
-argument that a defender node is a conjunction -- every reply must be proved --
+argument that a defender node is a conjunction - every reply must be proved -
 so the extra threads cannot be speculative.
 
 The argument is wrong, and the measurement says so plainly: 24 threads on a
@@ -668,21 +668,21 @@ depth-7 capture quota went from 7.08 s to 31.70 s, and from 21.1M nodes to
 56.9M. A defender node that ends up REFUTED stops at its first refuting reply,
 which the reply ordering puts first most of the time, so helpers prove twenty
 subtrees the sequential search never visits. On a position with no solution
-every node is refuted -- and that is the workload the 4.75x ceiling was measured
+every node is refuted - and that is the workload the 4.75x ceiling was measured
 on in the first place.
 
 Ships OFF, with the mechanism, the gate (`--reply-split-min-proved`) and a
 differential test that pins the one property worth keeping: the composition
 reads results back in reply-index order, so the verdict, the line and the
 certificate are byte-identical to the sequential loop's. See architecture 111
-for the general form -- the node type that is safe to split depends on the
+for the general form - the node type that is safe to split depends on the
 verdict, which is what the search is trying to find out.
 
 ### Young brothers wait on the OR nodes below the root
 
 `--or-split` (on by default) takes the parallel split past the root. A worker
 that runs out of root moves helps refute the ATTACKER moves below another root
-move's refuting reply -- the node type 111 established is the safe one to split
+move's refuting reply - the node type 111 established is the safe one to split
 in a failing search, since disproving an OR node needs every child.
 
 The eldest four children are searched alone first. A node that is going to
@@ -692,20 +692,20 @@ on deep directmates, and at 4 it gives all of it back while costing nothing on
 the disproof workload it exists for.
 
 Written inside `prove_attacker`'s own move loop rather than as a second copy of
-it. The composition accepts the LOWEST-indexed child that settles the node --
-exactly where the sequential loop would have stopped -- so the answer, the line
+it. The composition accepts the LOWEST-indexed child that settles the node -
+exactly where the sequential loop would have stopped - so the answer, the line
 and the certificate are byte-identical to the single-threaded search. Twelve
 differential checks pin that, at the most aggressive settings of both splits.
 
 Depth 7 under a capture quota, 24 threads: 6.22 s to 5.44 s, lifting the ceiling
-from 5.87x to 6.72x over one thread. That is 1.14x, not the 2x predicted -- the
+from 5.87x to 6.72x over one thread. That is 1.14x, not the 2x predicted - the
 ply-3 children turn out to be as unequal as the root moves were, so Amdahl
 applies again one ply down. See architecture 112.
 
 ### The split follows demand, at whatever depth the pool runs dry
 
-Young brothers wait has two conditions -- wait for the eldest child, and split
-only if another worker is idle -- and the previous release shipped one. A fixed
+Young brothers wait has two conditions - wait for the eldest child, and split
+only if another worker is idle - and the previous release shipped one. A fixed
 ply publishes whether or not anyone is free to help, which is why splitting two
 plies down had measured worse: it created a split point inside every ply-3 task
 against a handful of idle workers, and most of the pool became owners blocked at
@@ -719,7 +719,7 @@ than relative to the root, because the cost of publishing is fixed while the
 benefit scales with the work underneath.
 
 Depth 7 under a capture quota, 24 threads, three interleaved repetitions:
-6.60 s root split only, 6.19 s at one level, 5.98 s demand-driven -- 5.71x to
+6.60 s root split only, 6.19 s at one level, 5.98 s demand-driven - 5.71x to
 6.30x over one thread. Helpers now take 3,645 of 4,659 children rather than 613
 of 2,125. Deep directmates do not regress.
 
@@ -735,7 +735,7 @@ moved 60% with memory. The shared proof table is handed to the root-split
 WORKERS and never to the enclosing search, so the report was reading the main
 search's own table, which barely gets used once the root splits. Folding the
 shared table's count in at the end of each route gives 26.6M evictions at 64 MB
-and 0 at 4 GB -- which explains the memory curve exactly, and is the number
+and 0 at 4 GB - which explains the memory curve exactly, and is the number
 anyone tuning `-M` actually needs.
 
 ### Three rejections, kept as switches
@@ -743,7 +743,7 @@ anyone tuning `-M` actually needs.
 - `--no-tt-lines` suppresses the line and certificate in table entries. No
   effect: 93% of entries are disproofs, which store neither already.
 - `--tt-depth-evict` chooses eviction victims by depth bound rather than hash
-  order. Consistently slightly worse -- depth says what an entry cost, not
+  order. Consistently slightly worse - depth says what an entry cost, not
   whether it will be wanted again, and a cache is for the second.
 - `--owner-helps` lets a worker blocked on its own split help others, with a
   written termination argument (splits carry a monotonic sequence number and a
@@ -757,15 +757,15 @@ All three off by default. See architecture 114.
 
 The remaining parallel loss was not in the search. Instrumenting worker time
 showed workers are busy 93-98% of the time they are alive, with parking and
-waiting together under four worker-seconds out of a hundred and fifty -- there
+waiting together under four worker-seconds out of a hundred and fifty - there
 was no pool of idle time to reclaim.
 
 What there was, at every thread count alike, was a constant two and a half
 seconds of wall clock outside the parallel region. It is the shared
 transposition table's destructor: twenty million entries across 256 hash maps,
 handed back one at a time when the route returns, inside the reported `acs`,
-after the verdict is already known. It scales with `-M` and not with the search
--- 0.41 s at 256 MB, 0.87 s at 1 GB, 2.65 s at 4 GB, on the same node counts.
+after the verdict is already known. It scales with `-M` and not with the search -
+0.41 s at 256 MB, 0.87 s at 1 GB, 2.65 s at 4 GB, on the same node counts.
 
 The shards share nothing, so they are now freed concurrently. Depth 7 under a
 capture quota at 24 threads and 4 GB: 6.02 s to 3.92 s, moving the ceiling over
@@ -786,9 +786,9 @@ nothing but its own problem. One table carries proofs between every lane;
 nothing on the disproof side is written to it or read from it, enforced at both
 call sites rather than assumed.
 
-The hazard is minimality rather than validity -- a restricted lane can prove a
+The hazard is minimality rather than validity - a restricted lane can prove a
 longer mate than exists, and a wrong `dm N` is a wrong answer even when the mate
-is real -- so the gate compares (position, depth) pairs and permits only one
+is real - so the gate compares (position, depth) pairs and permits only one
 kind of difference: a position that was unsolved becoming solved. Over 72
 positions no depth moved and none stopped being solved; 30 mate-in-8s at a 5 s
 cap went from 18 to 19 solved. On by default.
@@ -799,7 +799,7 @@ cap went from 18 to 19 solved. On by default.
 were the other half; they free concurrently now too, sharing one helper with the
 shard destructor. Depth 7 at 4 GB and 24 threads: 6.01 s to 3.89 s, with
 teardown down to 13% of the run from 44%. The single-threaded case is not fixed
-and is not instrumented -- with no root split there is no shared table, and the
+and is not instrumented - with no root split there is no shared table, and the
 private one is freed outside the route.
 
 ### The cross-lane table now carries disproofs, and crosses jobs
@@ -814,20 +814,20 @@ proofs-only version was nearly empty.
 
 `--cross-job-proofs` carries the same table between the jobs of a `--successors`
 run, where the positions are siblings and their subtrees overlap. Sound because
-the key is a complete description of a position rather than of a root -- as
+the key is a complete description of a position rather than of a root - as
 tt_key's own comment anticipated. It stands down when an escape rule is live,
 because the escape LIMIT is deliberately unkeyed on the argument that it is
 constant for one search, and carrying a table between jobs is what could make
 that false.
 
-Worth 4% on a depth-6 successors job (29.95 s to 28.79 s), with a 1% hit rate --
+Worth 4% on a depth-6 successors job (29.95 s to 28.79 s), with a 1% hit rate -
 the cross table is a fallback, probed after the lane's own table misses. Nothing
 measurable elsewhere. 30 mate-in-8s: 19/30 either way, every verdict and depth
 identical.
 
 Two corrections to the previous release's notes. The 18-to-19 gain reported for
 cross-lane sharing did not reproduce; it was a borderline position moving on
-timing at a 5 s cap. And reuse buys nothing from avoiding table allocation --
+timing at a 5 s cap. And reuse buys nothing from avoiding table allocation -
 a 64-fold change in `-M` moves a trivial batch by 0.01 s, because the table is
 lazy and grows only to what is stored. See architecture 117.
 
@@ -841,27 +841,27 @@ and `hunt` evolves positions that maximise the node count.
 
 The one source change is `--order-weights c,p,q,r,m`, which exposes the ordering
 bonuses that were literals. Those five are the right ones to automate because
-ordering is soundness-neutral -- it changes the ORDER moves are tried and never
+ordering is soundness-neutral - it changes the ORDER moves are tried and never
 the SET, so no setting can change a verdict, a depth or a certificate. The CLI
 refuses any assignment reaching 50000, which is the magnitude prove.h reads as
 "this move gives check".
 
-Both tuners score on NODES rather than seconds -- this machine drifts 15% between
-identical runs while the effects are 3-10% -- and gate lexicographically:
+Both tuners score on NODES rather than seconds - this machine drifts 15% between
+identical runs while the effects are 3-10% - and gate lexicographically:
 nothing is compared until every baseline verdict and depth is unchanged.
 
 Neither found a shippable improvement. The ordering search produced a 5.6% gain
 on its held-out set that REVERSED on a third corpus (10/25 solved became 9/25),
 which is overfitting and is reported as such. Its soundness claim did hold:
 across the positions solved by both weight sets, zero depths changed. `perft`
-and `fuzz` found no engine bugs over 169 random positions -- though `perft`
+and `fuzz` found no engine bugs over 169 random positions - though `perft`
 found a bug in itself first, having compared depth 1 against depth N. See
 architecture 118.
 
 ### Candidate pruning theorems, measured but never acted on
 
 `--predicate EXPR` takes a conjunction of threshold tests over twelve cheap
-board features and evaluates it at every attacker node -- then searches as though
+board features and evaluates it at every attacker node - then searches as though
 it had said nothing. When the node returns, its true verdict is known, so a
 candidate that fired where a mate existed is refuted by counterexample, exactly
 and permanently, while one that fired where the search failed has its subtree
@@ -878,7 +878,7 @@ instrument first against GAP-1's Axiom 1 (proved) and `depth>=1` (false).
 Nothing was promoted. 48 of 50 candidates were refuted in minutes; the two
 survivors were refuted in seconds once shown harder positions. One of them
 claimed an attacker in check can never mate, appeared to save 48% of all nodes,
-and loses mates 4,034 times over ten mate-in-8 positions -- which is why the
+and loses mates 4,034 times over ten mate-in-8 positions - which is why the
 tool's ranking is lexicographic in counterexamples and not a weighted sum.
 See architecture 119.
 

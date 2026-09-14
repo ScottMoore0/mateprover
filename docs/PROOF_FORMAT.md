@@ -72,8 +72,8 @@ where N is the certificate's own depth, against every legal defence.
 
 It does **not** claim minimality. Nothing in the structure rules out a shorter
 mate. When the engine runs in its default iterative-deepening mode the reported
-`dm` is minimal, but that follows from the search discipline -- no depth is
-reported before every shorter depth has been refuted -- and is not a property a
+`dm` is minimal, but that follows from the search discipline - no depth is
+reported before every shorter depth has been refuted - and is not a property a
 verifier can confirm from the certificate alone. Under `--direct-depth` the
 engine searches the requested depth directly and minimality is not claimed at
 all.
@@ -100,9 +100,9 @@ mateprover --emit-proof -z 5 - < positions.epd | python tools/verify_proof.py -
 
 It is deliberately a separate program from the engine, sharing no code with it,
 so that agreement between the two is evidence rather than tautology. The test
-suite forges genuine certificates in six distinct ways -- omitting a defence,
+suite forges genuine certificates in six distinct ways - omitting a defence,
 inventing an illegal one, listing one twice, claiming a non-mating leaf is mate,
-making the attacker's move illegal, emptying a reply list -- and requires the
+making the attacker's move illegal, emptying a reply list - and requires the
 verifier to reject each. A separate check confirms that a stalemate presented as
 a mate is rejected by the node logic itself, not merely by the principal-variation
 check that happens to sit alongside it.

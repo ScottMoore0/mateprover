@@ -9,8 +9,8 @@ Section numbers below point into `ARCHITECTURE.md`.
 ## The short version
 
 **One idea produced essentially all of the capability, and it was not a search
-idea.** Restricting the *attacker's* legal options -- the WinChest special-mate
-restrictions, originally implemented for compatibility -- turns out to be a sound
+idea.** Restricting the *attacker's* legal options - the WinChest special-mate
+restrictions, originally implemented for compatibility - turns out to be a sound
 fast path: a restriction only removes attacker options, so any mate found under
 one is a real mate. Running several restrictions concurrently alongside the
 unrestricted search covers problems no single search reaches.
@@ -40,7 +40,7 @@ for this measurement, and never consulted during development (14):
 
 The mate-in-8, 10 and 20 sets were minted from the pinned corpus so that a
 reader can rebuild them and check the digest. The mate-in-8 and mate-in-10 sets
-draw only from positions no other set uses -- zero overlap -- so they are fresh
+draw only from positions no other set uses - zero overlap - so they are fresh
 evidence as well as reproducible. The mate-in-20 set cannot be: the corpus holds
 45 mate-in-20 problems, so it shares 35 of them with a development set and is
 reproducible without being independent.
@@ -74,7 +74,7 @@ gap widens with depth: at mate-in-12 mateprover solves four times as many positi
 Mean times are censored by the 30-second cap, so they understate the speed
 difference wherever Chest times out.
 
-On the positions **both** engines solve -- the fair way to compare speed, since it
+On the positions **both** engines solve - the fair way to compare speed, since it
 excludes everything Chest cannot do at all and therefore understates the gap:
 
 | depth | paired positions | time, Chest → mateprover | nodes, Chest → mateprover |
@@ -90,16 +90,16 @@ having examined about 2.5% of the positions Chest examines.
 Two things that comparison does not capture. mateprover emits a machine-checkable
 certificate for every proof and Chest does not, so the results are not merely
 faster but independently checkable. And the parallel columns are nearly identical
-to the single-thread ones because these positions resolve in seconds -- threads
+to the single-thread ones because these positions resolve in seconds - threads
 matter at the budgets where they do not (8d).
 
 The portfolio's contribution at mate-in-10 is **+15 positions of 60, losing
-none** -- twenty-five points of solve rate from the one idea this engine has that
+none** - twenty-five points of solve rate from the one idea this engine has that
 is not a conventional search technique.
 
 ### The stalemate and selfmate goals against Chest 3.19
 
-60 composed problems a goal, 20 s cap, **run sequentially** -- one position at a
+60 composed problems a goal, 20 s cap, **run sequentially** - one position at a
 time, because a three-at-once harness puts 30 threads of a nine-lane portfolio
 against 3 of a single-threaded engine on 16 cores and measures itself rather
 than the engines. **Chest is given 2048 MB** against mateprover's shipped default
@@ -115,14 +115,14 @@ mateprover lane:
 sceptic should be handed: stalemate 47/60 against 30/60 and selfmate 49/60
 against 35/60, with three positions going to Chest rather than one. Nine lanes
 sharing a total cannot each hold the whole of it, so an equal total does not ask
-the two engines the same question -- but it is the stricter number and it is
+the two engines the same question - but it is the stricter number and it is
 reported rather than buried. Section 57 has the arithmetic.
 
 **Where mateprover is still behind, stated exactly.** One stalemate position is
 solved only by Chest (`8/p7/8/1k1K4/8/8/6P1/8`, depth 13). And "faster on the
 median" is not "faster everywhere": mateprover is slower on 14 of 30 shared
 stalemate positions and 5 of 35 shared selfmate positions. The stalemate margins
-are small in absolute terms -- the worst is 1.45 s against 3.94 s -- but the
+are small in absolute terms - the worst is 1.45 s against 3.94 s - but the
 selfmate list contains one genuine outlier at 0.40 s against 13.90 s, the
 position that needs the route lane's split to be reached at all.
 
@@ -166,7 +166,7 @@ whose stipulation is the composer's ground truth, sequential, Chest given
 
 **Helpmate is a loss.** Chest solves four h#4 positions this engine does not and
 is faster on 33 of 49 shared positions. Pruning the final ply to candidate
-moves -- only a checking move can mate, only a non-checking one can stalemate --
+moves - only a checking move can mate, only a non-checking one can stalemate -
 cut total time from 40.7 s to 33.6 s and moved coverage not at all. That is the
 useful negative result: the gap is structural, not a constant factor.
 
@@ -178,7 +178,7 @@ search in the program and currently the only one exploiting nothing.
 Correctness was established before any of this was measured, and independently of
 the engine: python-chess brute forces every cooperative sequence for a set of
 small positions, giving 114 positives and **240 negatives**. The negatives carry
-the weight -- an engine answering "yes" to everything passes a positives-only
+the weight - an engine answering "yes" to everything passes a positives-only
 suite, and an inverted terminal predicate produces exactly that. The engine
 agreed on all 354, and every certificate it emitted verified independently.
 
@@ -215,7 +215,7 @@ single trial measured on 2026-09-03 (`WinChest.exe` at 2048 MB, mateprover at
 its defaults); Chest refused 15 of its positions outright, which is evidence
 about the corpus rather than about either engine.
 
-Speed, on the positions **both** engines solved -- a ratio that includes a timeout
+Speed, on the positions **both** engines solved - a ratio that includes a timeout
 is comparing a number against a cap:
 
 | goal | paired | total | median per position |
@@ -242,8 +242,8 @@ is a 21-position win over 200. Helpmate reads as a 3-position loss over 40 and
 is a 22-position win over 546. Small draws cannot resolve margins of this size.
 
 **The DFPN preconditioner stays on for sparse selfmates.** `--dfpn-min-men N`
-skips it below N men, and on the 377 selfmates of nine men or fewer -- the whole
-population the gate can affect, since it is checked at the root -- a gate of 9
+skips it below N men, and on the 377 selfmates of nine men or fewer - the whole
+population the gate can affect, since it is checked at the root - a gate of 9
 solves 185 against the default's 232: 12 gained, 59 lost, net -47 at 20 s a
 position. The twelve are real, so the effect a single observation pointed at
 exists; material count simply cannot tell those twelve from the 220 that want the
@@ -256,7 +256,7 @@ mate at h#5, and mateprover REFUSES the h#4 in 0.037 s rather than timing out. A
 definitive refusal and a timeout are different events that a solve-rate percentage
 renders identically, so any cooperative rate quoted here is a rate against a
 corpus with at least one known-wrong entry. The helpstalemate corpus additionally
-carries 4 positions of 431 with more than one king a side -- fairy problems that
+carries 4 positions of 431 with more than one king a side - fairy problems that
 orthodox chess cannot answer at all.
 
 **Mate-in-8 is the narrowest adversarial margin**, and it has to be quoted
@@ -275,7 +275,7 @@ in 0.00-0.01 s, where the numbers are timer granularity.
 
 ### Against Matefish: parity on finding, and why that matters
 
-Every comparison above is against Chest 3.19 -- a program whose copyright is
+Every comparison above is against Chest 3.19 - a program whose copyright is
 1994 and whose 3.16 release is dated 16 June 1999. Beating it is worth
 reporting, but a reader is entitled to ask what happens against something
 modern. Matefish is a proof-number-search mate solver, architecturally the
@@ -322,15 +322,15 @@ Minimality has no contest, because there is no opponent:
 | d16 | 12 | 0 | n/a |
 | **total** | **60** | **14** | **n/a** |
 
-Not zero -- **n/a**. Proving that no shorter mate exists is a question Matefish
+Not zero - **n/a**. Proving that no shorter mate exists is a question Matefish
 cannot be asked.
 
 **Corrected 2026-09-12.** This table previously said 41. That run had a time
 limit, so the restriction portfolio was on, and every one of the 41 came from a
 restricted search: a real mate, not proved shortest, and marked `via` on its
 result line. The harness counted any reported depth. Re-run with the portfolio
-off -- the only configuration in which a reported depth under a budget is a
-proved minimum -- the figure is 14.
+off - the only configuration in which a reported depth under a budget is a
+proved minimum - the figure is 14.
 
 **Matefish was given 4 GB** for its proof-number table against mateprover's
 256 MB per-table default, deliberately more than it needs, so that no result
@@ -363,7 +363,7 @@ Everything above answers the prover's question. These answer the problemist's.
 
 Dual counts are checked against python-chess: 1 key on a composed mate-in-2, 18
 on K+Q against a bare king, identical move sets. Algebraic notation is checked
-move for move -- 3551 moves over 150 positions from a random walk, zero
+move for move - 3551 moves over 150 positions from a random walk, zero
 mismatches.
 
 Dual enumeration forces an unrestricted search, and that is a soundness
@@ -373,7 +373,7 @@ candidates for a second solution, so a restricted enumeration undercounts duals
 and would report a cooked problem as sound.
 
 **The endgame gap, characterised.** The one stalemate position Chest solves and
-this engine did not is solvable after all -- 281 s at depth 13 with 2048 MB. It
+this engine did not is solvable after all - 281 s at depth 13 with 2048 MB. It
 is time-bound and not memory-bound: eight times the table changed nothing at
 60 s, five times the clock solved it. Against Chest's ~20 s that is about a
 factor of fourteen on tiny-material endgames.
@@ -425,12 +425,12 @@ Pause, Thomas Rakovsky) and its own documentation dates version 3.16 to 16 June
 a job on stdin (the `ChestUCI.exe` wrapper is a UCI front end for GUIs and is
 not what answered here); the wrapper is recent, the solver
 underneath is not. It remains a serious and well-regarded special-mate solver,
-and the margins above are real -- but "faster than Chest" should be read as
+and the margins above are real - but "faster than Chest" should be read as
 "faster than a mature 1999 specialist", not as a claim about the state of the
 art. For that, see the Matefish comparison above, which is a much narrower
 result.
 
-**Chest ran with its endgame databases disabled** -- `UseDatabase = false`, and
+**Chest ran with its endgame databases disabled** - `UseDatabase = false`, and
 the `EgtbPath` entries in its `.ini` point at directories that do not exist on
 the measurement machine. This is defensible and not an accident: mateprover has
 no tablebase support either, so the condition is matched, and this project
@@ -452,13 +452,13 @@ python tools/reproduce_results.py --engine build/mateprover
 
 re-runs the measurements above and prints what it gets beside what is claimed.
 `--quick` gives an indicative run in a few minutes. The positions are in
-`benchmarks/`, and were held out from all tuning -- the portfolio was derived on
+`benchmarks/`, and were held out from all tuning - the portfolio was derived on
 a disjoint training set, and these were spent only on promotion decisions.
 
 `--deterministic` runs a different comparison: sequential, with node budgets
 instead of a clock, on the development sets. The numbers are lower, because the
 configuration is one thread with no portfolio, and they are **not** comparable to
-the figures above. What they are is exactly reproducible -- the same on every
+the figures above. What they are is exactly reproducible - the same on every
 machine and every run:
 
 | measurement (sequential, equal node budget) | solved |
@@ -480,8 +480,8 @@ searching N directly. It gives up minimality and buys reach: on a development se
 the default configuration solves 52/60 where `--direct-depth` reaches 59/60.
 
 Both mate-in-10 figures above use it, which is why they are labelled. If you
-already know the mate distance -- from a problem's stipulation, or from an EPD
-token -- there is no reason to pay for rediscovering it.
+already know the mate distance - from a problem's stipulation, or from an EPD
+token - there is no reason to pay for rediscovering it.
 
 ### The finder lane, and the control that bounds it
 
@@ -505,7 +505,7 @@ same seed, same 20M nodes, same `--no-portfolio`, only the mode changed:
 engine asking directly scores 36, and it spends 44M nodes (20M proving, 20M
 finding, 4M verifying) against the control's 20M.
 
-Measured with the right baseline -- `--direct-depth` at full budget, a proposer
+Measured with the right baseline - `--direct-depth` at full budget, a proposer
 consulted only on the 24 positions it cannot do, verification at the same
 budget:
 
@@ -516,7 +516,7 @@ budget:
 | **verified** | **0** |
 | **lane total** | **36/60 (+0)** |
 
-The proposer was Matefish with a 4 GB proof-number table -- the best of the
+The proposer was Matefish with a 4 GB proof-number table - the best of the
 three measured, and better resourced than the engine it was helping. Zero of its
 claims survived verification.
 
@@ -546,7 +546,7 @@ Each of these was implemented or measured, not merely considered.
 | depth-aware portfolio | per-lane strength differs sharply by depth; the lane *set* does not | 8y |
 
 The pattern is consistent: **work-reduction did not become time-reduction**, four
-separate times, because no single stage of a node dominates -- generation 25%,
+separate times, because no single stage of a node dominates - generation 25%,
 legality 43%, scoring and list-building 32% (8k). Constant-factor work cannot
 reach the 4-20× that coverage would require.
 
@@ -590,15 +590,15 @@ Both evaluation sets are spent. Any future change that could affect reach needs 
 set minted *before* the work starts, using `tools/mint_eval_set.py`, and measured
 once when it finishes; `benchmarks/README.md` states the protocol and
 `benchmarks/MANIFEST.json` tracks which sets remain unused. The development sets
-are still the right tool for deciding whether one build beats another -- that use
+are still the right tool for deciding whether one build beats another - that use
 survives repetition; quoting an absolute reach figure does not.
 
 ## What would actually move the needle
 
 Nothing on the original backlog. Every item is implemented, measured and
 rejected, or found to already exist. The one axis that has ever produced
-capability -- changing *which problem* is searched rather than how fast the same
-problem is searched -- is saturated at eight lanes over the restriction set the
+capability - changing *which problem* is searched rather than how fast the same
+problem is searched - is saturated at eight lanes over the restriction set the
 engine implements.
 
 Since that was written the engine gained three orthogonal **variant rules**
@@ -612,7 +612,7 @@ axis above is unchanged.
 
 A new restriction family was the most promising of those, and it looks
 unlikely. Comparing the positions the engine cannot reach against the ones it can
-shows **no structural difference at all** -- not in material, not in king
+shows **no structural difference at all** - not in material, not in king
 confinement, not in tactical shape. They differ only in size: about 1.5x the
 defender branching, which compounds to roughly twelve times the tree over eight
 plies, matching the sixteen-times budget the curve above requires (16). A
@@ -621,12 +621,12 @@ restriction needs something to key on, and there is nothing.
 Endgame tablebase termination was the other candidate, and it is also measured
 and rejected (17). Walking 108,000 nodes of real certificates, a shippable 5-man
 tablebase reaches **1.01%** of proof nodes and the full 18 TB 7-man set reaches
-5.02% -- and those nodes sit at mean ply 11.5 of a 15-ply proof, near the leaves
+5.02% - and those nodes sit at mean ply 11.5 of a 15-ply proof, near the leaves
 where the subtree beneath them is already almost free. The value of an
 early-termination oracle is set by where its hits land, not how many there are.
 
 Parallelising the DFPN search itself looked like the largest remaining lever by
-resource argument -- it is 86-99% of the work and a single position uses about a
+resource argument - it is 86-99% of the work and a single position uses about a
 quarter of a 32-core machine. It is measured and rejected in every form the
 engine could take, on the exchange rate between speed and positions rather than
 on any implementation difficulty.
@@ -636,13 +636,13 @@ that curve is flat: 22, 24, 24, 25, 26 solved of forty at one, two, four, eight
 and sixteen times the budget. **One position per doubling of speed** (43). So
 shared-tree df-pn at a realistic 2-5x buys one or two positions of forty for two
 to four weeks, against a restriction portfolio that already delivers five or six.
-Where DFPN is 86% of the work, Amdahl caps the whole idea at 7.1x -- under three
-doublings -- at infinite hardware.
+Where DFPN is 86% of the work, Amdahl caps the whole idea at 7.1x - under three
+doublings - at infinite hardware.
 
 The cheap portfolio form was rejected first, on its own oracle: six
 differently-tuned DFPN searches solve nearly the same positions, so picking the
 best per position gains two of forty (41). The two experiments agree on the
-exchange rate, which is the useful part -- that six-way diversity ceiling is
+exchange rate, which is the useful part - that six-way diversity ceiling is
 worth about the same as an eight-times speedup.
 
 **Root splitting was reported inert here twice, and both reports were wrong.**
@@ -650,9 +650,9 @@ The first measured a route the split had never been wired into; the second
 measured it underneath a proof-number preconditioner that was consuming 96% of
 the wall clock single-threaded, so the split was scaling a twenty-fifth of the
 run. With both fixed it is worth **9.0x on 24 threads** on a depth-7
-capture-quota search (109-115). The argument attached to those numbers -- "a
+capture-quota search (109-115). The argument attached to those numbers - "a
 proof must refute every sibling, so dividing the siblings between threads removes
-no work" -- was exactly backwards: refuting every sibling is precisely what makes
+no work" - was exactly backwards: refuting every sibling is precisely what makes
 the work divisible, and it is proving that does not divide, because the first
 sibling that succeeds ends the node.
 
@@ -660,8 +660,8 @@ Two thirds of the eventual gain came from outside the search entirely. Standing
 the preconditioner down under a live variant rule was one; freeing the shared
 transposition table concurrently was the other, and at a 4 GB budget that was
 **44% of a deep run** spent returning memory after the verdict was already known.
-Both had been invisible because the instrument that would have shown the second
--- an eviction counter -- was reading a table the search never used, and reported
+Both had been invisible because the instrument that would have shown the second -
+an eviction counter - was reading a table the search never used, and reported
 zero at every memory size while node counts moved 60%.
 
 The exchange rate below is unaffected, and it is the part that matters: 9.0x is
@@ -672,7 +672,7 @@ fails rather than enumerating that it does. That is a different engine, not an
 increment to this one, and this document should not pretend otherwise.
 
 One thing the frontier analysis did explain: the defending king already has
-essentially no mobility in this corpus -- 0.6 legal king moves on average -- which
+essentially no mobility in this corpus - 0.6 legal king moves on average - which
 is why `KingSquares` restrictions are the strongest lanes at both depths. They
 cost almost nothing and prune every attacker move that would free the king. The
 set-cover derivation found that without anyone realising why it worked.

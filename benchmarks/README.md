@@ -72,12 +72,12 @@ measurements that were made rather than measurements you can repeat. The two
 holdout sets are unrebuildable for the older reason: no seed was recorded.
 
 **The corpus revision is part of the recipe.** The upstream corpus is
-maintained -- illegal positions removed, wrong mate values corrected -- so the
+maintained - illegal positions removed, wrong mate values corrected - so the
 same seed against a later revision draws a *different* set, silently.
 `fetch_corpus.py` therefore pins a commit and verifies a SHA-256, and
 `MANIFEST.json` records `corpus_commit` alongside the seed. Taken together with
 the exclusion rule above, a set is reproducible as (revision, depth, count, seed,
-excludes) -- and the recorded digest is what tells you whether you got it right.
+excludes) - and the recorded digest is what tells you whether you got it right.
 
 Two early sets, `d8_holdout60` and `d10_holdout24`, predate that discipline and
 carry `"rebuildable": false`: no seed was recorded, so they can be resampled but
@@ -92,7 +92,7 @@ verified corpus. It exists because a **generated** corpus contains only
 positions the engine can already solve, so its solve rate is 100% by
 construction and reach cannot be measured from it at all. An external
 collection carries a composer's stipulation as ground truth, so the problems the
-engine FAILS are still known to be sound -- and those are the ones that make a
+engine FAILS are still known to be sound - and those are the ones that make a
 reach figure mean anything.
 
 Positions are classified, never filtered:
@@ -132,14 +132,14 @@ figure this project publishes can be checked.
 
 The `_r2` sets replaced earlier ones that could not be rebuilt. `d8_eval200_r2`
 and `d10_eval60_r2` were drawn with `--exclude-hashes`, so they contain **only
-positions no earlier set had used** -- zero overlap with any of them, verified.
+positions no earlier set had used** - zero overlap with any of them, verified.
 `d20_eval40_r2` could not be: the corpus holds 45 mate-in-20 problems and 40 were
 already spent, so it reuses 35. Reproducible, but not independent of the figure
 it replaces.
 
 `used_positions.sha256` is what makes that possible. It lists the SHA-256 of
 every position any earlier set consumed. A digest fingerprints a position without
-containing one, so the file ships freely where the positions cannot -- and a
+containing one, so the file ships freely where the positions cannot - and a
 fresh set can exclude everything already seen without needing, or redistributing,
 the sets that saw it.
 

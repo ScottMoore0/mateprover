@@ -10,7 +10,7 @@ it lists every legal reply, and every branch ends in checkmate.
 
 ## Checking it
 
-You need neither the engine nor any trust in it -- only python-chess and the
+You need neither the engine nor any trust in it - only python-chess and the
 checker in this repository. From the repository root:
 
 ```
@@ -37,7 +37,7 @@ hash of the decompressed file.
 A certificate proves that the stated side forces mate within the stated number
 of moves. It does **not** prove that no shorter mate exists: absence has no
 certificate format. These were generated with `--iterative-depth --no-portfolio`,
-so MateProver's own search established each depth as the shortest -- but that
+so MateProver's own search established each depth as the shortest - but that
 part is the engine's claim, not something the checker verifies.
 
 ## How it was made
@@ -69,8 +69,8 @@ Every certificate contains the position it proves, and the positions come from
 [matetrack](https://github.com/vondele/matetrack), which is GPL-3.0. The corpus
 therefore carries the same licence.
 
-The licence covers this directory only. The rest of MateProver -- including the
-engine that generated these certificates and the checker that verifies them --
+The licence covers this directory only. The rest of MateProver - including the
+engine that generated these certificates and the checker that verifies them -
 is MIT; see `LICENSE` in the repository root. Nothing outside this directory is
 derived from it or reads from it. Running the engine or the checker does not
 bring either under GPL-3.0; redistributing these files, alone or inside

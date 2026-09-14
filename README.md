@@ -353,7 +353,7 @@ is no contest, because Matefish cannot be asked whether a shorter mate exists.
 MateProver proves the shortest mate on 14 of the 60 at this budget (7, 3, 3,
 1 and 0 across the five bands). An earlier version of this page said 41: that
 count included mates found by restricted searches, which prove a mate but not
-that it is the shortest -- the one distinction this paragraph exists to draw.
+that it is the shortest - the one distinction this paragraph exists to draw.
 It was re-measured with the portfolio off.
 
 ### Reach
@@ -428,7 +428,7 @@ python tests/run_tests.py --engine build/mateprover
 
 **Run the suite with an interpreter that has python-chess installed.** Without
 it fourteen sections are skipped, and they are the certificate checks that
-re-derive the engine's proofs from scratch -- the one claim this engine exists
+re-derive the engine's proofs from scratch - the one claim this engine exists
 to make. Such a run is not a pass, and the suite now says so and **exits
 non-zero** rather than printing a green line that verified nothing; pass
 `--allow-unverified` to accept one deliberately. The full run is

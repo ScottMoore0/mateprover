@@ -35,12 +35,12 @@ the unrestricted search proved it.
 **The mate still stands**: directmate convention ignores threefold repetition,
 a forced mate is forced, and the proof is unaffected. The marker is for a
 consumer applying GAME rules, which reads the same line as a draw the defender
-could claim -- the two conventions disagree, and this says which one is in
+could claim - the two conventions disagree, and this says which one is in
 front of you. Suppress it with `--no-flag-repetition`. It cannot appear on a
 shortest mate, where a recurrence would contradict minimality. It therefore
 appears exactly when the reported line was NOT proved minimal, which happens two
 ways: the caller asked for `--direct-depth`, or a restricted portfolio lane
-answered -- that lane searches the requested depth directly whatever the caller
+answered - that lane searches the requested depth directly whatever the caller
 asked for, and its line carries `via`. So `rep3` does occur on
 `--iterative-depth` invocations, always alongside `via`.
 
@@ -55,7 +55,7 @@ This is a positive claim, not a non-answer. It is expressed by the *absence* of
 any marker, which is worth stating plainly because it is the one case a naive
 consumer will get wrong.
 
-**3. Gave up.** The budget expired before the question was settled -- either the
+**3. Gave up.** The budget expired before the question was settled - either the
 wall-clock budget of `--time-limit` or the node budget of `--node-limit`:
 
 ```
@@ -73,8 +73,8 @@ know" into "there is no mate".
 ```
 
 The original text is echoed unchanged. Positions are rejected for being
-unparseable *or* illegal -- two kings per side, a side not to move standing in
-check, pawns on the back rank, and so on -- so a rejected line is not
+unparseable *or* illegal - two kings per side, a side not to move standing in
+check, pawns on the back rank, and so on - so a rejected line is not
 necessarily malformed, it may be impossible.
 
 ## What decides disproof versus timeout
@@ -100,7 +100,7 @@ line format above, and no restart cost between positions.
 
 Answers do not depend on batching or on order. A position produces the same
 result whether it is sent alone, first in a batch, or last, because each position
-is searched with fresh state -- nothing is carried between them. That is gated,
+is searched with fresh state - nothing is carried between them. That is gated,
 not merely intended.
 
 The consequence of the same property is that a long-lived process gains nothing
@@ -108,15 +108,15 @@ from work already done: there is no cross-position cache to warm. Restarting per
 position costs only process startup.
 
 It also means positions can be solved concurrently. `--parallel-positions N`
-solves N at a time and emits each result, in input order, as soon as it is ready
--- a slow position delays the results behind it but not the ones before it. It is
+solves N at a time and emits each result, in input order, as soon as it is ready -
+a slow position delays the results behind it but not the ones before it. It is
 off by default because a position's answer can then be held back waiting for an
 earlier one, which service mode depends on not happening.
 
 Pair it with `--node-limit` rather than `--time-limit` for corpus work. A node
 budget is per-position, so batching costs nothing: eight at a time gives 2.2x
 throughput with **identical** answers. A wall clock is shared, so positions
-competing for cores each get less of it -- 4.1x throughput, but a few deep
+competing for cores each get less of it - 4.1x throughput, but a few deep
 positions fall out (34, 35).
 
 ## Other modes
@@ -152,7 +152,7 @@ budget, never that the line is correct.
 | `illegal` | `ply K; token T` | move K of the line is not legal where it is played |
 | `not-mate` | `ply P; ends <why>` | the line does not end with the defender checkmated |
 | `length` | `expected E; mates-in M` | the line is not the length its claim implies |
-| `escape` | `ply K; after A; reply R; survives S` | after attacker move A, defender reply R -- not the one the line plays -- is proved to escape mate within S moves |
+| `escape` | `ply K; after A; reply R; survives S` | after attacker move A, defender reply R - not the one the line plays - is proved to escape mate within S moves |
 | `shorter` | `ply K; claimed C; found F` | from ply K a mate in F moves exists where the line claims C |
 
 The claim is `-z`, else the line's `dm N` or `bm #N`, else the length of the
