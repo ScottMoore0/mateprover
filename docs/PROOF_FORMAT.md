@@ -132,3 +132,75 @@ That distinction is load-bearing. A selfmate search that silently ran the
 directmate code path emitted `{"a": "d6f6", "mate": true}` under an `sfm 1`
 token; `tools/verify_proof.py` now rejects a directmate or stalemate leaf found
 inside a selfmate proof, so the same mistake cannot pass verification.
+
+## Absence and minimality certificates
+
+A mate certificate proves a mate within N and, as above, does not claim
+minimality. Two further modes emit certificates for the claims it cannot make.
+Both formats are specified here completely enough to check a certificate without
+reading the engine.
+
+| mode | claim | format | output token |
+|---|---|---|---|
+| `--absence-proof` | the side to move cannot force mate within k (`-z`, else the line's `dm N` or `bm #N`) | `matebench-absence-1` | `absproof <json>` |
+| `--minimality-proof` | the shortest mate is N | `matebench-minimality-1` | `minproof <json>` |
+
+As with `proof`, the JSON runs to the end of the line, before its closing `;`.
+
+### `matebench-absence-1`
+
+```
+{"format": "matebench-absence-1", "k": K, "proof": AbsenceNode, "nodes": {Id: AbsenceNode, ...}}
+
+AbsenceNode := { "m": [ Refutation, ... ] }
+             | { "ref": Id }
+Refutation  := { "a": Move }                                // a leaf
+             | { "a": Move, "r": Move, "p": AbsenceNode }   // a defence
+```
+
+The root is in the claim's position with the attacker to move and `j = K`
+attacker moves left. At a node with `j` moves left, a checker must verify:
+
+1. The multiset of `"a"` values is **exactly** the attacker's legal moves: none
+   missing, none illegal, none twice. `"m": []` is valid only when the attacker
+   has no legal move.
+2. After each `"a"`, the position is **not checkmate**; if it is, a mate within
+   the bound exists and the certificate is false.
+3. A **leaf** is valid when `j == 1`, or when the defender has no legal move (the
+   move was stalemate, so the game ended without mate).
+4. A **defence** is valid when `j >= 2`, `"r"` is a legal defender move, and `"p"`
+   is a valid node after `"r"` with `j - 1` moves left. A defence given when
+   `j == 1`, or a leaf where `j >= 2` and the defender has moves, is rejected.
+5. A `{"ref": Id}` node is checked as `nodes[Id]` **in the position and with the
+   `j` where the reference appears**. The same shared node may be valid in one
+   position and not another, so every use is checked against its own position.
+
+Repetition, the fifty-move rule and insufficient material play no part, as in the
+mate format.
+
+### `matebench-minimality-1`
+
+```
+{"format": "matebench-minimality-1", "n": N, "mate": <mate certificate>, "no_shorter": <absence certificate> | null}
+```
+
+`mate` is a certificate in the format at the top of this document whose depth is
+exactly `n`; `no_shorter` is an absence certificate for the same position with
+`k = n - 1`, and `null` when `n == 1`. Both are checked from the claim's position.
+
+### How the engine builds them
+
+`src/absproof.h` refutes each attacker move by trying the defender's replies in
+turn and putting each to this engine's own search, the same path `--refute-pv`
+uses. Only a search that finishes with no mate counts as evidence; a timeout
+never does. The line reports `ok` with the certificate, or `mate-exists` (the
+claim is false), `inconclusive` (a search ran out of budget), or `too-large` (the
+certificate passed `--absence-max-nodes`).
+
+Nothing about the builder has to be trusted: `tests/run_tests.py` checks what it
+emits with a python-chess checker written from the obligations above.
+
+Certificates grow exponentially with the bound, because every attacker move has
+to be answered at every level. A shortest mate in 4 on a busy board takes a few
+thousand shared nodes and several seconds; mates much deeper than that are out of
+reach for this format.

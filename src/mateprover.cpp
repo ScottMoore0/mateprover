@@ -71,6 +71,7 @@
 #include "solve.h"
 #include "uci.h"
 #include "refute.h"
+#include "absproof.h"
 
 using namespace mateprover;
 
@@ -415,6 +416,23 @@ void print_usage() {
 "                                check gets --node-limit or --time-limit\n"
 "                                (default 10000000 nodes); with --emit-proof a\n"
 "                                `shorter` refutation carries its certificate\n"
+"  --absence-proof               for each position, a certificate that the side\n"
+"                                to move cannot force mate within -z (else the\n"
+"                                line's dm N or bm #N): every attacker move is\n"
+"                                refuted, each defence found by this engine's\n"
+"                                own search and only ever a disproved one.\n"
+"                                Format matebench-absence-1, checked by\n"
+"                                MateBench's bench/absence.py. Answers ok with\n"
+"                                an `absproof` certificate, mate-exists,\n"
+"                                inconclusive or too-large\n"
+"  --minimality-proof            for each position, the shortest mate N within\n"
+"                                -z (else dm N or bm #N) with a certificate\n"
+"                                that no shorter mate exists: a `minproof` in\n"
+"                                format matebench-minimality-1. Certificates\n"
+"                                grow exponentially with depth\n"
+"  --absence-max-nodes N         cap on shared nodes in one absence certificate\n"
+"                                (default 200000); a build that reaches it\n"
+"                                reports too-large\n"
 "\n"
 "Output:\n"
 "  -5                            UCI-style coordinate moves (compatibility)\n"
@@ -795,6 +813,9 @@ int main(int argc, char** argv) {
     bool list_san = false;
     bool list_unmoves = false;
     bool refute_pv = false;
+    bool absence_proof = false;
+    bool minimality_proof = false;
+    std::uint64_t absence_max_nodes = kAbsenceDefaultMaxNodes;
     bool self_check = false;
 
     // Pre-scan: this flag must work regardless of where it appears, otherwise
@@ -896,6 +917,15 @@ int main(int argc, char** argv) {
             list_unmoves = true;
         } else if (arg == "--refute-pv") {
             refute_pv = true;
+        } else if (arg == "--absence-proof") {
+            absence_proof = true;
+        } else if (arg == "--minimality-proof") {
+            minimality_proof = true;
+        } else if (arg == "--absence-max-nodes") {
+            const char* v = need_value(i);
+            if (!v) return usage_error("option " + arg + " requires a node count");
+            absence_max_nodes = std::strtoull(v, nullptr, 10);
+            if (absence_max_nodes == 0) return usage_error("option " + arg + " requires a positive count");
         } else if (arg == "--perft" || arg == "--perft-divide") {
             const char* v = need_value(i);
             if (!v) return usage_error("option " + arg + " requires a depth");
@@ -1418,6 +1448,24 @@ int main(int argc, char** argv) {
             return usage_error("--refute-pv checks one claimed line per position and does not "
                                "combine with --all-solutions or --successors");
     }
+    if (absence_proof || minimality_proof) {
+        // Both build certificates out of sound, complete searches, and both answer
+        // in their own line format, so they stand apart from every other mode.
+        const std::string mode = absence_proof ? "--absence-proof" : "--minimality-proof";
+        if (absence_proof && minimality_proof)
+            return usage_error("--absence-proof and --minimality-proof are separate modes; run one at a time");
+        if (refute_pv)
+            return usage_error(mode + " does not combine with --refute-pv");
+        if (uci_mode)
+            return usage_error(mode + " is not available in --uci mode: a certificate cannot "
+                               "travel in a UCI message");
+        if (config.goal != Goal::Mate)
+            return usage_error(mode + " is implemented for the mate goal only");
+        if (config.beam_defender > 0)
+            return usage_error(mode + " needs sound searches, and --beam-defender is not one");
+        if (config.all_solutions || config.successors)
+            return usage_error(mode + " does not combine with --all-solutions or --successors");
+    }
     // PROTOCOL SNIFF. A UCI session ALWAYS opens with the bare command `uci`,
     // and no EPD line can begin with it: the first FEN field is piece placement,
     // which always contains '/'. So a first line of exactly "uci" identifies the
@@ -1562,6 +1610,10 @@ int main(int argc, char** argv) {
                 list_unmoves_line(line);
             } else if (refute_pv) {
                 refute_pv_line(line, requested_depth, config, std::cout);
+            } else if (absence_proof) {
+                absence_proof_line(line, requested_depth, config, absence_max_nodes, std::cout);
+            } else if (minimality_proof) {
+                minimality_proof_line(line, requested_depth, config, absence_max_nodes, std::cout);
             } else if (config.parallel_positions > 1) {
                 pending.push_back(line);
                 // Four positions per worker before flushing: the queue can only
@@ -1599,6 +1651,17 @@ int main(int argc, char** argv) {
                 const std::size_t first = one.find_first_not_of(" \t\r");
                 if (first == std::string::npos || one[first] == '#') continue;
                 refute_pv_line(one, requested_depth, config, std::cout);
+            }
+        } else if (absence_proof || minimality_proof) {
+            std::istringstream lines(buffer.str());
+            for (std::string one; std::getline(lines, one);) {
+                const std::size_t first = one.find_first_not_of(" \t\r");
+                if (first == std::string::npos || one[first] == '#') continue;
+                if (absence_proof) {
+                    absence_proof_line(one, requested_depth, config, absence_max_nodes, std::cout);
+                } else {
+                    minimality_proof_line(one, requested_depth, config, absence_max_nodes, std::cout);
+                }
             }
         } else {
             solve_line(buffer.str(), requested_depth, config);

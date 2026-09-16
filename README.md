@@ -432,7 +432,7 @@ re-derive the engine's proofs from scratch - the one claim this engine exists
 to make. Such a run is not a pass, and the suite now says so and **exits
 non-zero** rather than printing a green line that verified nothing; pass
 `--allow-unverified` to accept one deliberately. The full run is
-626 automated checks, reported as 626 passed, 0 skipped.
+647 automated checks, reported as 647 passed, 0 skipped.
 
 They cover:
 

@@ -8,6 +8,21 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
+## Unreleased
+
+**Certificates for absence and minimality.** `--absence-proof` emits a
+certificate that the side to move cannot force mate within k, and
+`--minimality-proof` emits the shortest mate N with a certificate that no shorter
+one exists, in MateBench's `matebench-absence-1` and `matebench-minimality-1`
+formats. A mate certificate never claimed minimality, so until now the shortest
+mates this engine reported were its own word; these certificates make them
+checkable by anyone. The builder uses only searches that finish without finding a
+mate, never a timeout, and `tests/run_tests.py` verifies what it emits with an
+independent python-chess checker. Certificates grow exponentially with depth and
+are practical for short bounds. See `docs/PROOF_FORMAT.md`.
+
+The suite is now 647 automated checks.
+
 ## 0.2.0 - 2026-09-13
 
 **A corpus of 4,218 verified proof certificates now ships in `certificates/`.**

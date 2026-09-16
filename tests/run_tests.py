@@ -3966,6 +3966,121 @@ def test_refute_pv_is_one_sided(engine: Path, res: Results) -> None:
               "not available in --uci mode" in refused, refused[:160])
 
 
+def _absence_holds(board, node, j, nodes, memo):
+    """'' if `node` shows the side to move cannot mate within j, else why not.
+
+    Written from the matebench-absence-1 rules with python-chess, sharing nothing
+    with the engine, so agreement is evidence. A shared node is checked in the
+    position and with the budget where it is referenced.
+    """
+    if "ref" in node:
+        key = (board.fen(), j, node["ref"])
+        if key in memo:
+            return ""
+        target = nodes.get(node["ref"])
+        if target is None:
+            return "reference to a missing shared node"
+        why = _absence_holds(board, target, j, nodes, memo)
+        if not why:
+            memo.add(key)
+        return why
+    entries = node.get("m")
+    if not isinstance(entries, list):
+        return "node has no move list"
+    if sorted(e.get("a", "") for e in entries) != sorted(m.uci() for m in board.legal_moves):
+        return "listed attacker moves are not exactly the legal ones"
+    for e in entries:
+        board.push(chess.Move.from_uci(e["a"]))
+        try:
+            if board.is_checkmate():
+                return f"{e['a']} mates"
+            if "r" not in e:
+                if j == 1 or not any(True for _ in board.legal_moves):
+                    continue
+                return f"no defence given after {e['a']}"
+            if j < 2:
+                return f"defence given after {e['a']} with no move left"
+            reply = chess.Move.from_uci(e["r"])
+            if reply not in board.legal_moves:
+                return f"illegal defence {e['r']}"
+            board.push(reply)
+            try:
+                why = _absence_holds(board, e["p"], j - 1, nodes, memo)
+            finally:
+                board.pop()
+            if why:
+                return why
+        finally:
+            board.pop()
+    return ""
+
+
+def test_absence_and_minimality_certificates(engine: Path, res: Results) -> None:
+    """--absence-proof and --minimality-proof emit certificates an outside
+    checker accepts, and refuse to emit one where the claim is false."""
+    print("\n[certificates] --absence-proof and --minimality-proof")
+    if not HAVE_CHESS:
+        res.skip("absence and minimality certificates", "python-chess not installed")
+        return
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("verify_proof", HERE.parent / "tools" / "verify_proof.py")
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+
+    budget = ["--node-limit", "2000000", "-"]
+    nomate = [(f, d) for f, d in load_epd(HERE / "nomate.epd") if d <= 3][:6]
+    mates = [(f, d) for f, d in load_epd(HERE / "mates.epd") if d <= 3][:6]
+
+    out = run(engine, ["--absence-proof", *budget], "".join(f"{f} bm #{d};\n" for f, d in nomate))
+    lines = [l for l in out.splitlines() if l.strip()]
+    res.check("absence: one result line per position", len(lines) == len(nomate), f"{len(lines)} lines")
+    for (fen, d), line in zip(nomate, lines):
+        m = re.search(r"; absproof (\{.*\});\s*$", line)
+        why = "no certificate: " + line[:160]
+        if f"; absence {d}; ok;" in line and m:
+            cert = json.loads(m.group(1))
+            why = "wrong format or k" if (cert.get("format") != "matebench-absence-1" or cert.get("k") != d) else \
+                _absence_holds(chess.Board(fen + " 0 1"), cert["proof"], d, cert.get("nodes", {}), set())
+        res.check(f"absence certificate for no mate #{d} checks {fen[:24]}", why == "", why)
+
+    out = run(engine, ["--absence-proof", *budget], "".join(f"{f} bm #{d};\n" for f, d in mates))
+    lines = [l for l in out.splitlines() if l.strip()]
+    for (fen, d), line in zip(mates, lines):
+        res.check(f"absence refused where mate #{d} exists {fen[:24]}",
+                  "mate-exists" in line and "absproof" not in line, line[:160])
+
+    out = run(engine, ["--minimality-proof", *budget], "".join(f"{f} bm #{d};\n" for f, d in mates))
+    lines = [l for l in out.splitlines() if l.strip()]
+    for (fen, d), line in zip(mates, lines):
+        m = re.search(r"; minproof (\{.*\});\s*$", line)
+        why = "no certificate: " + line[:160]
+        if m:
+            cert = json.loads(m.group(1))
+            board = chess.Board(fen + " 0 1")
+            if cert.get("format") != "matebench-minimality-1" or cert.get("n") != d:
+                why = f"format or n wrong: n={cert.get('n')}"
+            else:
+                try:
+                    proved = verifier.verify_node(board.copy(), cert["mate"], [], "mate")
+                    why = "" if proved == d else f"mate half proves {proved}"
+                except verifier.Failure as exc:
+                    why = f"mate half rejected: {exc}"
+                if not why and d == 1:
+                    why = "" if cert.get("no_shorter") is None else "mate in one with an absence half"
+                elif not why:
+                    shorter = cert.get("no_shorter") or {}
+                    why = "absence half has the wrong k" if shorter.get("k") != d - 1 else \
+                        _absence_holds(board, shorter["proof"], d - 1, shorter.get("nodes", {}), set())
+        res.check(f"minimality certificate for mate #{d} checks {fen[:24]}", why == "", why)
+
+    for args, what in ((["--absence-proof", "--uci"], "--uci"),
+                       (["--absence-proof", "--minimality-proof", "-"], "the other certificate mode")):
+        proc = subprocess.run([str(engine), *args], input=b"", capture_output=True, timeout=60)
+        res.check(f"--absence-proof refuses {what}", proc.returncode != 0, proc.stdout.decode()[:120])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", type=Path, required=True)
@@ -4037,6 +4152,7 @@ def main() -> int:
     test_repetition_marker_is_reported_and_switchable(args.engine, res)
     test_help_advertises_only_real_options(args.engine, res)
     test_refute_pv_is_one_sided(args.engine, res)
+    test_absence_and_minimality_certificates(args.engine, res)
     test_flat_table_changes_nothing_but_the_speed(args.engine, res)
     test_corpus_ergonomics(args.engine, res)
     test_bom_tolerated_on_input(args.engine, res)
