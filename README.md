@@ -95,6 +95,39 @@ This is the central design constraint. An optimisation is acceptable only if
 the proof still verifies, and several plausible ones were rejected on that
 ground rather than for being slow.
 
+### No mate within k, and the shortest mate
+
+A mate certificate proves a mate within N. It says nothing about whether a
+shorter mate exists, or about positions with no mate at all. Two further modes
+certify those claims:
+
+```
+mateprover --absence-proof -z 3 - < positions.epd
+mateprover --minimality-proof -z 8 - < positions.epd
+```
+
+`--absence-proof` certifies that the side to move cannot force mate within k
+(`-z`, else the line's `dm N` or `bm #N`), and prints `absence k; ok` with an
+`absproof` certificate. The certificate refutes every attacker move at every
+level with a defence, and each defence is one this engine's own search disproved;
+a search that ran out of budget never counts. The line reports `mate-exists`
+when the claim is false, `inconclusive` when a search ran out, and `too-large`
+when the certificate passes `--absence-max-nodes` (default 200,000 shared nodes).
+
+`--minimality-proof` finds the shortest mate N and prints `dm N; minimality ok`
+with a `minproof` certificate: the mate certificate plus an absence certificate
+for N - 1.
+
+```
+8/2Q5/R7/8/1k4K1/8/8/8 w - -; dm 2; minimality ok; ...; minproof {"format":"matebench-minimality-1","n":2,"mate":{...},"no_shorter":{...}};
+```
+
+Both formats are specified in [docs/PROOF_FORMAT.md](docs/PROOF_FORMAT.md), and
+the test suite checks what the engine emits with an independent python-chess
+checker. Every attacker move must be answered at every level, so certificates
+grow exponentially with depth: a mate in 4 on a busy board takes a few thousand
+shared nodes and several seconds, and much deeper bounds are out of reach.
+
 For worked examples at scale, [`certificates/`](certificates/README.md) holds
 4,218 certificates for positions from matetrack, mates in 1 to 24, every one
 verified by that checker. That directory is GPL-3.0 rather than MIT; see

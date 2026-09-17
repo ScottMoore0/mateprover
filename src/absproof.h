@@ -17,7 +17,7 @@ namespace mateprover {
 // certify the two claims a prover makes that a finder cannot: "there is no mate
 // within k", and "the shortest mate is N". Both are claims about EVERY attacker
 // move, not about one winning line. This module builds certificates for them in
-// the formats MateBench specifies (docs/CERTIFICATES.md there):
+// the formats specified in docs/PROOF_FORMAT.md:
 //
 //   matebench-absence-1     no mate within k
 //   matebench-minimality-1  a mate certificate of depth N, plus an absence
@@ -34,11 +34,12 @@ namespace mateprover {
 //
 // Only a Disproved search counts as evidence. A timeout can make a build
 // inconclusive; it can never produce a certificate. And nothing here is trusted
-// downstream: MateBench's checker re-derives every move from the rules, so a bug
+// downstream: a checker written from docs/PROOF_FORMAT.md, such as the one in
+// tests/run_tests.py, re-derives every move from the rules, so a bug
 // in this builder can produce a certificate that fails, never a false result.
 //
 // SHARING. A position reached again with the same moves left is built once and
-// referenced, which is what MateBench's format allows and what keeps
+// referenced, which is what the format allows and what keeps
 // transpositions from multiplying the certificate.
 //
 // SIZE. The certificate lists every attacker move at every attacker node, so it

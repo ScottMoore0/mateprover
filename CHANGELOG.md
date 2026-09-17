@@ -13,7 +13,7 @@ without one.
 **Certificates for absence and minimality.** `--absence-proof` emits a
 certificate that the side to move cannot force mate within k, and
 `--minimality-proof` emits the shortest mate N with a certificate that no shorter
-one exists, in MateBench's `matebench-absence-1` and `matebench-minimality-1`
+one exists, in the `matebench-absence-1` and `matebench-minimality-1`
 formats. A mate certificate never claimed minimality, so until now the shortest
 mates this engine reported were its own word; these certificates make them
 checkable by anyone. The builder uses only searches that finish without finding a
