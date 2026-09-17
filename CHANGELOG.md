@@ -8,7 +8,7 @@ The two external contracts carry their own version numbers, documented in
 either without a major bump; the meaning of an existing field will not change
 without one.
 
-## Unreleased
+## 0.3.0 - 2026-09-17
 
 **Certificates for absence and minimality.** `--absence-proof` emits a
 certificate that the side to move cannot force mate within k, and

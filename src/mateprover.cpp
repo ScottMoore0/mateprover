@@ -47,7 +47,7 @@
 //
 // Above the includes rather than below them, because uci.h reports it in the
 // `id name` line the protocol requires.
-#define MATEPROVER_VERSION "0.2.0"
+#define MATEPROVER_VERSION "0.3.0"
 
 // Modules are included in their original order into this single translation
 // unit, so the preprocessed result is textually equivalent to the previous
