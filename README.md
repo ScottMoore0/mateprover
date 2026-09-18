@@ -124,7 +124,8 @@ for N - 1.
 
 Both formats are specified in [docs/PROOF_FORMAT.md](docs/PROOF_FORMAT.md), and
 the test suite checks what the engine emits with an independent python-chess
-checker. Every attacker move must be answered at every level, so certificates
+checker. [MateBench](https://github.com/ScottMoore0/matebench) scores its minimality and absence tracks on these
+certificates. Every attacker move must be answered at every level, so certificates
 grow exponentially with depth: a mate in 4 on a busy board takes a few thousand
 shared nodes and several seconds, and much deeper bounds are out of reach.
 

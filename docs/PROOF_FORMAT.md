@@ -138,7 +138,8 @@ inside a selfmate proof, so the same mistake cannot pass verification.
 A mate certificate proves a mate within N and, as above, does not claim
 minimality. Two further modes emit certificates for the claims it cannot make.
 Both formats are specified here completely enough to check a certificate without
-reading the engine.
+reading the engine. [MateBench](https://github.com/ScottMoore0/matebench) defines them too, and scores its minimality
+and absence tracks on them.
 
 | mode | claim | format | output token |
 |---|---|---|---|
